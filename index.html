@@ -3060,16 +3060,44 @@ function resize() {
 // Tercera persona: la cámara detrás y por encima del jugador que lleváis (por encima del cristal del fondo) y mira
 // hacia delante, algo hacia la bola cuando viene. Se mueve con suavidad (también al cambiar de jugador en «alterna»).
 let tpPos = null, tpLook = null;
+// cámara de prueba: con ella se mira si la bola cabe en la toma antes de mover la de verdad
+const camTest = new THREE.PerspectiveCamera(50, 1, 0.1, 160), _pb = new V3(), _pf = new V3();
+let tpAtras = 0;   // 0 = cámara normal; 1 = alejada del todo hacia atrás (bola que pasa por encima o por detrás)
+function camTp(me, e) {   // posición y punto de mira de la tercera persona, con el alejamiento e (0..1)
+  // cuanto más atrás (fondo), más alta y mirando más lejos: se ve más campo rival; en la red, como siempre
+  const fondo = clamp((me.pos.z - 6) / 3.5, 0, 1);
+  const pos = new V3(me.pos.x * 0.8 * (1 - 0.4 * e), 4.8 + 1.6 * fondo + 3.2 * e, Math.min(me.pos.z + 4.6 + 0.8 * fondo + 6 * e, 14.8 + 4.5 * e));
+  const front = new V3(me.pos.x * 0.5, 0.3 + 0.5 * e, me.pos.z - 4.2 - 3.0 * fondo + 2.5 * e);   // (mirando algo hacia abajo, el jugador se ve entero)
+  const enJuego = S.phase === 'play' || S.phase === 'pause' || S.phase === 'serve';
+  const look = enJuego && ball.p.z < me.pos.z ? front.clone().lerp(ball.p, 0.3 * (1 - e)) : front;
+  return [pos, look];
+}
+function bolaEnToma(pos, look) {   // ¿se ve la bola con la cámara en pos mirando a look? (con margen en los bordes)
+  camTest.fov = camera.fov; camTest.aspect = camera.aspect; camTest.updateProjectionMatrix();
+  camTest.position.copy(pos); camTest.lookAt(look); camTest.updateMatrixWorld();
+  // devuelve cuánto se sale (0 = se ve bien)
+  const fuera = p => { _pb.copy(p).project(camTest); if (_pb.z >= 1) return 9; return Math.max(0, Math.abs(_pb.x) - 0.94) + Math.max(0, -0.82 - _pb.y) + Math.max(0, _pb.y - 0.92); };
+  // la bola de ahora y la de dentro de 0,35 s (así la cámara se aleja antes de que se escape, no cuando ya se ha ido)
+  const T = 0.35;
+  _pf.set(ball.p.x + ball.v.x * T, Math.max(0.05, ball.p.y + ball.v.y * T - 4.9 * T * T), Math.min(ball.p.z + ball.v.z * T, 9.9));
+  return fuera(ball.p) + fuera(_pf);
+}
 function updateCam(dt) {
   if (!terceraP()) return;
   const me = ctrlP();
-  // cuanto más atrás (fondo), más alta y mirando más lejos: se ve más campo rival; en la red, como siempre
-  const fondo = clamp((me.pos.z - 6) / 3.5, 0, 1);
-  const wantPos = new V3(me.pos.x * 0.8, 4.8 + 1.6 * fondo, Math.min(me.pos.z + 4.6 + 0.8 * fondo, 14.8));
-  const front = new V3(me.pos.x * 0.5, 0.3, me.pos.z - 4.2 - 3.0 * fondo);   // (mirando algo hacia abajo, el jugador se ve entero)
-  const enJuego = S.phase === 'play' || S.phase === 'pause' || S.phase === 'serve';
-  const wantLook = enJuego && ball.p.z < me.pos.z ? front.clone().lerp(ball.p, 0.3) : front;
-  const k = dt > 0 ? Math.min(1, dt * 4) : 1;
+  // si la bola se sale de la toma (un globo que pasa por encima, una bola que va al fondo detrás del jugador), la
+  // cámara se aleja hacia atrás y sube lo justo para que siga viéndose; cuando vuelve, se acerca otra vez
+  let eWant = 0;
+  const viva = (S.phase === 'play' || S.phase === 'pause') && ball.p.z > -2;
+  if (viva) {
+    // la menos alejada con la que se ve; si con ninguna cabe (un globo muy alto), la que menos la deja fuera
+    let mejor = Infinity;
+    for (let e = 0; e <= 1.001; e += 0.125) { const [p, l] = camTp(me, e), f = bolaEnToma(p, l); if (f < mejor - 0.02) { mejor = f; eWant = e; } if (f === 0) break; }
+  }
+  if (dt === 0) tpAtras = eWant;
+  else tpAtras += (eWant - tpAtras) * Math.min(1, dt * (eWant > tpAtras ? 14 : 1.5));   // se aleja rápido, vuelve despacio
+  const [wantPos, wantLook] = camTp(me, tpAtras);
+  const k = dt > 0 ? Math.min(1, dt * (tpAtras > 0.05 ? 10 : 4)) : 1;
   if (!tpPos || dt === 0) { tpPos = wantPos.clone(); tpLook = wantLook.clone(); }
   else { tpPos.lerp(wantPos, k); tpLook.lerp(wantLook, k); }
   camera.position.copy(tpPos); camera.lookAt(tpLook);
