@@ -80,7 +80,7 @@
   #menu .camWrap{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.8)}
   #menu.tpv .camWrap{display:none}
   #menu .solo3p{display:none}
-  #menu.tpv .solo3p{display:flex}   /* el control con joystick solo se elige en tercera persona */   /* en tercera persona la cámara va con vuestro jugador: las barras no se usan */
+  #menu.tp1 .solo3p{display:flex}   /* el control con joystick solo se elige en tercera persona */   /* en tercera persona la cámara va con vuestro jugador: las barras no se usan */
   #menu .camWrap input{flex:1;accent-color:#fff;height:28px}
   /* mientras se arrastra la barra de la vista se ve la pista detrás del menú */
   #menu.peek{background:rgba(0,0,0,.15)}
@@ -1697,14 +1697,16 @@ function ourServeHit() {
 // destino del saque vuestro (tocando la pista rival en la vista o, en tiempo real, con el otro dedo)
 // los rivales ya están en su sitio para restar (si no, vuestro saque espera)
 const rivalsReady = () => rivals.every(r => !r.target || Math.hypot(r.target.x - r.pos.x, r.target.z - r.pos.z) < 0.3);
-// Tercera persona: lleváis a un solo jugador (S.ctrl) y el otro lo lleva la máquina. En «alterna», el control pasa
-// al que le va a llegar la bola cada vez que golpea el rival.
+// Tercera persona: en «tp» lleváis a un solo jugador (TÚ) y el otro lo lleva la máquina. En «alterna» lleváis a los
+// dos, como en la vista normal (ratón y teclado, o los dos pulgares), y la cámara se pone detrás del que le va a
+// llegar la bola cada vez que golpea el rival (S.ctrl).
 const terceraP = () => CFG.view === 'tp' || CFG.view === 'tpx';
+const unoSolo = () => CFG.view === 'tp';   // solo se lleva a un jugador (el otro, la máquina)
 const ctrlP = () => (CFG.view === 'tpx' && S.ctrl) ? S.ctrl : ours[0];
-const ourAI = o => terceraP() && o.team === US && o !== ctrlP();
+const ourAI = o => unoSolo() && o.team === US && o !== ctrlP();
 function setCtrl(o, aviso) {
   if (CFG.view !== 'tpx' || S.ctrl === o) return;
-  S.ctrl = o; if (aviso) showMsg('AHORA LLEVAS A ' + o.label, 0.9);
+  S.ctrl = o; if (aviso) showMsg('CÁMARA: ' + o.label, 0.8);
 }
 const CTRL_DELAY = 0.4;   // s tras el golpe rival antes de pasar el control (si cambia al instante, despista)
 // tras golpear el rival: ¿a cuál de los vuestros le llega antes la bola?
@@ -1720,7 +1722,7 @@ function pickCtrl() {
 // IA del compañero: se coloca a la altura del que lleváis (los dos en la red o los dos atrás, cada uno en su lado)
 // y va a por la bola cuando le llega antes a él
 function ourAIMove(dt) {
-  if (!terceraP() || S.phase !== 'play') return;
+  if (!unoSolo() || S.phase !== 'play') return;
   const me = ctrlP(), ai = ours.find(o => o !== me);
   if ((ai.aiT = (ai.aiT || 0) - dt) > 0) return;
   ai.aiT = 0.12;
@@ -2669,7 +2671,7 @@ panel.addEventListener('pointerdown', e => {
   }
   // con ratón, siempre TÚ: a COMPI se le lleva con el teclado (si no, al sacar él, el ratón lo cogía por estar más cerca)
   if (e.pointerType === 'mouse') best = used.has(ours[0]) ? null : ours[0];
-  if (terceraP()) best = ctrlP();   // en tercera persona solo se lleva a uno
+  if (unoSolo()) best = ctrlP();   // en tercera persona (no alterna) solo se lleva a uno
   pointers.set(e.pointerId, { player: best, ignore: false });
   if (best) { best.target = w; best.hardStop = false; }
 });
@@ -2678,7 +2680,7 @@ panel.addEventListener('pointermove', e => {
   if (pi && pi.joy && joy && joy.id === e.pointerId) { [joy.x, joy.y] = localXY(e); return; }
   if (!pi || pi.ignore || !pi.player || S.phase === 'pause') return;
   const [x, y] = localXY(e);
-  (terceraP() ? ctrlP() : pi.player).target = panelToWorld(x, y, 'us');   // (si cambia el control, el dedo pasa al nuevo)
+  (unoSolo() ? ctrlP() : pi.player).target = panelToWorld(x, y, 'us');
 });
 const release = e => {
   const pi = pointers.get(e.pointerId);
@@ -2693,7 +2695,7 @@ panel.addEventListener('contextmenu', e => e.preventDefault());
 // Joystick (solo en tercera persona): el dedo se pone en cualquier sitio del panel y se arrastra; el jugador corre en
 // esa dirección (arriba = hacia la red), más rápido cuanto más lejos del centro, y al soltar frena y se queda ahí
 let joy = null;
-const joyOn = () => terceraP() && CFG.ctrl3 !== 'sitio';   // (opción del menú: joystick o tocar el sitio)
+const joyOn = () => unoSolo() && CFG.ctrl3 !== 'sitio';   // (opción del menú: joystick o tocar el sitio; en alterna, como la vista normal)
 const joyR = () => Math.max(34, Math.min(PW, PH) * 0.16);   // radio del joystick (px)
 function joyMove() {
   if (!joy || !joyOn()) return;
@@ -2723,7 +2725,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keysDown.delete(e.code); });
 window.addEventListener('blur', () => keysDown.clear());   // al cambiar de ventana no se queda una tecla "pulsada"
 function keysMove() {
-  const o = terceraP() ? ctrlP() : ours[1];   // en tercera persona, el teclado lleva al que controláis
+  const o = unoSolo() ? ctrlP() : ours[1];   // en tercera persona (no alterna), el teclado lleva al que controláis
   let x = 0, z = 0;
   for (const c of keysDown) { const d = KEY_DIR[c]; if (d === 'u') z -= 1; else if (d === 'd') z += 1; else if (d === 'l') x -= 1; else x += 1; }
   const n = Math.hypot(x, z);
@@ -3082,9 +3084,9 @@ let menuOpen = true, modeAtOpen = CFG.mode, matchAtOpen = CFG.match, lineAtOpen 
 function paintMenu() {
   for (const g of menuEl.querySelectorAll('.opts'))
     for (const b of g.querySelectorAll('button')) b.classList.toggle('sel', CFG[g.dataset.k] === b.dataset.v);
-  menuEl.classList.toggle('tpv', terceraP());
+  menuEl.classList.toggle('tpv', terceraP()); menuEl.classList.toggle('tp1', unoSolo());
   document.getElementById('vistaTxt').textContent = CFG.view === 'tp' ? 'Llevas a TÚ con la cámara detrás; COMPI juega solo, como los rivales.'
-    : CFG.view === 'tpx' ? 'COMPI juega solo, pero cuando golpea el rival pasas a llevar (y a ver) al que le va a llegar la bola.' : '';
+    : CFG.view === 'tpx' ? 'Llevas a los dos (ratón y teclado, o los dos pulgares); la cámara se pone detrás del que le va a llegar la bola.' : '';
   document.getElementById('camAng').value = CFG.camAng; document.getElementById('camZoom').value = CFG.camZoom || 0; document.getElementById('camYaw').value = CFG.camYaw || 0; document.getElementById('camScale').value = CFG.camScale || 0;
 
 }
