@@ -90,7 +90,8 @@
           <div class="marcador" id="guMarcador"></div>
           <div class="botones">
             <button id="guBueno" class="prim">Bueno, siguiente golpe</button>
-            <button id="guOlvidar">Olvidar lo aprendido</button>
+            <button id="guOlvidar">Olvidar este golpe</button>
+            <button id="guOlvidarTodo">Borrar todo</button>
             <button id="guBajar">Descargar datos (0)</button>
           </div>
           <div class="resumen" id="guModelo"></div>
@@ -461,22 +462,34 @@ let guUlt = null;   // último intento: { pred, err, dentro, aviso }
 
 const objetivo = e => { const dx = e.bote.x - GU_INI.x, dz = GU_INI.z - e.bote.z; return { dir: Math.atan2(dx, dz) * 180 / Math.PI, dist: Math.hypot(dx, dz), cima: e.cima, efe: e.efecto ? EF_Y[e.efecto] : null }; };
 const EF_TXT = { liftado: 'liftado', cortado: 'cortado', plano: 'plano' };
-function ajusta(tipo, k) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
+// Peso de cada golpe: dentro de cada ejercicio, los recientes pesan más (cada golpe más antiguo de ese mismo
+// ejercicio vale un 20 % menos, sin bajar del 10 %); así, al repetir un golpe, la lectura se adapta enseguida sin
+// olvidar lo último de los demás ejercicios. Los golpes de antes del botón de memorizar pesan además solo un 15 %.
+const PESO_EDAD = 0.8, PESO_MIN = 0.1, PESO_ANTIGUO = 0.15;
+function pesos(tipo) {
+  const edad = {}, out = new Map();
+  for (let i = gu.muestras.length - 1; i >= 0; i--) {
+    const m = gu.muestras[i]; if (m.tipo !== tipo || !aprende(m)) continue;
+    const e = edad[m.ej] = (edad[m.ej] == null ? 0 : edad[m.ej] + 1);
+    out.set(m, Math.max(PESO_MIN, Math.pow(PESO_EDAD, e)) * (m.memo === true ? 1 : PESO_ANTIGUO));
+  }
+  return out;
+}
+function ajusta(tipo, k, P) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
   const pr = (PRIOR[tipo] || PRIOR.drive)[k], med = SALIDAS[k], n = med.length + 1;
   const pen = [LAMBDA_B, ...med.map(q => LAMBDA_A * ESCALA[q] * ESCALA[q])], w0 = [pr.b, ...pr.a];
   const A = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? pen[i] : 0)), r = w0.map((v, i) => v * pen[i]);
-  for (const m of gu.muestras) {
-    if (m.tipo !== tipo || !aprende(m)) continue;
+  for (const [m, p] of (P || pesos(tipo))) {
     const y = m.y[k]; if (y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
     const f = fDe(m), x = [1, ...med.map(q => f[q])];
-    for (let i = 0; i < n; i++) { r[i] += x[i] * y; for (let j = 0; j < n; j++) A[i][j] += x[i] * x[j]; }
+    for (let i = 0; i < n; i++) { r[i] += p * x[i] * y; for (let j = 0; j < n; j++) A[i][j] += p * x[i] * x[j]; }
   }
   const w = resuelve(A, r) || w0;
   return { b: w[0], a: w.slice(1) };
 }
 function predice(g) {
-  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = medidas(g), p = {};
-  for (const k of Object.keys(SALIDAS)) { const w = ajusta(t, k); p[k] = w.b + SALIDAS[k].reduce((s, q, i) => s + w.a[i] * f[q], 0); }
+  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = medidas(g), p = {}, P = pesos(t);
+  for (const k of Object.keys(SALIDAS)) { const w = ajusta(t, k, P); p[k] = w.b + SALIDAS[k].reduce((s, q, i) => s + w.a[i] * f[q], 0); }
   p.efecto = p.efe > 1 ? 'liftado' : p.efe < -1 ? 'cortado' : 'plano';
   p.dir = lim(p.dir, -60, 60); p.cima = lim(p.cima, 0.9, 9.5); p.dist = lim(p.dist, 3, 19.5);
   const r = p.dir * Math.PI / 180;
@@ -563,6 +576,7 @@ function pintaGuiado() {
   c.fillStyle = '#fff'; c.font = '12px system-ui'; c.textAlign = 'right';
   c.fillText('objetivo: ' + obj.dist.toFixed(1) + ' m, cima ' + e.cima + ' m' + (guUlt ? ' · tu golpe: ' + guUlt.pred.dist.toFixed(1) + ' m, cima ' + guUlt.pred.cima.toFixed(1) + ' m' : ''), cvGL.width - 8, 16);
   $('guBajar').textContent = 'Descargar datos (' + gu.muestras.length + ')';
+  $('guOlvidar').textContent = 'Olvidar este golpe (' + gu.muestras.filter(m => m.ej === e.id).length + ')';
 }
 function pintaModelo() {
   const dr = gu.muestras.filter(m => m.tipo === 'drive'), n = dr.filter(aprende).length;
@@ -577,7 +591,15 @@ $('guBueno').onclick = () => {
   $('guMarcador').innerHTML = '<span class="ok">Tanda completa.</span> Descarga los datos y pásamelos para ver cómo ha ido; luego añado más golpes (revés, remate…). He vuelto al primero por si quieres repetir la tanda.';
   gu.idx = 0; guUlt = null; guGuarda(); pintaGuiado(); pintaModelo();
 };
-$('guOlvidar').onclick = () => { if (gu.muestras.length && confirm('¿Olvidar lo aprendido (' + gu.muestras.length + ' golpes)? Si no los has descargado, se pierden.')) { gu = { idx: 0, muestras: [] }; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); } };
+// olvidar solo los golpes del ejercicio actual (p. ej. «drive plano a la izquierda»), o todos
+$('guOlvidar').onclick = () => {
+  const e = EJERCICIOS[gu.idx], n = gu.muestras.filter(m => m.ej === e.id).length;
+  if (!n) { $('guMarcador').textContent = 'De «' + e.nombre + '» no hay nada aprendido todavía.'; return; }
+  if (!confirm('¿Olvidar los ' + n + ' golpes de «' + e.nombre + '»? Los demás golpes no se tocan. Si no has descargado los datos, estos se pierden.')) return;
+  gu.muestras = gu.muestras.filter(m => m.ej !== e.id); guUlt = null; guGuarda();
+  $('guMarcador').innerHTML = '<span class="ok">Olvidado</span> lo de «' + e.nombre + '» (' + n + ' golpes). Lo demás sigue aprendido.'; pintaGuiado(); pintaModelo();
+};
+$('guOlvidarTodo').onclick = () => { if (gu.muestras.length && confirm('¿Borrar TODO lo aprendido (' + gu.muestras.length + ' golpes de todos los ejercicios)? Si no los has descargado, se pierden.')) { gu = { idx: gu.idx, muestras: [] }; guUlt = null; guGuarda(); $('guMarcador').textContent = 'Borrado todo: empezamos de cero.'; pintaGuiado(); pintaModelo(); } };
 $('guBajar').onclick = () => {
   if (!gu.muestras.length) return;
   const f = new Date(), p = n => String(n).padStart(2, '0');
