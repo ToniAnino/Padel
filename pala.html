@@ -29,6 +29,15 @@
   #lista { margin:0; padding:0; list-style:none; max-height:260px; overflow:auto; font-size:13px }
   #lista li { padding:6px 0; border-top:1px solid var(--line); color:var(--dim) } #lista li:first-child { color:var(--txt) }
   .vacio { color:var(--dim); font-size:14px }
+  .chk { display:flex; gap:8px; align-items:center; cursor:pointer; font-weight:600 }
+  .chk input { width:18px; height:18px }
+  .aj canvas { touch-action:none; cursor:grab }
+  .peqx { font-size:12px; margin-top:4px; max-width:460px }
+  .botones { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap }
+  button.prim { background:var(--verde); color:#0d1b2a; font-weight:700; border:0 }
+  button:disabled { opacity:.4; cursor:default }
+  .resumen { margin-top:12px; font-size:14px; line-height:1.6 }
+  .resumen b { color:var(--amar) }
   button { font:inherit; background:#2b4a6b; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer }
 </style>
 </head>
@@ -63,6 +72,29 @@
       <ul id="lista"></ul>
     </section>
   </div>
+  <section class="card" id="ajuste" style="margin-top:16px">
+    <h2>3 · Ajuste: ¿dónde querías mandarla?</h2>
+    <label class="chk"><input type="checkbox" id="ajOn"> Modo ajuste: después de cada golpe, marco la trayectoria que quería</label>
+    <div id="ajCuerpo" hidden>
+      <p class="vacio" id="ajAyuda">Haz un golpe con el móvil.</p>
+      <div class="fila aj">
+        <div><canvas id="ajArriba" width="230" height="430"></canvas><div class="vacio peqx">Desde arriba: arrastra la bola amarilla al sitio donde querías que botara (y el punto blanco, a donde estabas tú)</div></div>
+        <div style="flex:1;min-width:300px">
+          <canvas id="ajLado" width="460" height="230"></canvas>
+          <div class="vacio peqx">De lado: sube o baja la bola amarilla para la altura de la trayectoria (y el punto blanco, la altura a la que le das)</div>
+          <div class="botones">
+            <button id="ajGuardar" class="prim" disabled>Guardar golpe</button>
+            <button id="ajDescartar" disabled>Descartar</button>
+          </div>
+          <div class="resumen" id="ajResumen"></div>
+          <div class="botones">
+            <button id="ajBajar">Descargar golpes (0)</button>
+            <button id="ajBorrar">Borrar todos</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -142,6 +174,7 @@ function muestraGolpe(g) {
   golpes.unshift(g); golpes = golpes.slice(0, 30);
   $('lista').innerHTML = golpes.map(x => '<li>' + (TIPO[x.tipo] || x.tipo) + ' · ' + Math.round(x.fuerza * 100) + '% · ' + textoDir(x.dir) + ' · ' + textoAlt(x.alt) + ' · ' + (EFECTO[x.efecto] || x.efecto) + '</li>').join('');
   ultimo = { g, t: performance.now() };
+  if (window.ajusteNuevo) ajusteNuevo(g);
 }
 
 // dibujos: la pista rival vista desde arriba con el bote aproximado, y la mira de hacia dónde apunta la pala
@@ -179,6 +212,165 @@ function dibuja() {
 }
 abrirSala(); dibuja();
 window.PALA = { recibe, get conn() { return conn; } };   // (pruebas)
+</script>
+<script>
+// ===== Modo ajuste: tras cada golpe se marca la trayectoria que se quería (desde arriba: dónde estabas y dónde bota;
+// de lado: a qué altura le das y lo alta que va) y se guarda junto con lo medido y los datos en bruto del móvil =====
+const AJ_KEY = 'palaAjuste';
+let ajGolpes = [];
+try { ajGolpes = JSON.parse(localStorage.getItem(AJ_KEY) || '[]'); } catch (_) { ajGolpes = []; }
+const aj = { g: null, ini: { x: 1.5, z: 7, y: 1.0 }, bote: { x: 0, z: -6 }, cima: { f: 0.5, y: 2 }, otro: false };
+const RED_H = 0.88;
+const cvA = $('ajArriba'), cvL = $('ajLado');
+const guardaLS = () => { try { localStorage.setItem(AJ_KEY, JSON.stringify(ajGolpes)); } catch (_) {} };
+
+// --- vista desde arriba: pista de 10 x 20 m (arriba la rival), 20 px/m ---
+const A_K = 20, A_M = 15;
+const aPx = (x, z) => [A_M + (x + 5) * A_K, A_M + (z + 10) * A_K];
+const aMundo = (px, py) => ({ x: (px - A_M) / A_K - 5, z: (py - A_M) / A_K - 10 });
+// --- vista de lado: distancia desde ti hasta el bote, 20 px/m en los dos ejes ---
+const L_K = 20, L_X0 = 14, L_SUELO = 205;
+const dist = () => Math.hypot(aj.bote.x - aj.ini.x, aj.bote.z - aj.ini.z);
+const dRed = () => { const dz = aj.ini.z - aj.bote.z; return dz > 0 ? aj.ini.z / dz * dist() : null; };   // dónde cruza la red
+function curva() {   // dos tramos: subida hasta la cima (tangente horizontal) y caída hasta el bote
+  const D = dist(), P0 = [L_X0, L_SUELO - aj.ini.y * L_K], P2 = [L_X0 + D * L_K, L_SUELO];
+  const A = [L_X0 + aj.cima.f * D * L_K, L_SUELO - aj.cima.y * L_K];
+  return { P0, A, P2, s1: [P0, [P0[0] + (A[0] - P0[0]) * 0.35, A[1] + (P0[1] - A[1]) * 0.25], [A[0] - (A[0] - P0[0]) * 0.45, A[1]], A],
+    s2: [A, [A[0] + (P2[0] - A[0]) * 0.45, A[1]], [P2[0] - (P2[0] - A[0]) * 0.25, A[1] + (P2[1] - A[1]) * 0.35], P2] };
+}
+const bez = (s, t) => { const u = 1 - t; return [0, 1].map(i => u * u * u * s[0][i] + 3 * u * u * t * s[1][i] + 3 * u * t * t * s[2][i] + t * t * t * s[3][i]); };
+function alturaEn(xpx) {   // altura (m) de la curva en ese punto horizontal
+  const c = curva(); let mejor = null;
+  for (const s of [c.s1, c.s2]) for (let i = 0; i <= 60; i++) { const p = bez(s, i / 60); if (!mejor || Math.abs(p[0] - xpx) < Math.abs(mejor[0] - xpx)) mejor = p; }
+  return (L_SUELO - mejor[1]) / L_K;
+}
+const pasaRed = () => { const d = dRed(); return d == null || alturaEn(L_X0 + d * L_K) > RED_H + 0.03; };
+
+function pintaAjuste() {
+  // arriba
+  let c = cvA.getContext('2d'); c.clearRect(0, 0, cvA.width, cvA.height);
+  c.fillStyle = '#1d4f8f'; const [x0, y0] = aPx(-5, -10); c.fillRect(x0, y0, 10 * A_K, 20 * A_K);
+  c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2; c.strokeRect(x0, y0, 10 * A_K, 20 * A_K);
+  const ln = (a, b, d, e) => { c.beginPath(); c.moveTo(...aPx(a, b)); c.lineTo(...aPx(d, e)); c.stroke(); };
+  ln(-5, -6.95, 5, -6.95); ln(-5, 6.95, 5, 6.95); ln(0, -6.95, 0, 6.95);
+  c.strokeStyle = '#fff'; c.lineWidth = 3; ln(-5.3, 0, 5.3, 0);
+  c.fillStyle = 'rgba(255,255,255,.55)'; c.font = '11px system-ui'; c.textAlign = 'center';
+  c.fillText('RIVALES', aPx(0, -9)[0], aPx(0, -9)[1]); c.fillText('VOSOTROS', aPx(0, 9.3)[0], aPx(0, 9.3)[1]);
+  const pi = aPx(aj.ini.x, aj.ini.z), pb = aPx(aj.bote.x, aj.bote.z);
+  c.strokeStyle = 'rgba(255,210,63,.7)'; c.setLineDash([6, 5]); c.lineWidth = 2; c.beginPath(); c.moveTo(...pi); c.lineTo(...pb); c.stroke(); c.setLineDash([]);
+  if (aj.g) {   // lo que midió el móvil, en gris, para comparar
+    const ang = aj.g.dir * Math.PI / 180, L = dist(), mx = aj.ini.x + Math.sin(ang) * L, mz = aj.ini.z - Math.cos(ang) * L;
+    c.strokeStyle = 'rgba(255,255,255,.35)'; c.setLineDash([3, 4]); c.beginPath(); c.moveTo(...pi); c.lineTo(...aPx(mx, mz)); c.stroke(); c.setLineDash([]);
+  }
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(...pi, 8, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(...pb, 10, 0, Math.PI * 2); c.fill();
+  // de lado
+  c = cvL.getContext('2d'); c.clearRect(0, 0, cvL.width, cvL.height);
+  c.fillStyle = '#132d4a'; c.fillRect(0, 0, cvL.width, cvL.height);
+  c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 1;
+  for (let m = 1; m <= 9; m++) { c.beginPath(); c.moveTo(0, L_SUELO - m * L_K); c.lineTo(cvL.width, L_SUELO - m * L_K); c.stroke(); }
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = '10px system-ui'; c.textAlign = 'left';
+  for (const m of [2, 4, 6, 8]) c.fillText(m + ' m', 4, L_SUELO - m * L_K - 3);
+  c.strokeStyle = '#fff'; c.lineWidth = 3; c.beginPath(); c.moveTo(0, L_SUELO); c.lineTo(cvL.width, L_SUELO); c.stroke();
+  const d = dRed();
+  if (d != null) { const xr = L_X0 + d * L_K; c.lineWidth = 4; c.beginPath(); c.moveTo(xr, L_SUELO); c.lineTo(xr, L_SUELO - RED_H * L_K); c.stroke(); c.fillStyle = 'rgba(255,255,255,.5)'; c.textAlign = 'center'; c.fillText('red', xr, L_SUELO + 14); }
+  const cv = curva(), ok = pasaRed();
+  c.strokeStyle = ok ? '#ff6b3d' : '#ff4757'; c.lineWidth = 4; c.beginPath(); c.moveTo(...cv.P0);
+  c.bezierCurveTo(...cv.s1[1], ...cv.s1[2], ...cv.s1[3]); c.bezierCurveTo(...cv.s2[1], ...cv.s2[2], ...cv.s2[3]); c.stroke();
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(...cv.P0, 7, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(...cv.A, 10, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#fff'; c.font = '12px system-ui'; c.textAlign = 'right';
+  c.fillText('altura máx. ' + aj.cima.y.toFixed(1) + ' m · distancia ' + dist().toFixed(1) + ' m' + (ok ? '' : ' · ¡NO PASA LA RED!'), cvL.width - 8, 16);
+}
+
+// arrastrar los puntos
+function arrastre(cv, puntos, mover) {
+  let cual = null;
+  const xy = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener('pointerdown', e => {
+    const p = xy(e), ps = puntos(); let bd = Infinity;
+    ps.forEach((q, i) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; cual = i; } });
+    if (bd > 45) cual = ps.length - 1;   // tocando lejos: se mueve la bola amarilla
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    mover(cual, p); pintaAjuste(); e.preventDefault();
+  });
+  cv.addEventListener('pointermove', e => { if (cual == null) return; mover(cual, xy(e)); pintaAjuste(); });
+  const fin = () => { cual = null; };
+  cv.addEventListener('pointerup', fin); cv.addEventListener('pointercancel', fin);
+}
+const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+arrastre(cvA, () => [aPx(aj.ini.x, aj.ini.z), aPx(aj.bote.x, aj.bote.z)], (i, p) => {
+  const w = aMundo(...p);
+  if (i === 0) aj.ini = { ...aj.ini, x: lim(w.x, -5, 5), z: lim(w.z, 0.3, 10) };
+  else aj.bote = { x: lim(w.x, -5, 5), z: lim(w.z, -10, -0.2) };
+});
+arrastre(cvL, () => { const c = curva(); return [c.P0, c.A]; }, (i, p) => {
+  const y = (L_SUELO - p[1]) / L_K;
+  if (i === 0) { aj.ini.y = lim(y, 0.2, 3.2); aj.cima.y = Math.max(aj.cima.y, aj.ini.y); }
+  else { aj.cima.y = lim(y, Math.max(0.3, aj.ini.y), 9.5); aj.cima.f = lim((p[0] - L_X0) / (dist() * L_K), 0.15, 0.85); }
+});
+
+// llega un golpe
+window.ajusteNuevo = function (g) {
+  if (!$('ajOn').checked) return;
+  if (aj.g) { $('ajAyuda').textContent = 'Ha llegado otro golpe: guarda o descarta este primero (el nuevo no se ha cogido).'; return; }
+  aj.g = g;
+  const d = destino(g);   // propuesta inicial: lo que midió el móvil
+  const bz = -lim(d.z, 1, 9.8);   // misma dirección que la línea gris (desde donde estás), a la profundidad estimada
+  aj.bote = { x: lim(aj.ini.x + Math.tan(lim(g.dir, -70, 70) * Math.PI / 180) * (aj.ini.z - bz), -4.8, 4.8), z: bz };
+  aj.ini.y = g.tipo === 'remate' ? 2.6 : 1.0;
+  aj.cima = { f: 0.5, y: g.tipo === 'remate' ? 2.8 : g.alt > 22 ? 5.5 : 2.0 };
+  $('ajAyuda').innerHTML = '<b>' + (TIPO[g.tipo] || g.tipo) + ' · ' + Math.round(g.fuerza * 100) + '% · ' + textoDir(g.dir) + '</b>. Coloca dónde querías que botara y la altura, y pulsa <b>Guardar golpe</b>. (La línea gris es lo que ha medido el móvil.)';
+  $('ajGuardar').disabled = $('ajDescartar').disabled = false;
+  pintaAjuste();
+};
+function cierraGolpe(txt) {
+  aj.g = null; $('ajGuardar').disabled = $('ajDescartar').disabled = true;
+  $('ajAyuda').textContent = txt; pintaAjuste(); resumen();
+}
+$('ajGuardar').onclick = () => {
+  if (!aj.g) return;
+  const g = aj.g, dirQ = Math.atan2(aj.bote.x - aj.ini.x, aj.ini.z - aj.bote.z) * 180 / Math.PI;
+  const { raw, t, ...medido } = g;
+  ajGolpes.push({ hora: new Date(g.hora || Date.now()).toISOString(), medido, quiero: { ini: { ...aj.ini }, bote: { ...aj.bote }, cima: { ...aj.cima }, dir: Math.round(dirQ * 10) / 10, distancia: Math.round(dist() * 10) / 10, pasaRed: pasaRed() }, raw });
+  guardaLS();
+  cierraGolpe('Guardado. Haz el siguiente golpe.');
+};
+$('ajDescartar').onclick = () => cierraGolpe('Descartado. Haz el siguiente golpe.');
+$('ajBajar').onclick = () => {
+  if (!ajGolpes.length) return;
+  const f = new Date(), p = n => String(n).padStart(2, '0');
+  const blob = new Blob([JSON.stringify({ app: 'pala-movil', v: 1, golpes: ajGolpes }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'golpes-pala-' + f.getFullYear() + p(f.getMonth() + 1) + p(f.getDate()) + '-' + p(f.getHours()) + p(f.getMinutes()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$('ajBorrar').onclick = () => { if (ajGolpes.length && confirm('¿Borrar los ' + ajGolpes.length + ' golpes guardados? (si no los has descargado, se pierden)')) { ajGolpes = []; guardaLS(); resumen(); } };
+
+// resumen: cuánto se parece lo medido a lo que querías
+function resumen() {
+  $('ajBajar').textContent = 'Descargar golpes (' + ajGolpes.length + ')';
+  const n = ajGolpes.length;
+  if (!n) { $('ajResumen').innerHTML = '<span class="vacio">Todavía no hay golpes guardados. Con unos 15 o 20, variados (cruzados, paralelos, globos, revés…), ya se ve qué falla.</span>'; return; }
+  const err = ajGolpes.map(x => x.medido.dir - x.quiero.dir);
+  const medio = err.reduce((a, b) => a + b, 0) / n, abs = err.reduce((a, b) => a + Math.abs(b), 0) / n;
+  const claros = ajGolpes.filter(x => Math.abs(x.quiero.dir) > 6 && Math.abs(x.medido.dir) > 6);
+  const signo = claros.filter(x => Math.sign(x.quiero.dir) === Math.sign(x.medido.dir)).length;
+  const altos = ajGolpes.filter(x => x.quiero.cima.y >= 4), bajos = ajGolpes.filter(x => x.quiero.cima.y < 2.5);
+  const mAlt = a => a.length ? Math.round(a.reduce((s, x) => s + x.medido.alt, 0) / a.length) + '°' : '—';
+  const remQ = ajGolpes.filter(x => x.quiero.ini.y >= 2).length, remM = ajGolpes.filter(x => x.medido.tipo === 'remate').length;
+  $('ajResumen').innerHTML =
+    '<b>' + n + '</b> golpes guardados.<br>' +
+    'Dirección: error medio <b>' + Math.round(abs) + '°</b> (tiende ' + (Math.abs(medio) < 4 ? 'a acertar el centro' : 'a irse a la ' + (medio > 0 ? 'derecha' : 'izquierda') + ' ' + Math.round(Math.abs(medio)) + '°') + ')' +
+    (claros.length ? ' · lado correcto en <b>' + signo + ' de ' + claros.length + '</b>' : '') + '.<br>' +
+    'Cara de la pala medida: en los globos que marcaste <b>' + mAlt(altos) + '</b>, en las bolas bajas <b>' + mAlt(bajos) + '</b>.<br>' +
+    'Remates: marcaste <b>' + remQ + '</b> (golpe alto) y el móvil detectó <b>' + remM + '</b>.';
+}
+$('ajOn').checked = (() => { try { return localStorage.getItem(AJ_KEY + 'On') === '1'; } catch (_) { return false; } })();
+const ajMuestra = () => { $('ajCuerpo').hidden = !$('ajOn').checked; try { localStorage.setItem(AJ_KEY + 'On', $('ajOn').checked ? '1' : '0'); } catch (_) {} pintaAjuste(); };
+$('ajOn').onchange = ajMuestra;
+ajMuestra(); resumen();
+window.AJ = { aj, get golpes() { return ajGolpes; } };   // (pruebas)
 </script>
 </body>
 </html>

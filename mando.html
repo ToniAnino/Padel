@@ -151,7 +151,7 @@ function orient(e) {
 function calibrar() {
   if (!o.ok) { estado('Todavía no llegan datos de orientación: mueve un poco el móvil', 'esp'); return; }
   const E = ejes(o.a, o.b, o.g);
-  cal = { r0: rumbo(E.z), e0: elev(E.z), c0: elev(E.y) };
+  cal = { r0: rumbo(E.z), e0: elev(E.z), c0: elev(E.y), raw: [o.a, o.b, o.g] };
   enviar({ t: 'cal' });
   $('ultimo').hidden = false;
   if (navigator.vibrate) navigator.vibrate([20, 60, 20]);
@@ -163,18 +163,23 @@ function calibrar() {
 // pico pasa de 350 °/s. La dirección y la cara se toman en el pico (que es cuando la pala va más rápida: el impacto).
 // Mientras dura, se integra la aceleración vertical del mundo: hacia arriba = liftado, hacia abajo = cortado.
 const W_INI = 250, W_FIN = 120, W_MIN = 350, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 300;
-let sw = null, libreDesde = 0, wAhora = 0, ultOri = 0;
+let sw = null, libreDesde = 0, wAhora = 0, ultOri = 0, hist = [];
 function motion(e) {
   const r = e.rotationRate; if (!r) return;
   const w = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0), t = e.timeStamp || performance.now();
   const dt = Math.min(0.05, (e.interval > 1 ? e.interval / 1000 : e.interval) || 1 / 60);   // (algunos dan ms y otros s)
   wAhora = w;
   if (!cal) return;
-  if (!sw && w > W_INI && t > libreDesde) sw = { t0: t, wMax: 0, vz: 0, pico: null };
+  // datos en bruto (para el modo ajuste del ordenador): se guardan las últimas lecturas y todo el gesto
+  const ag = e.accelerationIncludingGravity || {}, ac = e.acceleration || {}, r1 = n => Math.round((n || 0) * 10) / 10, r2 = n => Math.round((n || 0) * 100) / 100;
+  const m = [t, r1(r.alpha), r1(r.beta), r1(r.gamma), r2(ac.x), r2(ac.y), r2(ac.z), r2(ag.x), r2(ag.y), r2(ag.z), r1(o.a), r1(o.b), r1(o.g)];
+  hist.push(m); if (hist.length > 12) hist.shift();
+  if (!sw && w > W_INI && t > libreDesde) sw = { t0: t, wMax: 0, vz: 0, pico: null, raw: hist.slice(0, -1) };
   if (sw) {
+    sw.raw.push(m);
     const a = e.acceleration;
     if (a && a.x != null) { const f = ejes(o.a, o.b, o.g).fila3; sw.vz += (f[0] * a.x + f[1] * a.y + f[2] * a.z) * dt; }
-    if (w > sw.wMax) { sw.wMax = w; sw.pico = { a: o.a, b: o.b, g: o.g, vz: sw.vz }; }
+    if (w > sw.wMax) { sw.wMax = w; sw.pico = { a: o.a, b: o.b, g: o.g, vz: sw.vz, t }; }
     if (w < W_FIN || t - sw.t0 > DUR_MAX) {
       const s = sw; sw = null; libreDesde = t + ESPERA;
       if (s.wMax >= W_MIN && t - s.t0 > 40 && s.pico) golpe(s, t - s.t0);
@@ -186,7 +191,11 @@ function golpe(s, dur) {
   const vz = s.vz;   // velocidad vertical acumulada en todo el gesto
   const tipo = L.cabeza > 45 ? 'remate' : L.tipo;   // la cabeza de la pala bastante más alta que en el drive
   const efecto = vz > 0.6 ? 'liftado' : vz < -0.6 ? 'cortado' : 'plano';
-  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_MIN) / (W_TOPE - W_MIN))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now() };
+  // raw: calibración (alpha, beta, gamma) y cada lectura [t ms desde el inicio, giro α β γ °/s, acel. sin gravedad x y z,
+  // acel. con gravedad x y z (m/s²), orientación α β γ °]; tPico = ms del pico desde el inicio
+  const t0 = s.raw.length ? s.raw[0][0] : s.t0;
+  const raw = { v: 1, cal: cal.raw, tPico: Math.round(s.pico.t - t0), s: s.raw.map(x => [Math.round(x[0] - t0), ...x.slice(1)]) };
+  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_MIN) / (W_TOPE - W_MIN))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now(), raw };
   enviar(g);
   muestra(g);
 }
