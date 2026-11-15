@@ -36,6 +36,10 @@
   .botones { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap }
   button.prim { background:var(--verde); color:#0d1b2a; font-weight:700; border:0 }
   button:disabled { opacity:.4; cursor:default }
+  .ejercicio { display:flex; gap:10px; align-items:baseline; margin:12px 0 4px; font-size:20px }
+  .ejercicio span { font-size:13px; color:var(--dim) }
+  .marcador { margin-top:10px; font-size:16px; line-height:1.5; min-height:48px }
+  .marcador .ok { color:var(--verde); font-weight:700 } .marcador .no { color:var(--amar); font-weight:700 }
   .resumen { margin-top:12px; font-size:14px; line-height:1.6 }
   .resumen b { color:var(--amar) }
   button { font:inherit; background:#2b4a6b; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer }
@@ -72,8 +76,30 @@
       <ul id="lista"></ul>
     </section>
   </div>
+  <section class="card" id="guiado" style="margin-top:16px">
+    <h2>3 · Entrenamiento guiado</h2>
+    <label class="chk"><input type="checkbox" id="guOn"> Entrenamiento guiado: te propongo un golpe, lo repites y voy aprendiendo cómo golpeas</label>
+    <div id="guCuerpo" hidden>
+      <div class="ejercicio"><span id="guNum">—</span><b id="guNombre">—</b></div>
+      <p class="vacio" id="guAyuda">Haz el golpe con el móvil.</p>
+      <div class="fila aj">
+        <div><canvas id="guArriba" width="230" height="430"></canvas><div class="vacio peqx">Zona verde: donde tiene que botar · amarillo: donde caería tu golpe según lo aprendido · gris: intentos anteriores</div></div>
+        <div style="flex:1;min-width:300px">
+          <canvas id="guLado" width="460" height="230"></canvas>
+          <div class="vacio peqx">De lado: la línea verde discontinua es la trayectoria que se busca; la naranja, la de tu golpe</div>
+          <div class="marcador" id="guMarcador"></div>
+          <div class="botones">
+            <button id="guBueno" class="prim">Bueno, siguiente golpe</button>
+            <button id="guOlvidar">Olvidar lo aprendido</button>
+            <button id="guBajar">Descargar datos (0)</button>
+          </div>
+          <div class="resumen" id="guModelo"></div>
+        </div>
+      </div>
+    </div>
+  </section>
   <section class="card" id="ajuste" style="margin-top:16px">
-    <h2>3 · Ajuste: ¿dónde querías mandarla?</h2>
+    <h2>4 · Ajuste: ¿dónde querías mandarla?</h2>
     <label class="chk"><input type="checkbox" id="ajOn"> Modo ajuste: después de cada golpe, marco la trayectoria que quería</label>
     <div id="ajCuerpo" hidden>
       <p class="vacio" id="ajAyuda">Haz un golpe con el móvil.</p>
@@ -175,6 +201,7 @@ function muestraGolpe(g) {
   $('lista').innerHTML = golpes.map(x => '<li>' + (TIPO[x.tipo] || x.tipo) + ' · ' + Math.round(x.fuerza * 100) + '% · ' + textoDir(x.dir) + ' · ' + textoAlt(x.alt) + ' · ' + (EFECTO[x.efecto] || x.efecto) + '</li>').join('');
   ultimo = { g, t: performance.now() };
   if (window.ajusteNuevo) ajusteNuevo(g);
+  if (window.guiadoNuevo) guiadoNuevo(g);
 }
 
 // dibujos: la pista rival vista desde arriba con el bote aproximado, y la mira de hacia dónde apunta la pala
@@ -368,9 +395,145 @@ function resumen() {
 }
 $('ajOn').checked = (() => { try { return localStorage.getItem(AJ_KEY + 'On') === '1'; } catch (_) { return false; } })();
 const ajMuestra = () => { $('ajCuerpo').hidden = !$('ajOn').checked; try { localStorage.setItem(AJ_KEY + 'On', $('ajOn').checked ? '1' : '0'); } catch (_) {} pintaAjuste(); };
-$('ajOn').onchange = ajMuestra;
+$('ajOn').onchange = () => { if ($('ajOn').checked && $('guOn').checked) { $('guOn').checked = false; $('guOn').onchange(); } ajMuestra(); };   // (uno u otro)
 ajMuestra(); resumen();
 window.AJ = { aj, get golpes() { return ajGolpes; } };   // (pruebas)
+</script>
+<script>
+// ===== Entrenamiento guiado: se propone un golpe (zona de bote y altura), el jugador lo repite y se aprende una sola
+// lectura por tipo de golpe con TODAS las repeticiones (no un apaño para acertar este objetivo) =====
+// Lectura: dirección = a·dirMedida + b · altura de la cima = a·caraMedida + b · distancia = a·fuerza + b.
+// Cada una se ajusta por mínimos cuadrados con un "tirón" hacia la lectura inicial (sin datos variados, las
+// pendientes apenas se mueven y se aprende sobre todo el desplazamiento).
+const GU_KEY = 'palaGuiado';
+const EJERCICIOS = [
+  { id: 'drive-globo-fondo-izq', nombre: 'Drive · globo al fondo a la izquierda', tipo: 'drive', bote: { x: -3, z: -8.3 }, radio: 1.5, cima: 6, cimaMin: 5 },
+];
+const PRIOR = {   // lectura inicial (antes de aprender)
+  drive: { dir: [0.45, 0], cima: [0.09, 2.2], dist: [10, 8] },
+  reves: { dir: [0.45, -4], cima: [0.09, -1.0], dist: [10, 8] },
+  remate: { dir: [0.45, 0], cima: [0.03, 2.5], dist: [8, 7] },
+};
+const ESCALA = { dir: 30, cima: 30, dist: 0.3 };   // dispersión típica de cada medida (para el tirón)
+const LAMBDA_A = 3, LAMBDA_B = 1;
+const GU_INI = { x: 0.8, z: 8.3 };   // donde se supone que estás (fondo de vuestro campo)
+let gu = { idx: 0, muestras: [] };
+try { const s = JSON.parse(localStorage.getItem(GU_KEY) || 'null'); if (s && Array.isArray(s.muestras)) gu = { idx: Math.min(s.idx || 0, EJERCICIOS.length - 1), muestras: s.muestras }; } catch (_) {}
+const guGuarda = () => { try { localStorage.setItem(GU_KEY, JSON.stringify(gu)); } catch (_) {} };
+const cvGA = $('guArriba'), cvGL = $('guLado');
+let guUlt = null;   // último intento: { pred, err, dentro, aviso }
+
+const objetivo = e => { const dx = e.bote.x - GU_INI.x, dz = GU_INI.z - e.bote.z; return { dir: Math.atan2(dx, dz) * 180 / Math.PI, dist: Math.hypot(dx, dz), cima: e.cima }; };
+const feat = g => ({ dir: g.dir, cima: g.alt, dist: g.fuerza });
+function ajusta(tipo, k) {   // [a, b] de una salida, con lo aprendido hasta ahora
+  const [a0, b0] = (PRIOR[tipo] || PRIOR.drive)[k], sx2 = ESCALA[k] * ESCALA[k];
+  let Sxx = LAMBDA_A * sx2, Sx = 0, n = LAMBDA_B, Sxy = LAMBDA_A * sx2 * a0, Sy = LAMBDA_B * b0;
+  for (const m of gu.muestras) { if (m.tipo !== tipo) continue; const x = m.f[k], y = m.y[k]; Sxx += x * x; Sx += x; n += 1; Sxy += x * y; Sy += y; }
+  const det = Sxx * n - Sx * Sx; if (Math.abs(det) < 1e-9) return [a0, b0];
+  return [(Sxy * n - Sx * Sy) / det, (Sxx * Sy - Sx * Sxy) / det];
+}
+function predice(g) {
+  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = feat(g), p = {};
+  for (const k of ['dir', 'cima', 'dist']) { const [a, b] = ajusta(t, k); p[k] = a * f[k] + b; }
+  p.dir = lim(p.dir, -60, 60); p.cima = lim(p.cima, 0.9, 9.5); p.dist = lim(p.dist, 3, 19.5);
+  const r = p.dir * Math.PI / 180;
+  p.bote = { x: GU_INI.x + Math.sin(r) * p.dist, z: GU_INI.z - Math.cos(r) * p.dist };
+  return p;
+}
+function muñeca(g) {   // ¿en el pico gira sobre todo la muñeca (eje largo del móvil)?
+  const s = g.raw && g.raw.s; if (!s || !s.length) return 0;
+  let k = 0; s.forEach((m, i) => { if (Math.hypot(m[1], m[2], m[3]) > Math.hypot(s[k][1], s[k][2], s[k][3])) k = i; });
+  const m = s[k], w = Math.hypot(m[1], m[2], m[3]) || 1; return Math.abs(m[3]) / w;
+}
+
+window.guiadoNuevo = function (g) {
+  if (!$('guOn').checked) return;
+  const e = EJERCICIOS[gu.idx], obj = objetivo(e);
+  if (g.tipo !== e.tipo) { $('guMarcador').innerHTML = '<span class="no">Esperaba un ' + (TIPO[e.tipo] || e.tipo).toLowerCase() + ' y ha llegado un ' + (TIPO[g.tipo] || g.tipo).toLowerCase() + '.</span> No lo cuento: repítelo.'; return; }
+  const pred = predice(g);   // primero se predice con lo aprendido (sin este golpe)…
+  const err = Math.hypot(pred.bote.x - e.bote.x, pred.bote.z - e.bote.z), altOk = pred.cima >= e.cimaMin;
+  const dentro = err <= e.radio && altOk, mu = muñeca(g);
+  gu.muestras.push({ hora: new Date(g.hora || Date.now()).toISOString(), ej: e.id, tipo: g.tipo, f: feat(g), y: obj, pred: { dir: +pred.dir.toFixed(1), cima: +pred.cima.toFixed(2), dist: +pred.dist.toFixed(2) }, err: +err.toFixed(2), dentro, medido: (({ raw, t, ...r }) => r)(g), raw: g.raw });
+  guGuarda();   // …y luego se aprende de él
+  const intentos = gu.muestras.filter(m => m.ej === e.id).length;
+  guUlt = { pred, err, dentro, mu };
+  $('guMarcador').innerHTML = (dentro ? '<span class="ok">¡Dentro!</span> ' : '<span class="no">A ' + err.toFixed(1).replace('.', ',') + ' m de la zona.</span> ') +
+    'Altura ' + pred.cima.toFixed(1).replace('.', ',') + ' m' + (altOk ? '' : ' (busca al menos ' + e.cimaMin + ' m)') + ' · intento ' + intentos +
+    (dentro ? '<br>Si te parece bien, pulsa <b>Bueno, siguiente golpe</b>; o repite para afinar.' : '<br>Repite el mismo golpe: ya he aprendido de este.') +
+    (mu > 0.7 && g.tipo === 'drive' ? '<br><span class="no">Casi todo el giro ha sido de muñeca:</span> prueba con la muñeca más firme, barriendo con el brazo.' : '');
+  if (navigator.vibrate) {}   // (la vibración la hace el móvil)
+  pintaGuiado(); pintaModelo();
+};
+
+function pintaGuiado() {
+  const e = EJERCICIOS[gu.idx], obj = objetivo(e);
+  $('guNum').textContent = 'Golpe ' + (gu.idx + 1) + ' de ' + EJERCICIOS.length;
+  $('guNombre').textContent = e.nombre;
+  // desde arriba
+  let c = cvGA.getContext('2d'); c.clearRect(0, 0, cvGA.width, cvGA.height);
+  c.fillStyle = '#1d4f8f'; const [x0, y0] = aPx(-5, -10); c.fillRect(x0, y0, 10 * A_K, 20 * A_K);
+  c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2; c.strokeRect(x0, y0, 10 * A_K, 20 * A_K);
+  const ln = (a, b, d, f) => { c.beginPath(); c.moveTo(...aPx(a, b)); c.lineTo(...aPx(d, f)); c.stroke(); };
+  ln(-5, -6.95, 5, -6.95); ln(-5, 6.95, 5, 6.95); ln(0, -6.95, 0, 6.95);
+  c.strokeStyle = '#fff'; c.lineWidth = 3; ln(-5.3, 0, 5.3, 0);
+  const pz = aPx(e.bote.x, e.bote.z);
+  c.fillStyle = 'rgba(61,220,132,.28)'; c.strokeStyle = '#3ddc84'; c.lineWidth = 2;
+  c.beginPath(); c.arc(...pz, e.radio * A_K, 0, Math.PI * 2); c.fill(); c.stroke();
+  const pi = aPx(GU_INI.x, GU_INI.z);
+  c.strokeStyle = 'rgba(61,220,132,.6)'; c.setLineDash([6, 5]); c.beginPath(); c.moveTo(...pi); c.lineTo(...pz); c.stroke(); c.setLineDash([]);
+  const prev = gu.muestras.filter(m => m.ej === e.id).slice(-12, guUlt ? -1 : undefined);
+  for (const m of prev) { const r = m.pred.dir * Math.PI / 180, p = aPx(GU_INI.x + Math.sin(r) * m.pred.dist, GU_INI.z - Math.cos(r) * m.pred.dist); c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.arc(...p, 5, 0, Math.PI * 2); c.fill(); }
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(...pi, 8, 0, Math.PI * 2); c.fill();
+  if (guUlt) { const pb = aPx(lim(guUlt.pred.bote.x, -5.5, 5.5), lim(guUlt.pred.bote.z, -10.5, 10.5)); c.strokeStyle = 'rgba(255,210,63,.8)'; c.lineWidth = 2; c.beginPath(); c.moveTo(...pi); c.lineTo(...pb); c.stroke(); c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(...pb, 9, 0, Math.PI * 2); c.fill(); }
+  // de lado
+  c = cvGL.getContext('2d'); c.clearRect(0, 0, cvGL.width, cvGL.height);
+  c.fillStyle = '#132d4a'; c.fillRect(0, 0, cvGL.width, cvGL.height);
+  c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 1;
+  for (let m = 1; m <= 9; m++) { c.beginPath(); c.moveTo(0, L_SUELO - m * L_K); c.lineTo(cvGL.width, L_SUELO - m * L_K); c.stroke(); }
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.font = '10px system-ui'; c.textAlign = 'left';
+  for (const m of [2, 4, 6, 8]) c.fillText(m + ' m', 4, L_SUELO - m * L_K - 3);
+  c.strokeStyle = '#fff'; c.lineWidth = 3; c.beginPath(); c.moveTo(0, L_SUELO); c.lineTo(cvGL.width, L_SUELO); c.stroke();
+  const xr = L_X0 + GU_INI.z / (GU_INI.z - e.bote.z) * obj.dist * L_K;
+  c.lineWidth = 4; c.beginPath(); c.moveTo(xr, L_SUELO); c.lineTo(xr, L_SUELO - RED_H * L_K); c.stroke();
+  const tray = (dist, cima, color, discont) => {
+    const P0 = [L_X0, L_SUELO - 1.0 * L_K], P2 = [L_X0 + dist * L_K, L_SUELO], A = [L_X0 + 0.55 * dist * L_K, L_SUELO - cima * L_K];
+    c.strokeStyle = color; c.lineWidth = 4; c.setLineDash(discont ? [8, 6] : []); c.beginPath(); c.moveTo(...P0);
+    c.bezierCurveTo(P0[0] + (A[0] - P0[0]) * 0.35, A[1] + (P0[1] - A[1]) * 0.25, A[0] - (A[0] - P0[0]) * 0.45, A[1], ...A);
+    c.bezierCurveTo(A[0] + (P2[0] - A[0]) * 0.45, A[1], P2[0] - (P2[0] - A[0]) * 0.25, A[1] + (P2[1] - A[1]) * 0.35, ...P2); c.stroke(); c.setLineDash([]);
+  };
+  tray(obj.dist, e.cima, 'rgba(61,220,132,.85)', true);
+  if (guUlt) tray(guUlt.pred.dist, guUlt.pred.cima, '#ff6b3d', false);
+  c.fillStyle = '#fff'; c.font = '12px system-ui'; c.textAlign = 'right';
+  c.fillText('objetivo: ' + obj.dist.toFixed(1) + ' m, cima ' + e.cima + ' m' + (guUlt ? ' · tu golpe: ' + guUlt.pred.dist.toFixed(1) + ' m, cima ' + guUlt.pred.cima.toFixed(1) + ' m' : ''), cvGL.width - 8, 16);
+  $('guBajar').textContent = 'Descargar datos (' + gu.muestras.length + ')';
+}
+function pintaModelo() {
+  const n = gu.muestras.filter(m => m.tipo === 'drive').length;
+  const f = k => { const [a, b] = ajusta('drive', k), [a0, b0] = PRIOR.drive[k]; return a.toFixed(2) + '·x ' + (b >= 0 ? '+ ' : '− ') + Math.abs(b).toFixed(1) + ' <span class="vacio">(al empezar ' + a0 + '·x + ' + b0 + ')</span>'; };
+  const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => m.dentro ? '●' : '○').join(' ');
+  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + '<br>distancia = ' + f('dist') + (ult ? '<br>Últimos intentos: ' + ult + ' (● dentro)' : '');
+}
+$('guBueno').onclick = () => {
+  if (gu.idx < EJERCICIOS.length - 1) { gu.idx++; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); return; }
+  $('guMarcador').innerHTML = '<span class="ok">Hecho.</span> Por ahora solo está este golpe. Descarga los datos y pásamelos para ver cómo ha ido; luego añado el siguiente (revés, centro, bajos…).';
+};
+$('guOlvidar').onclick = () => { if (gu.muestras.length && confirm('¿Olvidar lo aprendido (' + gu.muestras.length + ' golpes)? Si no los has descargado, se pierden.')) { gu = { idx: 0, muestras: [] }; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); } };
+$('guBajar').onclick = () => {
+  if (!gu.muestras.length) return;
+  const f = new Date(), p = n => String(n).padStart(2, '0');
+  const blob = new Blob([JSON.stringify({ app: 'pala-movil', tipo: 'guiado', v: 1, prior: PRIOR, ejercicios: EJERCICIOS, ini: GU_INI, muestras: gu.muestras }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'guiado-pala-' + f.getFullYear() + p(f.getMonth() + 1) + p(f.getDate()) + '-' + p(f.getHours()) + p(f.getMinutes()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$('guOn').checked = (() => { try { return localStorage.getItem(GU_KEY + 'On') !== '0'; } catch (_) { return true; } })();
+$('guOn').onchange = () => {
+  if ($('guOn').checked && $('ajOn').checked) { $('ajOn').checked = false; ajMuestra(); }
+  $('guCuerpo').hidden = !$('guOn').checked; try { localStorage.setItem(GU_KEY + 'On', $('guOn').checked ? '1' : '0'); } catch (_) {}
+  if ($('guOn').checked) { pintaGuiado(); pintaModelo(); }
+};
+$('guOn').onchange();
+window.GU = { get gu() { return gu; }, predice, ajusta };   // (pruebas)
 </script>
 </body>
 </html>
