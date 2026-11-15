@@ -404,7 +404,7 @@ window.AJ = { aj, get golpes() { return ajGolpes; } };   // (pruebas)
 <script>
 // ===== Entrenamiento guiado: se propone un golpe (zona de bote y altura), el jugador lo repite y se aprende una sola
 // lectura por tipo de golpe con TODAS las repeticiones (no un apaño para acertar este objetivo) =====
-// Lectura: dirección = b + a·dirección medida · altura de la cima = b + a1·cara + a2·subida · distancia = b + a·fuerza
+// Lectura: dirección = b + a1·(dirección medida − K·muñeca) + a2·cara + a3·subida · altura de la cima = b + a1·cara + a2·subida · distancia = b + a·fuerza
 // · efecto = b + a·subida (> 1 liftado, < −1 cortado). «Subida» = velocidad vertical de la pala hasta el impacto.
 // Cada una se ajusta por mínimos cuadrados con un "tirón" hacia la lectura inicial (sin datos variados, las
 // pendientes apenas se mueven y se aprende sobre todo el desplazamiento). Solo aprenden los golpes que el jugador
@@ -419,13 +419,14 @@ const EJERCICIOS = [
 ];
 const EF_Y = { cortado: -2, plano: 0, liftado: 2 };
 // qué medidas usa cada una (la dirección, también la cara: con la cara muy abierta, como en el globo, la dirección
-// medida se tuerce mucho hacia un lado)
-const SALIDAS = { dir: ['dir', 'cara'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] };
+// medida se tuerce mucho hacia un lado; y la subida: en el liftado la cara se cierra al subir y la dirección medida
+// sale unos 20° más a la izquierda)
+const SALIDAS = { dir: ['dir', 'cara', 'vzp'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] };
 const NOMBRE_MEDIDA = { dir: 'dirección', cara: 'cara', vzp: 'subida', fuerza: 'fuerza' };
 const PRIOR = {   // lectura inicial (antes de aprender): b y las pendientes de cada medida
-  drive: { dir: { b: 0, a: [0.9, 0] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
-  reves: { dir: { b: -4, a: [0.45, 0] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
-  remate: { dir: { b: 0, a: [0.45, 0] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
+  drive: { dir: { b: 0, a: [0.9, 0, 0] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  reves: { dir: { b: -4, a: [0.45, 0, 0] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  remate: { dir: { b: 0, a: [0.45, 0, 0] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
 };
 const ESCALA = { dir: 30, cara: 30, vzp: 3, fuerza: 0.3 };   // dispersión típica de cada medida (para el tirón)
 // tirón hacia la lectura inicial: flojo (con varios ejercicios mandan los datos); el del desplazamiento, más flojo
@@ -444,8 +445,24 @@ function subidaHastaPico(raw) {
   for (let i = 1; i <= k; i++) { const p = s[i], R = matrizOri(p[10], p[11], p[12]), dt = (p[0] - s[i - 1][0]) / 1000; vz += (R[2][0] * p[4] + R[2][1] * p[5] + R[2][2] * p[6]) * dt; }
   return vz;
 }
-const medidas = g => { const v = subidaHastaPico(g.raw); return { dir: g.dir, cara: g.alt, fuerza: g.fuerza, vzp: v != null ? v : (g.vzPico || 0) }; };
-const fDe = m => m.fv || (m.fv = medidas({ ...m.medido, raw: m.raw }));   // (también vale para los golpes guardados antes)
+const medidas = g => { const v = subidaHastaPico(g.raw); return { dir: g.dir, cara: g.alt, fuerza: g.fuerza, vzp: v != null ? v : (g.vzPico || 0), mu: muñeca(g) }; };
+const fDe = m => (m.fv && m.fv.mu !== undefined) ? m.fv : (m.fv = medidas({ ...m.medido, raw: m.raw }));   // (también vale para los golpes guardados antes)
+// Corrección de la muñeca, golpe a golpe: dentro de un mismo ejercicio, cuanto más gira la muñeca en el impacto, más
+// a la derecha sale la dirección medida. Se aprende esa pendiente (K, grados por unidad de «muñeca») con cómo varían
+// los golpes dentro de cada ejercicio, y a la dirección medida se le quita K·muñeca antes de usarla.
+const K_TIRON = 0.5;
+function kMuñeca(tipo, P) {
+  const g = new Map();
+  for (const [m, p] of (P || pesos(tipo))) { const f = fDe(m); let s = g.get(m.ej); if (!s) g.set(m.ej, s = []); s.push([p, f.mu, f.dir]); }
+  let Sxy = 0, Sxx = 0;
+  for (const L of g.values()) {
+    if (L.length < 3) continue;
+    const sp = L.reduce((a, x) => a + x[0], 0), mx = L.reduce((a, x) => a + x[0] * x[1], 0) / sp, my = L.reduce((a, x) => a + x[0] * x[2], 0) / sp;
+    for (const [p, x, y] of L) { Sxy += p * (x - mx) * (y - my); Sxx += p * (x - mx) * (x - mx); }
+  }
+  return lim(Sxy / (Sxx + K_TIRON), -60, 60);
+}
+const valor = (f, q, K) => q === 'dir' ? f.dir - K * f.mu : f[q];
 const aprende = m => m.memo !== false && (!m.medido || m.medido.wMax >= 450);   // memorizados (los antiguos, salvo preparaciones)
 function resuelve(A, b) {   // sistema lineal pequeño (Gauss)
   const n = b.length; A = A.map(r => r.slice()); b = b.slice();
@@ -483,14 +500,15 @@ function pesos(tipo) {
 // mucho de un golpe a otro y, ajustando golpe a golpe, ese ruido aplasta la pendiente y todo acaba yendo al centro.
 // Cada ejercicio cuenta como mucho como MEDIA_TOPE golpes.
 const MEDIA_TOPE = 8;
-function ajusta(tipo, k, P) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
+function ajusta(tipo, k, P, K) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
+  P = P || pesos(tipo); if (K == null) K = kMuñeca(tipo, P);
   const pr = (PRIOR[tipo] || PRIOR.drive)[k], med = SALIDAS[k], n = med.length + 1;
   const pen = [LAMBDA_B, ...med.map(q => LAMBDA_A * ESCALA[q] * ESCALA[q])], w0 = [pr.b, ...pr.a];
   const A = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? pen[i] : 0)), r = w0.map((v, i) => v * pen[i]);
   const grupos = new Map();   // ejercicio → { sp, sx[], sy }
-  for (const [m, p] of (P || pesos(tipo))) {
+  for (const [m, p] of P) {
     const y = m.y[k]; if (y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
-    const f = fDe(m), x = [1, ...med.map(q => f[q])];
+    const f = fDe(m), x = [1, ...med.map(q => valor(f, q, K))];
     let g = grupos.get(m.ej); if (!g) grupos.set(m.ej, g = { sp: 0, sx: x.map(() => 0), sy: 0 });
     g.sp += p; g.sy += p * y; x.forEach((v, i) => g.sx[i] += p * v);
   }
@@ -502,8 +520,9 @@ function ajusta(tipo, k, P) {   // { b, a: [...] } de una salida, con lo aprendi
   return { b: w[0], a: w.slice(1) };
 }
 function predice(g) {
-  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = medidas(g), p = {}, P = pesos(t);
-  for (const k of Object.keys(SALIDAS)) { const w = ajusta(t, k, P); p[k] = w.b + SALIDAS[k].reduce((s, q, i) => s + w.a[i] * f[q], 0); }
+  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = medidas(g), p = {}, P = pesos(t), K = kMuñeca(t, P);
+  for (const k of Object.keys(SALIDAS)) { const w = ajusta(t, k, P, K); p[k] = w.b + SALIDAS[k].reduce((s, q, i) => s + w.a[i] * valor(f, q, K), 0); }
+  p.K = K;
   p.efecto = p.efe > 1 ? 'liftado' : p.efe < -1 ? 'cortado' : 'plano';
   p.dir = lim(p.dir, -60, 60); p.cima = lim(p.cima, 0.9, 9.5); p.dist = lim(p.dist, 3, 19.5);
   const r = p.dir * Math.PI / 180;
@@ -597,7 +616,7 @@ function pintaModelo() {
   const num = v => (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
   const f = k => { const w = ajusta('drive', k); return num(w.b) + SALIDAS[k].map((q, i) => (w.a[i] >= 0 ? ' + ' : ' − ') + num(Math.abs(w.a[i])) + '·' + NOMBRE_MEDIDA[q]).join(''); };
   const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => (m.dentro ? '●' : '○') + (m.memo ? '' : '<sub>x</sub>')).join(' ');
-  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes memorizados, ' + (dr.length - n) + ' sin memorizar):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + ' m<br>distancia = ' + f('dist') + ' m<br>efecto = ' + f('efe') + ' <span class="vacio">(&gt; 1 liftado, &lt; −1 cortado)</span>' +
+  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes memorizados, ' + (dr.length - n) + ' sin memorizar):<br>dirección = ' + f('dir') + '° <span class="vacio">(a la dirección medida se le quita ' + kMuñeca('drive').toFixed(0) + '°·muñeca)</span><br>altura = ' + f('cima') + ' m<br>distancia = ' + f('dist') + ' m<br>efecto = ' + f('efe') + ' <span class="vacio">(&gt; 1 liftado, &lt; −1 cortado)</span>' +
     (ult ? '<br>Últimos intentos: ' + ult + ' <span class="vacio">(● dentro · <sub>x</sub> sin memorizar)</span>' : '');
 }
 $('guBueno').onclick = () => {
