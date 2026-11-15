@@ -482,7 +482,19 @@ function resuelve(A, b) {   // sistema lineal pequeño (Gauss)
 const GU_INI = { x: 0.8, z: 8.3 };   // donde se supone que estás (fondo de vuestro campo)
 let gu = { idx: 0, muestras: [] };
 try { const s = JSON.parse(localStorage.getItem(GU_KEY) || 'null'); if (s && Array.isArray(s.muestras)) gu = { idx: Math.min(s.idx || 0, EJERCICIOS.length - 1), muestras: s.muestras }; } catch (_) {}
-const guGuarda = () => { try { localStorage.setItem(GU_KEY, JSON.stringify(gu)); } catch (_) {} };
+const guGuarda = () => { try { localStorage.setItem(GU_KEY, JSON.stringify(gu)); } catch (_) {} exportaModelo(); };
+// Lo aprendido, en limpio, para el juego (index.html está en la misma dirección y lo lee de aquí): por tipo de golpe,
+// la corrección de la muñeca K y, de cada salida, b y las pendientes de sus medidas
+function exportaModelo() {
+  try {
+    const m = { v: 1, fecha: new Date().toISOString(), salidas: SALIDAS, tipos: {} };
+    for (const t of Object.keys(PRIOR)) {
+      const P = pesos(t), K = kMuñeca(t, P), n = [...P.keys()].length; m.tipos[t] = { K, n };
+      for (const k of Object.keys(SALIDAS)) m.tipos[t][k] = ajusta(t, k, P, K);
+    }
+    localStorage.setItem('palaModelo', JSON.stringify(m));
+  } catch (_) {}
+}
 const cvGA = $('guArriba'), cvGL = $('guLado');
 let guUlt = null;   // último intento: { pred, err, dentro, aviso }
 
@@ -654,6 +666,7 @@ $('guOn').onchange = () => {
   if ($('guOn').checked) { pintaGuiado(); pintaModelo(); }
 };
 $('guOn').onchange();
+exportaModelo();
 window.GU = { get gu() { return gu; }, predice, ajusta };   // (pruebas)
 </script>
 </body>

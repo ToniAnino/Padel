@@ -121,7 +121,8 @@ function conectar() {
       pintaDiag();
       setTimeout(conectar, 4000);
     });
-    estado('Conectando…', 'esp'); pintaDiag();
+    if (!relayOk) estado('Conectando…', 'esp');   // (si ya va por internet, no se pisa ese estado)
+    pintaDiag();
     setTimeout(() => { if (!(conn && conn.open)) { if (!relayOk) estado('La vía directa no responde: probando por internet…', 'esp'); usarRelay(); } }, 7000);
     return;
   }

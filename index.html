@@ -100,6 +100,17 @@
   #level{width:100%;accent-color:#2f7bff;margin:4px 0 0}
   #menu .lvlEnds{display:flex;justify-content:space-between;font-size:11px;opacity:.6}
   #menu .tipoTxt{margin:6px 2px 4px;font-size:12px;opacity:.65}
+  #menu .palaWrap button{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;font:inherit;font-size:15px;cursor:pointer}
+  #menu .palaWrap button.on{background:#3ddc84;color:#0d1b2a;border-color:#3ddc84;font-weight:700}
+  #palaBox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;width:min(300px,86%);background:rgba(13,27,42,.95);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px;color:#fff;text-align:center;font:14px/1.35 system-ui,sans-serif}
+  #palaBox[hidden]{display:none}
+  #palaBox .pbTit{font-weight:700;font-size:17px;margin-bottom:8px}
+  #palaQr{background:#fff;border-radius:8px;padding:6px;width:180px;margin:0 auto;color:#333}
+  #palaQr img{width:100%;height:auto;image-rendering:pixelated}
+  #palaBox .pbCod{font:700 26px/1 ui-monospace,Consolas,monospace;letter-spacing:.18em;margin:10px 0 6px}
+  #palaBox .pbEst{font-weight:600;margin-bottom:6px}
+  #palaBox .pbAyu{font-size:12px;opacity:.7;margin-bottom:10px}
+  #palaBox button{padding:8px 18px;border-radius:9px;border:1px solid rgba(255,255,255,.4);background:#2b4a6b;color:#fff;font:inherit;cursor:pointer}
   #menu .pareja{margin-top:8px;padding:8px;border:1px solid rgba(255,255,255,.2);border-radius:12px}
   #menu .ptit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin-bottom:6px}
   #menu .ptit b{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:6px;background:#fff;color:#000;letter-spacing:0}
@@ -195,6 +206,14 @@
     <div id="bigScore"><div class="sb"><div class="col us"><div class="tn">NOSOTROS</div><div class="tile" id="bsU"></div><div class="gm" id="bsUg"></div></div><div class="sep">–</div><div class="col riv"><div class="tn">RIVALES</div><div class="tile" id="bsR"></div><div class="gm" id="bsRg"></div></div><div class="bsSub" id="bsSub"></div></div></div>
     <div id="banner"><div class="bt"></div><div class="bs"></div></div>
     <button id="menuBtn" aria-label="Menú">☰</button>
+    <div id="palaBox" hidden>
+      <div class="pbTit">Pala móvil</div>
+      <div id="palaQr">Preparando…</div>
+      <div class="pbCod" id="palaCod">·····</div>
+      <div class="pbEst" id="palaEst">Conectando…</div>
+      <div class="pbAyu">Escanea el QR con el móvil (o abre <b>mando.html</b> y pon el código), activa los sensores y calibra de cara a la pantalla.</div>
+      <button type="button" id="palaCerrar">Cerrar</button>
+    </div>
   </div>
   <div id="panelWrap"><canvas id="panel"></canvas></div>
   <div id="menu" class="open">
@@ -247,6 +266,11 @@
       <div class="camWrap"><span>Cerca</span><div class="camBar"><input type="range" id="camZoom" min="0" max="100" step="1" aria-label="Distancia de la cámara"><div class="marks" data-for="camZoom"></div></div><span>Lejos</span></div>
       <div class="camWrap"><span>Giro ⟲</span><div class="camBar"><input type="range" id="camYaw" min="-60" max="60" step="1" aria-label="Giro de la pista"><div class="marks" data-for="camYaw"></div></div><span>⟳</span></div>
       <div class="camWrap"><span>Zoom −</span><div class="camBar"><input type="range" id="camScale" min="0" max="100" step="1" aria-label="Zoom de la pista"><div class="marks" data-for="camScale"></div></div><span>+</span></div>
+      <h2>Pala móvil</h2>
+      <div class="palaWrap">
+        <button type="button" id="palaBtn">Conectar el móvil como pala</button>
+        <div class="tipoTxt" id="palaTxt">Golpeas con el móvil: TÚ se mueve solo hasta la bola y el juego espera a que hagas el golpe. Usa lo aprendido en el entrenamiento (pala.html).</div>
+      </div>
       <h2>Sonido</h2>
       <div class="opts row" data-k="sound">
         <button data-v="si">Sí</button>
@@ -1675,7 +1699,7 @@ function setupServe() {
   S.serveDrop = false; S.serveBounced = false; S.serveCheck = false; S.serveNet = false; S.receiver = null; S.serveAim = null; S.serveMesh = false; S.serveLeave = false;
   S.phase = 'serve'; S.timer = 1.4; S.lastHitter = 1 - server.team; S.bounces = 0; S.firstSide = -1;
   trailReset(); bounceRing.visible = targetRing.visible = false;
-  if (us) showMsg((S.firstServe ? '' : '2º SAQUE · ') + 'SACA ' + server.label + (ourAI(server) ? '' : ' · TOCA EN LA PISTA DÓNDE'), ourAI(server) ? 1.4 : 99);
+  if (us) showMsg((S.firstServe ? '' : '2º SAQUE · ') + 'SACA ' + server.label + (sacaSolo(server) ? '' : ' · TOCA EN LA PISTA DÓNDE'), sacaSolo(server) ? 1.4 : 99);
 }
 // Saque vuestro: va a donde se tocó, con más o menos dispersión según la barra de saque. Hay que sacar desde
 // detrás de la línea de saque y desde la mitad que toca (la derecha en el primer punto del juego); si no, falta.
@@ -1703,7 +1727,11 @@ const rivalsReady = () => rivals.every(r => !r.target || Math.hypot(r.target.x -
 const terceraP = () => CFG.view === 'tp' || CFG.view === 'tpx';
 const unoSolo = () => CFG.view === 'tp';   // solo se lleva a un jugador (el otro, la máquina)
 const ctrlP = () => (CFG.view === 'tpx' && S.ctrl) ? S.ctrl : ours[0];
-const ourAI = o => unoSolo() && o.team === US && o !== ctrlP();
+// Pala móvil: TÚ golpea con el móvil (se mueve solo) y COMPI lo lleva la máquina
+const pala = { conectado: false, peer: null, conn: null, relay: null, cod: '', cal: false };
+const palaOn = () => pala.conectado;
+const ourAI = o => o.team === US && ((unoSolo() && o !== ctrlP()) || (palaOn() && o !== ours[0]));
+const sacaSolo = o => ourAI(o) || (palaOn() && o === ours[0]);   // con la pala, TÚ también saca solo
 function setCtrl(o, aviso) {
   if (CFG.view !== 'tpx' || S.ctrl === o) return;
   S.ctrl = o; if (aviso) showMsg('CÁMARA: ' + o.label, 0.8);
@@ -1722,8 +1750,12 @@ function pickCtrl() {
 // IA del compañero: se coloca a la altura del que lleváis (los dos en la red o los dos atrás, cada uno en su lado)
 // y va a por la bola cuando le llega antes a él
 function ourAIMove(dt) {
-  if (!unoSolo() || S.phase !== 'play') return;
-  const me = ctrlP(), ai = ours.find(o => o !== me);
+  if (S.phase !== 'play') return;
+  if (palaOn()) { moverAuto(ours[1], ours[0], dt); moverAuto(ours[0], ours[1], dt); return; }   // con la pala, los dos solos
+  if (!unoSolo()) return;
+  const me = ctrlP(); moverAuto(ours.find(o => o !== me), me, dt);
+}
+function moverAuto(ai, me, dt) {
   if ((ai.aiT = (ai.aiT || 0) - dt) > 0) return;
   ai.aiT = 0.12;
   const side = ai.pos.x < me.pos.x ? -1 : 1, up = me.pos.z < 5.5;
@@ -1745,13 +1777,13 @@ function ourAIServe() {
   setServeAim(x, z);
   if (Math.random() < (S.firstServe ? 0.15 * defensivo(srv) : 0.9)) S.serveAim.alto = true;
 }
-const ourServeWaiting = () => S.phase === 'serve' && S.server && S.server.team === US && !S.serveDrop && !ourAI(S.server);
+const ourServeWaiting = () => S.phase === 'serve' && S.server && S.server.team === US && !S.serveDrop && !sacaSolo(S.server);
 function setServeAim(x, z) {
   S.serveAim = { x: clamp(x, -4.9, 4.9), z: clamp(z, -9.9, -0.2), t: performance.now() / 1000 };
   targetRing.position.set(S.serveAim.x, 0.013, S.serveAim.z); targetRing.visible = true;
 }
 // toque para el saque vuestro: el primero elige el sitio; un segundo toque seguido (doble toque) lo hace bombeado
-const ourServeTurn = () => S.phase === 'serve' && S.server && S.server.team === US && !ourAI(S.server);
+const ourServeTurn = () => S.phase === 'serve' && S.server && S.server.team === US && !sacaSolo(S.server);
 function serveTap(x, z) {
   const a = S.serveAim;
   if (a && performance.now() / 1000 - a.t < DOUBLE_TAP + 0.1) { a.alto = true; return; }
@@ -2485,10 +2517,130 @@ function manualHit(pl) {
 function tapPause(px, py) {
   const w = panelToWorld(px, py, 'rival');
   const P = S.pause;
-  if (!P) return;
+  if (!P || P.pala) return;   // (con la pala se golpea con el móvil, no tocando)
   if (P.taps === 0) { P.taps = 1; P.tapT = P.t; P.x = w.x; P.z = w.z; }
   else resolvePause('lob', P.x, P.z);          // dos toques: globo
 }
+
+// ================= Pala móvil =================
+// El móvil (mando.html) manda cada gesto al momento. Cuando la bola llega a TÚ, el juego se para y espera el golpe;
+// con el primer gesto espera un poco más (PALA_ESPERA) por si era la preparación y llega el golpe de verdad, y la bola
+// sale según lo aprendido en el entrenamiento guiado (pala.html guarda 'palaModelo' en esta misma dirección).
+const PALA_MAX = 6;          // s esperando el golpe; si no llega, punto para el rival
+const PALA_ESPERA = 0.6;     // s tras el primer gesto por si llega otro mejor (el de verdad tras la preparación)
+const PALA_PRIOR = {         // lectura inicial si todavía no hay nada aprendido
+  salidas: { dir: ['dir', 'cara', 'vzp'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] },
+  tipos: {
+    drive: { K: 0, dir: { b: 0, a: [0.9, 0, 0] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+    reves: { K: 0, dir: { b: -4, a: [0.45, 0, 0] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+    remate: { K: 0, dir: { b: 0, a: [0.45, 0, 0] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
+  },
+};
+function palaModelo() { try { const m = JSON.parse(localStorage.getItem('palaModelo') || 'null'); if (m && m.tipos) return m; } catch (_) {} return PALA_PRIOR; }
+// medidas del golpe a partir de los datos en bruto (igual que en pala.html)
+function palaMatriz(a, b, g) {
+  const D = Math.PI / 180, cA = Math.cos(a * D), sA = Math.sin(a * D), cB = Math.cos(b * D), sB = Math.sin(b * D), cG = Math.cos(g * D), sG = Math.sin(g * D);
+  return [[cA * cG - sA * sB * sG, -cB * sA, cA * sG + cG * sA * sB], [cG * sA + cA * sB * sG, cA * cB, sA * sG - cA * cG * sB], [-cB * sG, sB, cB * cG]];
+}
+function palaMedidas(g) {
+  const s = g.raw && g.raw.s; let vzp = g.vzPico || 0, mu = 0;
+  if (s && s.length > 1) {
+    let k = 0; s.forEach((q, i) => { if (Math.hypot(q[1], q[2], q[3]) > Math.hypot(s[k][1], s[k][2], s[k][3])) k = i; });
+    vzp = 0; for (let i = 1; i <= k; i++) { const p = s[i], R = palaMatriz(p[10], p[11], p[12]), dt = (p[0] - s[i - 1][0]) / 1000; vzp += (R[2][0] * p[4] + R[2][1] * p[5] + R[2][2] * p[6]) * dt; }
+    const q = s[k], w = Math.hypot(q[1], q[2], q[3]) || 1; mu = Math.abs(q[3]) / w;
+  }
+  return { dir: g.dir || 0, cara: g.alt || 0, fuerza: g.fuerza || 0, vzp, mu };
+}
+function palaLee(g) {   // dirección (°, + derecha), altura máxima (m), distancia (m) y efecto, según lo aprendido
+  const M = palaModelo(), tipo = M.tipos[g.tipo] ? g.tipo : 'drive', T = M.tipos[tipo], f = palaMedidas(g), K = T.K || 0, p = {};
+  for (const k of Object.keys(M.salidas)) { const w = T[k]; p[k] = w.b + M.salidas[k].reduce((s, q, i) => s + w.a[i] * (q === 'dir' ? f.dir - K * f.mu : f[q]), 0); }
+  p.dir = clamp(p.dir, -60, 60); p.cima = clamp(p.cima, 0.9, 9.5); p.dist = clamp(p.dist, 3, 19.5);
+  p.efecto = p.efe > 1 ? 'liftado' : p.efe < -1 ? 'cortado' : 'plano';
+  p.aprendido = M !== PALA_PRIOR;
+  return p;
+}
+function startPala(pl) {
+  S.phase = 'pause'; S.hitter = pl; S.receiver = null;
+  S.pause = { pala: true, t: 0, cand: null, candT: 0 };
+  pl.ready = 1; pl.hitY = clamp(ball.p.y - pl.pos.y, 0.7, 2.1); pl.pickStroke();
+  for (const o of ours) o.target = null;
+  showMsg('¡GOLPEA CON EL MÓVIL!', 99);
+}
+function palaGesto(g) {   // llega un gesto del móvil
+  const P = S.pause;
+  if (S.phase !== 'pause' || !P || !P.pala) return;   // (fuera de la espera es la preparación o algo suelto: se ignora)
+  if (!P.cand) { P.cand = g; P.candT = P.t; return; }
+  // otro gesto seguido: si es de otro tipo, el bueno es el segundo (el primero era la preparación); si es del mismo,
+  // el más fuerte
+  if (g.tipo !== P.cand.tipo ? g.wMax >= 0.7 * P.cand.wMax : g.wMax > P.cand.wMax) { P.cand = g; P.candT = P.t; }
+}
+function resolvePala() {
+  const pl = S.hitter, g = S.pause.cand, p = palaLee(g);
+  S.phase = 'play'; S.pause = null;
+  // destino desde donde está el jugador, con la dirección y distancia leídas (la distancia se aprendió desde el fondo:
+  // más cerca de la red, más corta)
+  const r = p.dir * Math.PI / 180, L = p.dist * clamp((pl.pos.z + 8) / 16.3, 0.45, 1.1);
+  const tx = clamp(pl.pos.x + Math.sin(r) * L, -4.7, 4.7), tz = clamp(pl.pos.z - Math.cos(r) * L, -9.7, -1);
+  const lob = p.cima >= 3.8;
+  if (p.efecto !== 'plano') S.nextSpin = p.efecto; else if (!lob) S.nextSpin = 'plano';
+  doHit(pl, tx, tz, lob ? 'lob' : 'drive', lob ? Math.max(p.cima, 4.5) : (p.cima > 2.4 ? DRIVE_NET + 0.5 * (p.cima - 2.4) : undefined));
+  showMsg((g.tipo === 'reves' ? 'REVÉS' : g.tipo === 'remate' ? 'REMATE' : 'DRIVE') + (lob ? ' · GLOBO' : '') + (p.efecto !== 'plano' ? ' ' + p.efecto.toUpperCase() : ''), 0.9);
+}
+// ---- conexión (PeerJS directo y, de reserva, MQTT; las librerías se cargan solo al pulsar el botón) ----
+const PALA_PREF = 'padel-pulgares-', PALA_LETRAS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const cargaScript = src => new Promise((ok, mal) => { if ([...document.scripts].some(s => s.src === src)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = mal; document.head.appendChild(s); });
+function palaEstado(txt) {
+  document.getElementById('palaEst').textContent = txt;
+  const b = document.getElementById('palaBtn');
+  b.classList.toggle('on', pala.conectado);
+  b.textContent = pala.conectado ? 'Pala móvil conectada ✓ (pulsa para ver el código)' : 'Conectar el móvil como pala';
+}
+function palaRecibe(d) {
+  if (!d || typeof d !== 'object') return;
+  if (!pala.conectado && (d.t === 'hola' || d.t === 'gesto' || d.t === 'golpe' || d.t === 'cal')) {
+    pala.conectado = true; palaEstado('Móvil conectado' + (d.t === 'hola' && !d.cal ? ' · falta calibrar' : ''));
+    if (d.t === 'hola' && d.cal) setTimeout(() => { document.getElementById('palaBox').hidden = true; }, 1200);
+  }
+  if (d.t === 'hola') { pala.cal = !!d.cal; palaEstado(pala.cal ? 'Móvil conectado y calibrado' : 'Móvil conectado · falta calibrar'); }
+  if (d.t === 'cal') { pala.cal = true; palaEstado('Móvil conectado y calibrado'); setTimeout(() => { document.getElementById('palaBox').hidden = true; }, 1200); }
+  if (d.t === 'gesto') palaGesto(d);
+}
+async function palaConecta() {
+  const box = document.getElementById('palaBox'); box.hidden = false;
+  if (pala.peer) return;
+  palaEstado('Cargando…');
+  try {
+    await cargaScript('https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js');
+    await cargaScript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js');
+    await cargaScript('https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js');
+  } catch (_) { palaEstado('No se han podido cargar las librerías de conexión'); return; }
+  const abre = () => {
+    let c = ''; for (let i = 0; i < 5; i++) c += PALA_LETRAS[Math.floor(Math.random() * PALA_LETRAS.length)];
+    pala.cod = c; pala.peer = new Peer(PALA_PREF + c);
+    pala.peer.on('open', () => {
+      const url = new URL('mando.html?s=' + c, location.href).href;
+      document.getElementById('palaCod').textContent = c;
+      const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); document.getElementById('palaQr').innerHTML = qr.createImgTag(5, 6);
+      palaEstado('Esperando al móvil');
+      try {
+        pala.relay = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: 'pp-j-' + Math.random().toString(36).slice(2, 10), connectTimeout: 10000, reconnectPeriod: 3000 });
+        pala.relay.on('connect', () => pala.relay.subscribe('padel-pulgares/' + c + '/m2p'));
+        pala.relay.on('message', (t, msg) => { if (pala.conn && pala.conn.open) return; try { palaRecibe(JSON.parse(msg.toString())); } catch (_) {} });
+      } catch (_) {}
+    });
+    pala.peer.on('connection', cn => {
+      if (pala.conn) pala.conn.close();
+      pala.conn = cn;
+      cn.on('data', palaRecibe);
+      cn.on('close', () => { if (pala.conn === cn) pala.conn = null; });
+    });
+    pala.peer.on('disconnected', () => { try { pala.peer.reconnect(); } catch (_) {} });
+    pala.peer.on('error', err => { if (err.type === 'unavailable-id') { pala.peer.destroy(); abre(); } });
+  };
+  abre();
+}
+document.getElementById('palaBtn').addEventListener('click', palaConecta);
+document.getElementById('palaCerrar').addEventListener('click', () => { document.getElementById('palaBox').hidden = true; });
 
 // Saque vuestro: se toca en la vista, sobre la pista rival, dónde va
 const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _ground = new THREE.Plane(new V3(0, 1, 0), 0), _gp = new V3();
@@ -2650,6 +2802,7 @@ panel.addEventListener('pointerdown', e => {
   try { panel.setPointerCapture(e.pointerId); } catch (_) {}
   const [x, y] = localXY(e);
   if (S.phase === 'pause') { pointers.set(e.pointerId, { player: null, ignore: true }); tapPause(x, y); return; }
+  if (palaOn()) { pointers.set(e.pointerId, { player: null, ignore: true }); return; }   // con la pala no se arrastra a nadie
   if (joyOn()) {   // tercera persona con joystick: joystick (el primer dedo) y destino de la bola (el segundo dedo o el botón derecho)
     if (e.button === 2 || joy) { pointers.set(e.pointerId, { player: null, ignore: true }); aimTap(x, y); return; }
     joy = { id: e.pointerId, x0: x, y0: y, x, y };
@@ -2725,6 +2878,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keysDown.delete(e.code); });
 window.addEventListener('blur', () => keysDown.clear());   // al cambiar de ventana no se queda una tecla "pulsada"
 function keysMove() {
+  if (palaOn()) return;   // con la pala, los dos se mueven solos
   const o = unoSolo() ? ctrlP() : ours[1];   // en tercera persona (no alterna), el teclado lleva al que controláis
   let x = 0, z = 0;
   for (const c of keysDown) { const d = KEY_DIR[c]; if (d === 'u') z -= 1; else if (d === 'd') z += 1; else if (d === 'l') x -= 1; else x += 1; }
@@ -2843,6 +2997,7 @@ function physics(dt) {
       if (netAngle(best) <= NET_FACE_MAX || escapa) {
         best.turnNet = false;
         if (ourAI(best)) { autoHit(best); continue; }   // el compañero de la máquina golpea solo
+        if (palaOn()) { startPala(best); return; }     // pala móvil: el juego espera al golpe del móvil
         if (CFG.mode === 'manual') { manualHit(best); continue; }
         startPause(best); return;
       }
@@ -2900,7 +3055,11 @@ function update(dt) {
   const verMarcador = S.phase === 'point' && S.timer < (S.bigAt ?? -1);
   if (verMarcador !== bigEl.classList.contains('show')) bigEl.classList.toggle('show', verMarcador);
   if (S.phase !== 'pause') for (const o of ours) o.turnNet = false;   // physics lo vuelve a marcar si sigue a tiro
-  if (S.phase === 'pause') {
+  if (S.phase === 'pause' && S.pause.pala) {   // pala móvil: esperando el golpe del móvil
+    const P = S.pause; P.t += dt;
+    if (P.cand && P.t - P.candT > PALA_ESPERA) resolvePala();
+    else if (!P.cand && P.t > PALA_MAX) { S.phase = 'play'; S.pause = null; showMsg('', 0); endPoint(RIVAL, 'no le has dado'); }
+  } else if (S.phase === 'pause') {
     const P = S.pause; P.t += dt;
     if (P.taps === 1 && P.t - P.tapT > DOUBLE_TAP) resolvePause('drive', P.x, P.z);   // un toque: golpe
     else if (P.taps === 0 && P.t > PAUSE_MAX) {   // no ha tocado: decide el juego, con la misma táctica que el modo posición
@@ -2921,7 +3080,7 @@ function update(dt) {
       let hitNow = false;
       if (!S.serveDrop) {
         placeServeBall();
-        if (ourServe && ourAI(S.server) && !S.serveAim && S.timer <= 0.6 && rivalsReady()) ourAIServe();   // saca la máquina
+        if (ourServe && sacaSolo(S.server) && !S.serveAim && S.timer <= 0.6 && rivalsReady()) ourAIServe();   // saca la máquina
         if (ourServe ? !!S.serveAim && rivalsReady() : S.timer <= 0.55) { S.serveDrop = true; S.serveBounced = false; ball.v.set(0, -0.3, 0); S.timer = 0.55; }
       } else {
         if (ourServe) S.server.target = null;   // para quieto para sacar
@@ -3593,6 +3752,7 @@ requestAnimationFrame(frame);
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
   S, ball, players, tapPause, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
+  pala, palaRecibe, palaLee,
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
   fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
