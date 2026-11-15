@@ -57,8 +57,8 @@
 <div id="escena"><div id="pide">Pulsa «Lanzar bola»</div><div id="aviso"></div><canvas id="mira" width="120" height="132" title="Hacia dónde apunta la pala ahora: apuntando al ordenador, el punto debe quedar en el centro"></canvas></div>
 <main>
   <div class="datos">
-    <div class="dato"><b id="dMomento">—</b><span>momento del golpe</span></div>
-    <div class="dato"><b id="dDir">—</b><span>dirección (cara + momento)</span></div>
+    <div class="dato"><b id="dMomento">—</b><span>fuerza</span></div>
+    <div class="dato"><b id="dDir">—</b><span>dirección (cara de la pala)</span></div>
     <div class="dato"><b id="dAlt">—</b><span>altura máxima</span></div>
     <div class="dato"><b id="dEfecto">—</b><span>efecto</span></div>
     <div class="dato"><b id="dCuenta">0</b><span>golpes · memorizados</span></div>
@@ -72,7 +72,7 @@
     <button id="bajar">Descargar datos (0)</button>
     <button id="borrar">Borrar todo</button>
   </div>
-  <p class="ayuda">La bola siempre llega igual, a tu drive. Si le pegas <b>antes</b> (delante del cuerpo) sale más <b>cruzada</b> (a la izquierda); si le pegas <b>más tarde</b>, más <b>paralela</b> (a la derecha). Demasiado pronto o demasiado tarde, no le das. En el móvil, pulsa <b>Memorizar</b> si el golpe te ha salido como querías.</p>
+  <p class="ayuda">La bola siempre llega igual, a tu drive. Haz el golpe que se pide arriba a la izquierda cuando te llegue: la dirección sale de hacia dónde mira la cara de la pala (no hace falta acertar el momento exacto). En el móvil, pulsa <b>Memorizar</b> si el golpe te ha salido como querías.</p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -213,10 +213,12 @@ const enPunto = (tray, t) => { const i = clamp(Math.round(t * 240), 0, tray.pts.
 // ================= Estado del punto =================
 // fase: 'espera' (sin bola) · 'viene' (la bola viene) · 'sale' (golpeada) · 'fallo'
 let fase = 'espera', tLanz = 0, salida = null, siguiente = null;
-const VENTANA = 350;            // ms: más lejos del momento ideal que esto, no le das
-const PREPARACION = -450;       // ms: un gesto tan adelantado es la preparación (no cuenta ni como fallo)
-const ESPERA_FALLO = 900;       // ms después del contacto: si no ha llegado ningún golpe que valga, fallo
-const K_MOMENTO = 0.10;         // grados por ms: 100 ms tarde = 10° más paralela (a la derecha)
+// El momento del golpe (antes o después) NO cambia la dirección ni hace fallar: exigía demasiada precisión. Solo
+// sirve para elegir qué gesto es el golpe (la preparación llega bastante antes) y se guarda por si acaso.
+const VENTANA = 800;            // ms: cualquier gesto hasta 0,8 s después del contacto vale
+const PREPARACION = -500;       // ms: un gesto más adelantado que esto es la preparación (se ignora)
+const ESPERA_FALLO = 1300;      // ms después del contacto: si no ha llegado ningún golpe, «No le has dado»
+const K_MOMENTO = 0;            // (el momento no influye en la dirección)
 function aviso(txt) { $('aviso').innerHTML = txt; }
 let objetivo = null, nBola = 0;
 function eligeObjetivo() {
@@ -235,7 +237,7 @@ function lanzar() {
   if (fase === 'viene') return;
   clearTimeout(siguiente); fase = 'viene'; tLanz = ahoraAbs(); salida = null; marca.visible = false;
   objetivo = eligeObjetivo(); pintaObjetivo();
-  aviso(desfase == null ? 'Bola… (el reloj del móvil aún no está sincronizado)' : objetivo ? '<span style="color:' + objetivo.color + '">' + objetivo.nombre + '</span>' : '');
+  aviso(objetivo ? '<span style="color:' + objetivo.color + '">' + objetivo.nombre + '</span>' : '');
 }
 const tContactoAbs = () => tLanz + ENTRA.tC * 1000;
 function programaSiguiente() { clearTimeout(siguiente); if ($('auto').checked) siguiente = setTimeout(lanzar, 2600); }
@@ -259,10 +261,10 @@ function recibe(d) {
   if (d.t === 'memoriza') { if (ultimo && !ultimo.memo) { ultimo.memo = true; guarda(); pintaCuenta(); aviso('Memorizado ✓'); } return; }
 }
 function gesto(g) {
-  if (fase !== 'viene' || desfase == null || g.tPicoAbs == null) return;
-  const tGolpe = g.tPicoAbs - desfase, dt = tGolpe - tContactoAbs();   // + tarde, − pronto
-  if (dt < PREPARACION) return;   // la preparación: se ignora
-  if (Math.abs(dt) > VENTANA) { fallo(dt < 0 ? 'Demasiado pronto' : 'Demasiado tarde', dt, g); return; }
+  if (fase !== 'viene') return;
+  // (sin reloj sincronizado o sin la hora del golpe, se acepta igual: el momento ya no cuenta)
+  const dt = (desfase == null || g.tPicoAbs == null) ? 0 : g.tPicoAbs - desfase - tContactoAbs();   // + tarde, − pronto
+  if (dt < PREPARACION || dt > VENTANA) return;   // la preparación (o algo ajeno a esta bola): se ignora
   if (g.tipo !== 'drive') { fallo('Eso ha sido un ' + (g.tipo === 'reves' ? 'revés' : g.tipo) + ': aquí toca drive', dt, g); return; }
   golpea(g, dt);
 }
@@ -282,14 +284,13 @@ function golpea(g, dt) {
   const dentro = Math.abs(salida.bote.x) <= 5 && salida.bote.z <= 0 && salida.bote.z >= -10;
   const enZona = objetivo ? Math.hypot(salida.bote.x - objetivo.x, salida.bote.z - objetivo.z) <= objetivo.radio : null;
   const aZona = objetivo ? Math.hypot(salida.bote.x - objetivo.x, salida.bote.z - objetivo.z) : null;
-  const momentoTxt = Math.abs(dt) < 25 ? 'justo' : Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde');
-  $('dMomento').textContent = momentoTxt; $('dDir').textContent = (Math.abs(dir) < 3 ? 'centro' : (dir < 0 ? 'cruzado ' : 'paralelo ') + Math.round(Math.abs(dir)) + '°');
+  $('dMomento').textContent = Math.round(g.fuerza * 100) + '%'; $('dDir').textContent = (Math.abs(dir) < 3 ? 'centro' : (dir < 0 ? 'cruzado ' : 'paralelo ') + Math.round(Math.abs(dir)) + '°');
   $('dDir').title = 'cara ' + Math.round(dirCara) + '° · momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°';
   $('dAlt').textContent = cima.toFixed(1).replace('.', ',') + ' m'; $('dEfecto').textContent = efecto;
   const veredicto = !dentro ? '<span style="color:var(--rojo)">Fuera</span> · '
     : enZona === true ? '<span style="color:var(--verde)">¡En la zona!</span> · '
     : enZona === false ? '<span style="color:var(--amar)">A ' + aZona.toFixed(1).replace('.', ',') + ' m de la zona</span> · ' : '';
-  aviso(veredicto + momentoTxt + ' · ' + $('dDir').textContent + ' <span class="peq">(cara ' + Math.round(dirCara) + '°, momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°)</span>');
+  aviso(veredicto + $('dDir').textContent + ' · altura ' + cima.toFixed(1).replace('.', ',') + ' m · ' + efecto);
   ultimo = { hora: new Date().toISOString(), id: g.id, memo: false, dt: Math.round(dt), objetivo: objetivo ? (objetivo === OBJETIVOS.cruzado ? 'cruzado' : 'paralelo') : null, enZona, aZona: aZona == null ? null : +aZona.toFixed(2), rtt: Math.round(rttMejor || 0), resultado: { dir: +dir.toFixed(1), dirCara: +dirCara.toFixed(1), dirMomento: +dirMomento.toFixed(1), cima: +cima.toFixed(2), dist: +dist.toFixed(2), efecto, dentro, bote: { x: +salida.bote.x.toFixed(2), z: +salida.bote.z.toFixed(2) } }, medido: (({ raw, t, ...x }) => x)(g), raw: g.raw };
   golpes.push(ultimo); guarda(); pintaCuenta();
   programaSiguiente();
@@ -298,7 +299,7 @@ function fallo(txt, dt, g) {
   fase = 'fallo';
   aviso('<span style="color:var(--rojo)">' + txt + '</span>' + (dt != null ? ' <span class="peq">(' + Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') + ')</span>' : ''));
   if (g) { golpes.push({ hora: new Date().toISOString(), id: g.id, memo: false, fallo: txt, objetivo: objetivo ? (objetivo === OBJETIVOS.cruzado ? 'cruzado' : 'paralelo') : null, dt: dt != null ? Math.round(dt) : null, rtt: Math.round(rttMejor || 0), medido: (({ raw, t, ...x }) => x)(g), raw: g.raw }); guarda(); pintaCuenta(); }
-  $('dMomento').textContent = dt != null ? Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') : '—';
+  $('dMomento').textContent = '—';
   programaSiguiente();
 }
 function pintaCuenta() {
