@@ -160,10 +160,27 @@ function calibrar() {
 
 // ---------- detección del golpe ----------
 // Un golpe es un pico de giro: empieza al pasar de 250 °/s, acaba al bajar de 120 °/s (o a los 0,7 s), y vale si el
-// pico pasa de 350 °/s. La dirección y la cara se toman en el pico (que es cuando la pala va más rápida: el impacto).
+// pico pasa de 450 °/s. La dirección y la cara se toman en el pico (que es cuando la pala va más rápida: el impacto).
 // Mientras dura, se integra la aceleración vertical del mundo: hacia arriba = liftado, hacia abajo = cortado.
-const W_INI = 250, W_FIN = 120, W_MIN = 350, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 300;
+// La preparación (llevar la pala atrás) también es un giro rápido y se tomaba como golpe: por eso un golpe no se
+// manda hasta 0,6 s después; si en ese tiempo empieza otro, se espera a que acabe y se queda el más fuerte.
+const W_INI = 250, W_FIN = 120, W_MIN = 450, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 150, RETENER = 600;
+const W_FUERZA0 = 350;   // giro con fuerza 0 % (se mantiene aunque cambie el mínimo, para no cambiar lo aprendido)
 let sw = null, libreDesde = 0, wAhora = 0, ultOri = 0, hist = [];
+let retenido = null;   // { g, timer, espera }
+function propone(g) {
+  if (retenido) {   // dos gestos seguidos: el más fuerte es el golpe (el otro, la preparación o la vuelta)
+    if (g.wMax <= retenido.g.wMax) return;
+    clearTimeout(retenido.timer);
+  }
+  retenido = { g, espera: false, timer: setTimeout(sueltaRetenido, RETENER) };
+}
+function sueltaRetenido() {
+  if (!retenido) return;
+  if (sw) { retenido.espera = true; return; }   // ha empezado otro gesto: se decide cuando acabe
+  const g = retenido.g; retenido = null;
+  enviar(g); muestra(g);
+}
 function motion(e) {
   const r = e.rotationRate; if (!r) return;
   const w = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0), t = e.timeStamp || performance.now();
@@ -183,6 +200,7 @@ function motion(e) {
     if (w < W_FIN || t - sw.t0 > DUR_MAX) {
       const s = sw; sw = null; libreDesde = t + ESPERA;
       if (s.wMax >= W_MIN && t - s.t0 > 40 && s.pico) golpe(s, t - s.t0);
+      if (retenido && retenido.espera) { clearTimeout(retenido.timer); retenido.timer = setTimeout(sueltaRetenido, 0); retenido.espera = false; }
     }
   }
 }
@@ -195,9 +213,8 @@ function golpe(s, dur) {
   // acel. con gravedad x y z (m/s²), orientación α β γ °]; tPico = ms del pico desde el inicio
   const t0 = s.raw.length ? s.raw[0][0] : s.t0;
   const raw = { v: 1, cal: cal.raw, tPico: Math.round(s.pico.t - t0), s: s.raw.map(x => [Math.round(x[0] - t0), ...x.slice(1)]) };
-  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_MIN) / (W_TOPE - W_MIN))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now(), raw };
-  enviar(g);
-  muestra(g);
+  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_FUERZA0) / (W_TOPE - W_FUERZA0))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now(), raw };
+  propone(g);
 }
 const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
 function muestra(g) {
