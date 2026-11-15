@@ -25,6 +25,9 @@
   #escena canvas { display:block; width:100% !important; height:100% !important }
   #aviso { position:absolute; left:50%; top:14px; transform:translateX(-50%); background:rgba(13,27,42,.82); border:1px solid var(--line); border-radius:12px; padding:8px 16px; font-size:18px; font-weight:700; text-align:center; pointer-events:none; max-width:90%; }
   #aviso:empty { display:none }
+  #pide { position:absolute; left:10px; top:10px; z-index:2; background:rgba(13,27,42,.82); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:16px; max-width:45% }
+  #pide b { font-size:20px }
+  #aviso { top:auto !important; bottom:14px }
   #escena #mira { z-index:2; position:absolute; right:10px; top:10px; width:120px !important; height:132px !important; background:rgba(13,27,42,.75); border:1px solid var(--line); border-radius:10px }
   main { max-width:1100px; margin:0 auto; padding:14px 16px 30px }
   .datos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
@@ -32,6 +35,7 @@
   .dato b { display:block; font-size:22px } .dato span { font-size:12px; color:var(--dim) }
   .botones { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center }
   .chk { display:flex; gap:6px; align-items:center; cursor:pointer }
+  select { font:inherit; background:#2b4a6b; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:5px 8px }
   .ayuda { color:var(--dim); font-size:14px; margin:10px 0 0 }
 </style>
 </head>
@@ -50,7 +54,7 @@
     <p class="ayuda">Escanea el QR con el móvil, activa los sensores y calibra (de cara a la pantalla). Luego, cuando llegue la bola, haz el drive con el móvil.</p>
   </div>
 </div>
-<div id="escena"><div id="aviso"></div><canvas id="mira" width="120" height="132" title="Hacia dónde apunta la pala ahora: apuntando al ordenador, el punto debe quedar en el centro"></canvas></div>
+<div id="escena"><div id="pide">Pulsa «Lanzar bola»</div><div id="aviso"></div><canvas id="mira" width="120" height="132" title="Hacia dónde apunta la pala ahora: apuntando al ordenador, el punto debe quedar en el centro"></canvas></div>
 <main>
   <div class="datos">
     <div class="dato"><b id="dMomento">—</b><span>momento del golpe</span></div>
@@ -62,6 +66,9 @@
   <div class="botones">
     <button id="bola" class="prim">Lanzar bola</button>
     <label class="chk"><input type="checkbox" id="auto" checked> Bolas seguidas</label>
+    <label class="chk">Golpe pedido
+      <select id="modo"><option value="alterno">Alterno: cruzado y paralelo</option><option value="cruzado">Solo cruzado</option><option value="paralelo">Solo paralelo</option><option value="libre">Libre (sin pedir)</option></select>
+    </label>
     <button id="bajar">Descargar datos (0)</button>
     <button id="borrar">Borrar todo</button>
   </div>
@@ -155,8 +162,13 @@ red.position.set(0, 0.44, 0); scene.add(red);
 const cristal = new THREE.Mesh(new THREE.BoxGeometry(10, 3, 0.05), new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.18 }));
 cristal.position.set(0, 1.5, -10); scene.add(cristal);
 // zonas de referencia: cruzado (izquierda, fondo) y paralelo (derecha, fondo)
-const zona = (x, z, color) => { const m = new THREE.Mesh(new THREE.CircleGeometry(1.4, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.015, z); scene.add(m); };
-zona(-3.2, -7.2, 0x3ddc84); zona(3.2, -7.2, 0xffd23f);
+const zona = (x, z, color) => { const m = new THREE.Mesh(new THREE.CircleGeometry(1.4, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.015, z); scene.add(m); return m; };
+// golpes que se piden: cruzado (zona verde, a la izquierda) y paralelo (zona amarilla, a la derecha)
+const OBJETIVOS = {
+  cruzado: { nombre: 'Drive cruzado', zonaTxt: 'zona verde', x: -3.2, z: -7.2, radio: 1.4, color: '#3ddc84' },
+  paralelo: { nombre: 'Drive paralelo', zonaTxt: 'zona amarilla', x: 3.2, z: -7.2, radio: 1.4, color: '#ffd23f' },
+};
+OBJETIVOS.cruzado.malla = zona(-3.2, -7.2, 0x3ddc84); OBJETIVOS.paralelo.malla = zona(3.2, -7.2, 0xffd23f);
 // rival que lanza (de adorno)
 const persona = color => { const g = new THREE.Group(); const cuerpo = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.9, 4, 10), new THREE.MeshStandardMaterial({ color })); cuerpo.position.y = 0.85; g.add(cuerpo);
   const cab = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf0c8a0 })); cab.position.y = 1.65; g.add(cab); scene.add(g); return g; };
@@ -206,12 +218,24 @@ const PREPARACION = -450;       // ms: un gesto tan adelantado es la preparació
 const ESPERA_FALLO = 900;       // ms después del contacto: si no ha llegado ningún golpe que valga, fallo
 const K_MOMENTO = 0.10;         // grados por ms: 100 ms tarde = 10° más paralela (a la derecha)
 function aviso(txt) { $('aviso').innerHTML = txt; }
+let objetivo = null, nBola = 0;
+function eligeObjetivo() {
+  const m = $('modo').value; nBola++;
+  if (m === 'libre') return null;
+  if (m === 'alterno') return nBola % 2 ? OBJETIVOS.cruzado : OBJETIVOS.paralelo;
+  return OBJETIVOS[m];
+}
+function pintaObjetivo() {
+  for (const o of Object.values(OBJETIVOS)) o.malla.material.opacity = !objetivo ? 0.25 : o === objetivo ? 0.6 : 0.08;
+  $('pide').innerHTML = objetivo ? 'Toca: <b style="color:' + objetivo.color + '">' + objetivo.nombre.toUpperCase() + '</b> <span class="peq">(' + objetivo.zonaTxt + ')</span>' : 'Golpe libre';
+}
 function lanzar() {
   // (antes no se lanzaba si la bola golpeada seguía en el aire: la siguiente llega a los 2,6 s y esa animación dura
   // 3 s, así que las «bolas seguidas» se quedaban paradas)
   if (fase === 'viene') return;
   clearTimeout(siguiente); fase = 'viene'; tLanz = ahoraAbs(); salida = null; marca.visible = false;
-  aviso(desfase == null ? 'Bola… (el reloj del móvil aún no está sincronizado)' : '');
+  objetivo = eligeObjetivo(); pintaObjetivo();
+  aviso(desfase == null ? 'Bola… (el reloj del móvil aún no está sincronizado)' : objetivo ? '<span style="color:' + objetivo.color + '">' + objetivo.nombre + '</span>' : '');
 }
 const tContactoAbs = () => tLanz + ENTRA.tC * 1000;
 function programaSiguiente() { clearTimeout(siguiente); if ($('auto').checked) siguiente = setTimeout(lanzar, 2600); }
@@ -256,19 +280,24 @@ function golpea(g, dt) {
   salida = { t0: ahoraAbs(), P, v: { x: Math.sin(r) * vh, y: vy, z: -Math.cos(r) * vh }, bote: { x: P.x + Math.sin(r) * dist, z: P.z - Math.cos(r) * dist } };
   fase = 'sale'; giroPala = 1;
   const dentro = Math.abs(salida.bote.x) <= 5 && salida.bote.z <= 0 && salida.bote.z >= -10;
+  const enZona = objetivo ? Math.hypot(salida.bote.x - objetivo.x, salida.bote.z - objetivo.z) <= objetivo.radio : null;
+  const aZona = objetivo ? Math.hypot(salida.bote.x - objetivo.x, salida.bote.z - objetivo.z) : null;
   const momentoTxt = Math.abs(dt) < 25 ? 'justo' : Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde');
   $('dMomento').textContent = momentoTxt; $('dDir').textContent = (Math.abs(dir) < 3 ? 'centro' : (dir < 0 ? 'cruzado ' : 'paralelo ') + Math.round(Math.abs(dir)) + '°');
   $('dDir').title = 'cara ' + Math.round(dirCara) + '° · momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°';
   $('dAlt').textContent = cima.toFixed(1).replace('.', ',') + ' m'; $('dEfecto').textContent = efecto;
-  aviso((dentro ? '' : '<span style="color:var(--rojo)">Fuera</span> · ') + momentoTxt + ' · ' + $('dDir').textContent + ' <span class="peq">(cara ' + Math.round(dirCara) + '°, momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°)</span>');
-  ultimo = { hora: new Date().toISOString(), id: g.id, memo: false, dt: Math.round(dt), rtt: Math.round(rttMejor || 0), resultado: { dir: +dir.toFixed(1), dirCara: +dirCara.toFixed(1), dirMomento: +dirMomento.toFixed(1), cima: +cima.toFixed(2), dist: +dist.toFixed(2), efecto, dentro, bote: { x: +salida.bote.x.toFixed(2), z: +salida.bote.z.toFixed(2) } }, medido: (({ raw, t, ...x }) => x)(g), raw: g.raw };
+  const veredicto = !dentro ? '<span style="color:var(--rojo)">Fuera</span> · '
+    : enZona === true ? '<span style="color:var(--verde)">¡En la zona!</span> · '
+    : enZona === false ? '<span style="color:var(--amar)">A ' + aZona.toFixed(1).replace('.', ',') + ' m de la zona</span> · ' : '';
+  aviso(veredicto + momentoTxt + ' · ' + $('dDir').textContent + ' <span class="peq">(cara ' + Math.round(dirCara) + '°, momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°)</span>');
+  ultimo = { hora: new Date().toISOString(), id: g.id, memo: false, dt: Math.round(dt), objetivo: objetivo ? (objetivo === OBJETIVOS.cruzado ? 'cruzado' : 'paralelo') : null, enZona, aZona: aZona == null ? null : +aZona.toFixed(2), rtt: Math.round(rttMejor || 0), resultado: { dir: +dir.toFixed(1), dirCara: +dirCara.toFixed(1), dirMomento: +dirMomento.toFixed(1), cima: +cima.toFixed(2), dist: +dist.toFixed(2), efecto, dentro, bote: { x: +salida.bote.x.toFixed(2), z: +salida.bote.z.toFixed(2) } }, medido: (({ raw, t, ...x }) => x)(g), raw: g.raw };
   golpes.push(ultimo); guarda(); pintaCuenta();
   programaSiguiente();
 }
 function fallo(txt, dt, g) {
   fase = 'fallo';
   aviso('<span style="color:var(--rojo)">' + txt + '</span>' + (dt != null ? ' <span class="peq">(' + Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') + ')</span>' : ''));
-  if (g) { golpes.push({ hora: new Date().toISOString(), id: g.id, memo: false, fallo: txt, dt: dt != null ? Math.round(dt) : null, rtt: Math.round(rttMejor || 0), medido: (({ raw, t, ...x }) => x)(g), raw: g.raw }); guarda(); pintaCuenta(); }
+  if (g) { golpes.push({ hora: new Date().toISOString(), id: g.id, memo: false, fallo: txt, objetivo: objetivo ? (objetivo === OBJETIVOS.cruzado ? 'cruzado' : 'paralelo') : null, dt: dt != null ? Math.round(dt) : null, rtt: Math.round(rttMejor || 0), medido: (({ raw, t, ...x }) => x)(g), raw: g.raw }); guarda(); pintaCuenta(); }
   $('dMomento').textContent = dt != null ? Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') : '—';
   programaSiguiente();
 }
