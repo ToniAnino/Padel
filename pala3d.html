@@ -25,6 +25,7 @@
   #escena canvas { display:block; width:100% !important; height:100% !important }
   #aviso { position:absolute; left:50%; top:14px; transform:translateX(-50%); background:rgba(13,27,42,.82); border:1px solid var(--line); border-radius:12px; padding:8px 16px; font-size:18px; font-weight:700; text-align:center; pointer-events:none; max-width:90%; }
   #aviso:empty { display:none }
+  #escena #mira { z-index:2; position:absolute; right:10px; top:10px; width:120px !important; height:132px !important; background:rgba(13,27,42,.75); border:1px solid var(--line); border-radius:10px }
   main { max-width:1100px; margin:0 auto; padding:14px 16px 30px }
   .datos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
   .dato { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px }
@@ -49,7 +50,7 @@
     <p class="ayuda">Escanea el QR con el móvil, activa los sensores y calibra (de cara a la pantalla). Luego, cuando llegue la bola, haz el drive con el móvil.</p>
   </div>
 </div>
-<div id="escena"><div id="aviso"></div></div>
+<div id="escena"><div id="aviso"></div><canvas id="mira" width="120" height="132" title="Hacia dónde apunta la pala ahora: apuntando al ordenador, el punto debe quedar en el centro"></canvas></div>
 <main>
   <div class="datos">
     <div class="dato"><b id="dMomento">—</b><span>momento del golpe</span></div>
@@ -206,7 +207,9 @@ const ESPERA_FALLO = 900;       // ms después del contacto: si no ha llegado ni
 const K_MOMENTO = 0.10;         // grados por ms: 100 ms tarde = 10° más paralela (a la derecha)
 function aviso(txt) { $('aviso').innerHTML = txt; }
 function lanzar() {
-  if (fase === 'viene' || fase === 'sale') return;
+  // (antes no se lanzaba si la bola golpeada seguía en el aire: la siguiente llega a los 2,6 s y esa animación dura
+  // 3 s, así que las «bolas seguidas» se quedaban paradas)
+  if (fase === 'viene') return;
   clearTimeout(siguiente); fase = 'viene'; tLanz = ahoraAbs(); salida = null; marca.visible = false;
   aviso(desfase == null ? 'Bola… (el reloj del móvil aún no está sincronizado)' : '');
 }
@@ -214,13 +217,20 @@ const tContactoAbs = () => tLanz + ENTRA.tC * 1000;
 function programaSiguiente() { clearTimeout(siguiente); if ($('auto').checked) siguiente = setTimeout(lanzar, 2600); }
 
 // ================= Llega un gesto del móvil =================
-let golpes = [], ultimo = null;
+let golpes = [], ultimo = null, calibrado = false, ori = null, oriT = 0;
+const TXT_CALIBRA = 'Falta calibrar: en el móvil, ponte como al pegar un drive (móvil tumbado, pantalla mirando al ordenador) y pulsa <b>Calibrar</b>';
 try { golpes = JSON.parse(localStorage.getItem('pala3d') || '[]'); } catch (_) { golpes = []; }
 const guarda = () => { try { localStorage.setItem('pala3d', JSON.stringify(golpes)); } catch (_) {} };
 function recibe(d) {
   if (!d || typeof d !== 'object') return;
   if (d.t === 'pong') { pong(d); return; }
-  if (d.t === 'hola') { estado('Móvil conectado' + (d.cal ? '' : ' · falta calibrar'), 'ok'); sincroniza(); $('qrBox').hidden = true; return; }
+  if (d.t === 'hola') {
+    calibrado = !!d.cal; estado('Móvil conectado' + (calibrado ? ' y calibrado' : ' · falta calibrar'), calibrado ? 'ok' : 'esp'); sincroniza(); $('qrBox').hidden = true;
+    if (!calibrado) aviso(TXT_CALIBRA);
+    return;
+  }
+  if (d.t === 'cal') { calibrado = true; estado('Móvil conectado y calibrado', 'ok'); aviso('Calibrado ✓ · comprueba arriba a la derecha que el punto queda en el centro apuntando al ordenador'); return; }
+  if (d.t === 'ori') { ori = d; oriT = performance.now(); return; }
   if (d.t === 'gesto') { gesto(d); return; }
   if (d.t === 'memoriza') { if (ultimo && !ultimo.memo) { ultimo.memo = true; guarda(); pintaCuenta(); aviso('Memorizado ✓'); } return; }
 }
@@ -268,6 +278,22 @@ function pintaCuenta() {
 }
 pintaCuenta();
 
+// mira: hacia dónde apunta la pala ahora (±60° de lado y de altura en el borde); sirve para comprobar la calibración
+const cMira = $('mira').getContext('2d');
+function pintaMira() {
+  const c = cMira, W = 120, cx = 60, cy = 60; c.clearRect(0, 0, W, 132);
+  c.strokeStyle = 'rgba(255,255,255,.25)'; c.lineWidth = 1;
+  for (const r of [18, 36, 54]) { c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke(); }
+  c.beginPath(); c.moveTo(6, cy); c.lineTo(W - 6, cy); c.moveTo(cx, 6); c.lineTo(cx, 114); c.stroke();
+  c.font = '11px system-ui'; c.textAlign = 'center'; c.fillStyle = 'rgba(238,243,248,.7)';
+  const vivo = ori && performance.now() - oriT < 1500;
+  if (vivo) {
+    const x = cx + clamp(ori.dir / 60, -1, 1) * 54, y = cy - clamp(ori.alt / 60, -1, 1) * 54;
+    c.fillStyle = ori.w > 250 ? '#ff4757' : '#3ddc84'; c.beginPath(); c.arc(x, y, 7, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(238,243,248,.7)'; c.fillText('pala ahora', cx, 128);
+  } else c.fillText(calibrado ? 'sin datos' : 'sin calibrar', cx, 128);
+}
+
 // ================= Animación =================
 let giroPala = 0, tAnt = performance.now();
 function frame() {
@@ -293,6 +319,7 @@ function frame() {
   if (giroPala > 0) giroPala = Math.max(0, giroPala - dtF * 3);
   pala.rotation.y = giroPala > 0 ? -1.2 + 2.4 * (1 - giroPala) : -0.4;   // (atrás → delante al golpear)
   renderer.render(scene, camera);
+  pintaMira();
   requestAnimationFrame(frame);
 }
 frame();
