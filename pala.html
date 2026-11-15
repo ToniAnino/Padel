@@ -416,6 +416,11 @@ const EJERCICIOS = [
   { id: 'drive-globo-fondo-izq', nombre: 'Drive · globo al fondo a la izquierda', tipo: 'drive', bote: { x: -3, z: -8.3 }, radio: 1.5, cima: 6, cimaMin: 5 },
   { id: 'drive-cortado-centro', nombre: 'Drive cortado · bola baja al centro', tipo: 'drive', efecto: 'cortado', bote: { x: 0, z: -7.5 }, radio: 1.5, cima: 1.6, cimaMin: 1.1, cimaMax: 2.6 },
   { id: 'drive-liftado-der', nombre: 'Drive liftado · cruzado a la derecha', tipo: 'drive', efecto: 'liftado', bote: { x: 3, z: -7 }, radio: 1.5, cima: 2.6, cimaMin: 1.6, cimaMax: 4 },
+  // revés: se golpea con la espalda del móvil por delante
+  { id: 'reves-plano-izq', nombre: 'Revés plano · a la izquierda, junto a la pared', tipo: 'reves', efecto: 'plano', bote: { x: -4.2, z: -6 }, radio: 1.5, cima: 1.8, cimaMin: 1.1, cimaMax: 2.8 },
+  { id: 'reves-plano-der', nombre: 'Revés plano · a la derecha, junto a la pared', tipo: 'reves', efecto: 'plano', bote: { x: 4.2, z: -6 }, radio: 1.5, cima: 1.8, cimaMin: 1.1, cimaMax: 2.8 },
+  { id: 'reves-globo-fondo-der', nombre: 'Revés · globo al fondo a la derecha', tipo: 'reves', bote: { x: 3, z: -8.3 }, radio: 1.5, cima: 6, cimaMin: 5 },
+  { id: 'reves-cortado-centro', nombre: 'Revés cortado · bola baja al centro', tipo: 'reves', efecto: 'cortado', bote: { x: 0, z: -7.5 }, radio: 1.5, cima: 1.6, cimaMin: 1.1, cimaMax: 2.6 },
 ];
 const EF_Y = { cortado: -2, plano: 0, liftado: 2 };
 // qué medidas usa cada una (la dirección, también la cara: con la cara muy abierta, como en el globo, la dirección
@@ -612,11 +617,12 @@ function pintaGuiado() {
   $('guOlvidar').textContent = 'Olvidar este golpe (' + gu.muestras.filter(m => m.ej === e.id).length + ')';
 }
 function pintaModelo() {
-  const dr = gu.muestras.filter(m => m.tipo === 'drive'), n = dr.filter(aprende).length;
+  const tipo = EJERCICIOS[gu.idx].tipo, nomTipo = (TIPO[tipo] || tipo).toLowerCase();
+  const dr = gu.muestras.filter(m => m.tipo === tipo), n = dr.filter(aprende).length;
   const num = v => (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
-  const f = k => { const w = ajusta('drive', k); return num(w.b) + SALIDAS[k].map((q, i) => (w.a[i] >= 0 ? ' + ' : ' − ') + num(Math.abs(w.a[i])) + '·' + NOMBRE_MEDIDA[q]).join(''); };
+  const f = k => { const w = ajusta(tipo, k); return num(w.b) + SALIDAS[k].map((q, i) => (w.a[i] >= 0 ? ' + ' : ' − ') + num(Math.abs(w.a[i])) + '·' + NOMBRE_MEDIDA[q]).join(''); };
   const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => (m.dentro ? '●' : '○') + (m.memo ? '' : '<sub>x</sub>')).join(' ');
-  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes memorizados, ' + (dr.length - n) + ' sin memorizar):<br>dirección = ' + f('dir') + '° <span class="vacio">(a la dirección medida se le quita ' + kMuñeca('drive').toFixed(0) + '°·muñeca)</span><br>altura = ' + f('cima') + ' m<br>distancia = ' + f('dist') + ' m<br>efecto = ' + f('efe') + ' <span class="vacio">(&gt; 1 liftado, &lt; −1 cortado)</span>' +
+  $('guModelo').innerHTML = 'Lo aprendido del ' + nomTipo + ' (' + n + ' golpes memorizados, ' + (dr.length - n) + ' sin memorizar):<br>dirección = ' + f('dir') + '° <span class="vacio">(a la dirección medida se le quita ' + kMuñeca(tipo).toFixed(0) + '°·muñeca)</span><br>altura = ' + f('cima') + ' m<br>distancia = ' + f('dist') + ' m<br>efecto = ' + f('efe') + ' <span class="vacio">(&gt; 1 liftado, &lt; −1 cortado)</span>' +
     (ult ? '<br>Últimos intentos: ' + ult + ' <span class="vacio">(● dentro · <sub>x</sub> sin memorizar)</span>' : '');
 }
 $('guBueno').onclick = () => {
