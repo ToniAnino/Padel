@@ -418,15 +418,19 @@ const EJERCICIOS = [
   { id: 'drive-liftado-der', nombre: 'Drive liftado · cruzado a la derecha', tipo: 'drive', efecto: 'liftado', bote: { x: 3, z: -7 }, radio: 1.5, cima: 2.6, cimaMin: 1.6, cimaMax: 4 },
 ];
 const EF_Y = { cortado: -2, plano: 0, liftado: 2 };
-const SALIDAS = { dir: ['dir'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] };   // qué medidas usa cada una
+// qué medidas usa cada una (la dirección, también la cara: con la cara muy abierta, como en el globo, la dirección
+// medida se tuerce mucho hacia un lado)
+const SALIDAS = { dir: ['dir', 'cara'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] };
 const NOMBRE_MEDIDA = { dir: 'dirección', cara: 'cara', vzp: 'subida', fuerza: 'fuerza' };
 const PRIOR = {   // lectura inicial (antes de aprender): b y las pendientes de cada medida
-  drive: { dir: { b: 0, a: [0.45] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
-  reves: { dir: { b: -4, a: [0.45] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
-  remate: { dir: { b: 0, a: [0.45] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
+  drive: { dir: { b: 0, a: [0.9, 0] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  reves: { dir: { b: -4, a: [0.45, 0] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  remate: { dir: { b: 0, a: [0.45, 0] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
 };
 const ESCALA = { dir: 30, cara: 30, vzp: 3, fuerza: 0.3 };   // dispersión típica de cada medida (para el tirón)
-const LAMBDA_A = 3, LAMBDA_B = 1;
+// tirón hacia la lectura inicial: flojo (con varios ejercicios mandan los datos); el del desplazamiento, más flojo
+// que el de las pendientes, para que con un solo ejercicio se corrija sobre todo el desplazamiento
+const LAMBDA_A = 0.5, LAMBDA_B = 0.2;
 // velocidad vertical de la pala hasta el impacto (m/s, + sube), con los datos en bruto del golpe
 const D_ = Math.PI / 180;
 function matrizOri(a, b, g) {
@@ -475,13 +479,23 @@ function pesos(tipo) {
   }
   return out;
 }
+// Se aprende con la MEDIA de cada ejercicio (ponderada por los pesos de arriba), no golpe a golpe: la medida varía
+// mucho de un golpe a otro y, ajustando golpe a golpe, ese ruido aplasta la pendiente y todo acaba yendo al centro.
+// Cada ejercicio cuenta como mucho como MEDIA_TOPE golpes.
+const MEDIA_TOPE = 8;
 function ajusta(tipo, k, P) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
   const pr = (PRIOR[tipo] || PRIOR.drive)[k], med = SALIDAS[k], n = med.length + 1;
   const pen = [LAMBDA_B, ...med.map(q => LAMBDA_A * ESCALA[q] * ESCALA[q])], w0 = [pr.b, ...pr.a];
   const A = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? pen[i] : 0)), r = w0.map((v, i) => v * pen[i]);
+  const grupos = new Map();   // ejercicio → { sp, sx[], sy }
   for (const [m, p] of (P || pesos(tipo))) {
     const y = m.y[k]; if (y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
     const f = fDe(m), x = [1, ...med.map(q => f[q])];
+    let g = grupos.get(m.ej); if (!g) grupos.set(m.ej, g = { sp: 0, sx: x.map(() => 0), sy: 0 });
+    g.sp += p; g.sy += p * y; x.forEach((v, i) => g.sx[i] += p * v);
+  }
+  for (const g of grupos.values()) {
+    const x = g.sx.map(v => v / g.sp), y = g.sy / g.sp, p = Math.min(MEDIA_TOPE, 2 * g.sp);
     for (let i = 0; i < n; i++) { r[i] += p * x[i] * y; for (let j = 0; j < n; j++) A[i][j] += p * x[i] * x[j]; }
   }
   const w = resuelve(A, r) || w0;
