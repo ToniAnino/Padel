@@ -182,6 +182,7 @@ function recibe(d) {
   if (d.t === 'hola') { estado('Móvil conectado' + via + (d.cal ? '' : ' · falta calibrar'), 'ok'); return; }
   if (d.t === 'cal') { estado('Móvil conectado y calibrado' + via, 'ok'); return; }
   if (d.t === 'golpe') muestraGolpe(d);
+  if (d.t === 'memoriza' && window.guiadoMemoriza) guiadoMemoriza(d.id);
 }
 
 const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
@@ -402,24 +403,55 @@ window.AJ = { aj, get golpes() { return ajGolpes; } };   // (pruebas)
 <script>
 // ===== Entrenamiento guiado: se propone un golpe (zona de bote y altura), el jugador lo repite y se aprende una sola
 // lectura por tipo de golpe con TODAS las repeticiones (no un apaño para acertar este objetivo) =====
-// Lectura: dirección = a·dirMedida + b · altura de la cima = a·caraMedida + b · distancia = a·fuerza + b.
+// Lectura: dirección = b + a·dirección medida · altura de la cima = b + a1·cara + a2·subida · distancia = b + a·fuerza
+// · efecto = b + a·subida (> 1 liftado, < −1 cortado). «Subida» = velocidad vertical de la pala hasta el impacto.
 // Cada una se ajusta por mínimos cuadrados con un "tirón" hacia la lectura inicial (sin datos variados, las
-// pendientes apenas se mueven y se aprende sobre todo el desplazamiento).
+// pendientes apenas se mueven y se aprende sobre todo el desplazamiento). Solo aprenden los golpes que el jugador
+// ha memorizado con el botón del móvil.
 const GU_KEY = 'palaGuiado';
 const EJERCICIOS = [
+  { id: 'drive-plano-izq', nombre: 'Drive plano · a la izquierda, junto a la pared', tipo: 'drive', efecto: 'plano', bote: { x: -4.2, z: -6 }, radio: 1.5, cima: 1.8, cimaMin: 1.1, cimaMax: 2.8 },
+  { id: 'drive-plano-der', nombre: 'Drive plano · a la derecha, junto a la pared', tipo: 'drive', efecto: 'plano', bote: { x: 4.2, z: -6 }, radio: 1.5, cima: 1.8, cimaMin: 1.1, cimaMax: 2.8 },
   { id: 'drive-globo-fondo-izq', nombre: 'Drive · globo al fondo a la izquierda', tipo: 'drive', bote: { x: -3, z: -8.3 }, radio: 1.5, cima: 6, cimaMin: 5 },
   { id: 'drive-cortado-centro', nombre: 'Drive cortado · bola baja al centro', tipo: 'drive', efecto: 'cortado', bote: { x: 0, z: -7.5 }, radio: 1.5, cima: 1.6, cimaMin: 1.1, cimaMax: 2.6 },
   { id: 'drive-liftado-der', nombre: 'Drive liftado · cruzado a la derecha', tipo: 'drive', efecto: 'liftado', bote: { x: 3, z: -7 }, radio: 1.5, cima: 2.6, cimaMin: 1.6, cimaMax: 4 },
 ];
-// efecto: se aprende una puntuación = a·(velocidad vertical del gesto, m/s) + b; > 1 liftado, < −1 cortado
 const EF_Y = { cortado: -2, plano: 0, liftado: 2 };
-const PRIOR = {   // lectura inicial (antes de aprender)
-  drive: { dir: [0.45, 0], cima: [0.09, 2.2], dist: [10, 8], efe: [1.67, 0] },
-  reves: { dir: [0.45, -4], cima: [0.09, -1.0], dist: [10, 8], efe: [1.67, 0] },
-  remate: { dir: [0.45, 0], cima: [0.03, 2.5], dist: [8, 7], efe: [1.67, 0] },
+const SALIDAS = { dir: ['dir'], cima: ['cara', 'vzp'], dist: ['fuerza'], efe: ['vzp'] };   // qué medidas usa cada una
+const NOMBRE_MEDIDA = { dir: 'dirección', cara: 'cara', vzp: 'subida', fuerza: 'fuerza' };
+const PRIOR = {   // lectura inicial (antes de aprender): b y las pendientes de cada medida
+  drive: { dir: { b: 0, a: [0.45] }, cima: { b: 1.6, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  reves: { dir: { b: -4, a: [0.45] }, cima: { b: -0.5, a: [0.05, 0.22] }, dist: { b: 8, a: [10] }, efe: { b: 0, a: [0.5] } },
+  remate: { dir: { b: 0, a: [0.45] }, cima: { b: 2.5, a: [0.02, 0.1] }, dist: { b: 7, a: [8] }, efe: { b: 0, a: [0.5] } },
 };
-const ESCALA = { dir: 30, cima: 30, dist: 0.3, efe: 1 };   // dispersión típica de cada medida (para el tirón)
+const ESCALA = { dir: 30, cara: 30, vzp: 3, fuerza: 0.3 };   // dispersión típica de cada medida (para el tirón)
 const LAMBDA_A = 3, LAMBDA_B = 1;
+// velocidad vertical de la pala hasta el impacto (m/s, + sube), con los datos en bruto del golpe
+const D_ = Math.PI / 180;
+function matrizOri(a, b, g) {
+  const cA = Math.cos(a * D_), sA = Math.sin(a * D_), cB = Math.cos(b * D_), sB = Math.sin(b * D_), cG = Math.cos(g * D_), sG = Math.sin(g * D_);
+  return [[cA * cG - sA * sB * sG, -cB * sA, cA * sG + cG * sA * sB], [cG * sA + cA * sB * sG, cA * cB, sA * sG - cA * cG * sB], [-cB * sG, sB, cB * cG]];
+}
+function subidaHastaPico(raw) {
+  const s = raw && raw.s; if (!s || s.length < 2) return null;
+  let k = 0; s.forEach((q, i) => { if (Math.hypot(q[1], q[2], q[3]) > Math.hypot(s[k][1], s[k][2], s[k][3])) k = i; });
+  let vz = 0;
+  for (let i = 1; i <= k; i++) { const p = s[i], R = matrizOri(p[10], p[11], p[12]), dt = (p[0] - s[i - 1][0]) / 1000; vz += (R[2][0] * p[4] + R[2][1] * p[5] + R[2][2] * p[6]) * dt; }
+  return vz;
+}
+const medidas = g => { const v = subidaHastaPico(g.raw); return { dir: g.dir, cara: g.alt, fuerza: g.fuerza, vzp: v != null ? v : (g.vzPico || 0) }; };
+const fDe = m => m.fv || (m.fv = medidas({ ...m.medido, raw: m.raw }));   // (también vale para los golpes guardados antes)
+const aprende = m => m.memo !== false && (!m.medido || m.medido.wMax >= 450);   // memorizados (los antiguos, salvo preparaciones)
+function resuelve(A, b) {   // sistema lineal pequeño (Gauss)
+  const n = b.length; A = A.map(r => r.slice()); b = b.slice();
+  for (let i = 0; i < n; i++) {
+    let mx = i; for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[mx][i])) mx = r;
+    [A[i], A[mx]] = [A[mx], A[i]]; [b[i], b[mx]] = [b[mx], b[i]];
+    if (Math.abs(A[i][i]) < 1e-12) return null;
+    for (let r = 0; r < n; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let c = i; c < n; c++) A[r][c] -= f * A[i][c]; b[r] -= f * b[i]; }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
 const GU_INI = { x: 0.8, z: 8.3 };   // donde se supone que estás (fondo de vuestro campo)
 let gu = { idx: 0, muestras: [] };
 try { const s = JSON.parse(localStorage.getItem(GU_KEY) || 'null'); if (s && Array.isArray(s.muestras)) gu = { idx: Math.min(s.idx || 0, EJERCICIOS.length - 1), muestras: s.muestras }; } catch (_) {}
@@ -428,23 +460,23 @@ const cvGA = $('guArriba'), cvGL = $('guLado');
 let guUlt = null;   // último intento: { pred, err, dentro, aviso }
 
 const objetivo = e => { const dx = e.bote.x - GU_INI.x, dz = GU_INI.z - e.bote.z; return { dir: Math.atan2(dx, dz) * 180 / Math.PI, dist: Math.hypot(dx, dz), cima: e.cima, efe: e.efecto ? EF_Y[e.efecto] : null }; };
-const feat = g => ({ dir: g.dir, cima: g.alt, dist: g.fuerza, efe: g.vz || 0 });
 const EF_TXT = { liftado: 'liftado', cortado: 'cortado', plano: 'plano' };
-function ajusta(tipo, k) {   // [a, b] de una salida, con lo aprendido hasta ahora
-  const [a0, b0] = (PRIOR[tipo] || PRIOR.drive)[k], sx2 = ESCALA[k] * ESCALA[k];
-  let Sxx = LAMBDA_A * sx2, Sx = 0, n = LAMBDA_B, Sxy = LAMBDA_A * sx2 * a0, Sy = LAMBDA_B * b0;
+function ajusta(tipo, k) {   // { b, a: [...] } de una salida, con lo aprendido hasta ahora
+  const pr = (PRIOR[tipo] || PRIOR.drive)[k], med = SALIDAS[k], n = med.length + 1;
+  const pen = [LAMBDA_B, ...med.map(q => LAMBDA_A * ESCALA[q] * ESCALA[q])], w0 = [pr.b, ...pr.a];
+  const A = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? pen[i] : 0)), r = w0.map((v, i) => v * pen[i]);
   for (const m of gu.muestras) {
-    if (m.tipo !== tipo) continue;
-    const x = m.f[k] != null ? m.f[k] : (k === 'efe' ? (m.medido && m.medido.vz) || 0 : null), y = m.y[k];
-    if (x == null || y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
-    Sxx += x * x; Sx += x; n += 1; Sxy += x * y; Sy += y;
+    if (m.tipo !== tipo || !aprende(m)) continue;
+    const y = m.y[k]; if (y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
+    const f = fDe(m), x = [1, ...med.map(q => f[q])];
+    for (let i = 0; i < n; i++) { r[i] += x[i] * y; for (let j = 0; j < n; j++) A[i][j] += x[i] * x[j]; }
   }
-  const det = Sxx * n - Sx * Sx; if (Math.abs(det) < 1e-9) return [a0, b0];
-  return [(Sxy * n - Sx * Sy) / det, (Sxx * Sy - Sx * Sxy) / det];
+  const w = resuelve(A, r) || w0;
+  return { b: w[0], a: w.slice(1) };
 }
 function predice(g) {
-  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = feat(g), p = {};
-  for (const k of ['dir', 'cima', 'dist', 'efe']) { const [a, b] = ajusta(t, k); p[k] = a * f[k] + b; }
+  const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = medidas(g), p = {};
+  for (const k of Object.keys(SALIDAS)) { const w = ajusta(t, k); p[k] = w.b + SALIDAS[k].reduce((s, q, i) => s + w.a[i] * f[q], 0); }
   p.efecto = p.efe > 1 ? 'liftado' : p.efe < -1 ? 'cortado' : 'plano';
   p.dir = lim(p.dir, -60, 60); p.cima = lim(p.cima, 0.9, 9.5); p.dist = lim(p.dist, 3, 19.5);
   const r = p.dir * Math.PI / 180;
@@ -465,17 +497,29 @@ window.guiadoNuevo = function (g) {
   const err = Math.hypot(pred.bote.x - e.bote.x, pred.bote.z - e.bote.z), altOk = pred.cima >= e.cimaMin && (!e.cimaMax || pred.cima <= e.cimaMax);
   const efOk = !e.efecto || pred.efecto === e.efecto;
   const dentro = err <= e.radio && altOk && efOk, mu = muñeca(g);
-  gu.muestras.push({ hora: new Date(g.hora || Date.now()).toISOString(), ej: e.id, tipo: g.tipo, f: feat(g), y: obj, pred: { dir: +pred.dir.toFixed(1), cima: +pred.cima.toFixed(2), dist: +pred.dist.toFixed(2), efe: +pred.efe.toFixed(2), efecto: pred.efecto }, err: +err.toFixed(2), dentro, medido: (({ raw, t, ...r }) => r)(g), raw: g.raw });
-  guGuarda();   // …y luego se aprende de él
+  // se guarda sin aprender (memo: false) hasta que el jugador pulse «Memorizar» en el móvil; un móvil sin el botón
+  // (página antigua) no lo puede mandar: entonces se aprende directamente, como antes
+  const conBoton = g.id != null;
+  gu.muestras.push({ hora: new Date(g.hora || Date.now()).toISOString(), id: g.id, memo: !conBoton, ej: e.id, tipo: g.tipo, y: obj, pred: { dir: +pred.dir.toFixed(1), cima: +pred.cima.toFixed(2), dist: +pred.dist.toFixed(2), efe: +pred.efe.toFixed(2), efecto: pred.efecto }, err: +err.toFixed(2), dentro, medido: (({ raw, t, ...r }) => r)(g), raw: g.raw });
+  guGuarda();
   const intentos = gu.muestras.filter(m => m.ej === e.id).length;
   guUlt = { pred, err, dentro, mu };
-  $('guMarcador').innerHTML = (dentro ? '<span class="ok">¡Dentro!</span> ' : '<span class="no">A ' + err.toFixed(1).replace('.', ',') + ' m de la zona.</span> ') +
+  guTexto = (dentro ? '<span class="ok">¡Dentro!</span> ' : '<span class="no">A ' + err.toFixed(1).replace('.', ',') + ' m de la zona.</span> ') +
     'Altura ' + pred.cima.toFixed(1).replace('.', ',') + ' m' + (altOk ? '' : pred.cima < e.cimaMin ? ' (busca al menos ' + e.cimaMin + ' m)' : ' (demasiado alta: como mucho ' + e.cimaMax + ' m)') +
     ' · efecto ' + EF_TXT[pred.efecto] + (efOk ? '' : ' <span class="no">(tiene que ser ' + e.efecto + ')</span>') + ' · intento ' + intentos +
-    (dentro ? '<br>Si te parece bien, pulsa <b>Bueno, siguiente golpe</b>; o repite para afinar.' : '<br>Repite el mismo golpe: ya he aprendido de este.') +
     (mu > 0.7 && g.tipo === 'drive' ? '<br><span class="no">Casi todo el giro ha sido de muñeca:</span> prueba con la muñeca más firme, barriendo con el brazo.' : '');
-  if (navigator.vibrate) {}   // (la vibración la hace el móvil)
+  $('guMarcador').innerHTML = guTexto + (conBoton
+    ? '<br>Si te ha salido el golpe que querías (por cómo lo has sentido, no por dónde lo pinto), pulsa <b>Memorizar</b> en el móvil; si no, haz otro y este se olvida.'
+    : '<br><span class="no">El móvil no tiene el botón de memorizar: recarga su página.</span> (Este golpe se aprende igualmente.)');
   pintaGuiado(); pintaModelo();
+};
+let guTexto = '';
+// el jugador ha pulsado «Memorizar» en el móvil: ese golpe ya cuenta para aprender
+window.guiadoMemoriza = function (id) {
+  const m = gu.muestras.find(x => x.id === id); if (!m || m.memo) return;
+  m.memo = true; guGuarda();
+  $('guMarcador').innerHTML = guTexto + '<br><span class="ok">Memorizado ✓</span> Repite el golpe (o pulsa <b>Bueno, siguiente golpe</b> si ya cae dentro).';
+  pintaModelo();
 };
 
 function pintaGuiado() {
@@ -521,10 +565,12 @@ function pintaGuiado() {
   $('guBajar').textContent = 'Descargar datos (' + gu.muestras.length + ')';
 }
 function pintaModelo() {
-  const n = gu.muestras.filter(m => m.tipo === 'drive').length;
-  const f = k => { const [a, b] = ajusta('drive', k), [a0, b0] = PRIOR.drive[k]; return a.toFixed(2) + '·x ' + (b >= 0 ? '+ ' : '− ') + Math.abs(b).toFixed(1) + ' <span class="vacio">(al empezar ' + a0 + '·x + ' + b0 + ')</span>'; };
-  const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => m.dentro ? '●' : '○').join(' ');
-  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + '<br>distancia = ' + f('dist') + '<br>efecto = ' + f('efe') + (ult ? '<br>Últimos intentos: ' + ult + ' (● dentro)' : '');
+  const dr = gu.muestras.filter(m => m.tipo === 'drive'), n = dr.filter(aprende).length;
+  const num = v => (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+  const f = k => { const w = ajusta('drive', k); return num(w.b) + SALIDAS[k].map((q, i) => (w.a[i] >= 0 ? ' + ' : ' − ') + num(Math.abs(w.a[i])) + '·' + NOMBRE_MEDIDA[q]).join(''); };
+  const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => (m.dentro ? '●' : '○') + (m.memo ? '' : '<sub>x</sub>')).join(' ');
+  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes memorizados, ' + (dr.length - n) + ' sin memorizar):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + ' m<br>distancia = ' + f('dist') + ' m<br>efecto = ' + f('efe') + ' <span class="vacio">(&gt; 1 liftado, &lt; −1 cortado)</span>' +
+    (ult ? '<br>Últimos intentos: ' + ult + ' <span class="vacio">(● dentro · <sub>x</sub> sin memorizar)</span>' : '');
 }
 $('guBueno').onclick = () => {
   if (gu.idx < EJERCICIOS.length - 1) { gu.idx++; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); return; }

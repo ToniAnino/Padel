@@ -24,6 +24,8 @@
   #ultimo { text-align:center }
   #ultimo .tipo { font-size:34px; font-weight:800; margin:2px 0 }
   #ultimo .det { color:var(--dim); font-size:15px }
+  #memorizar { font-size:22px; padding:34px 16px; background:var(--verde); margin-top:14px }
+  #memorizar.hecho { background:#2b4a6b; color:var(--txt) }
   .medidor { height:10px; background:rgba(255,255,255,.1); border-radius:5px; overflow:hidden; margin-top:10px } .medidor i { display:block; height:100%; width:0; background:var(--verde); transition:width .05s }
   .peq { font-size:12px; color:var(--dim); text-align:center; margin-top:4px }
   .aviso { font-size:13px; color:var(--amar); margin:0 }
@@ -56,6 +58,8 @@
     <div class="peq">Último golpe</div>
     <div class="tipo" id="uTipo">—</div>
     <div class="det" id="uDet"></div>
+    <button id="memorizar" disabled>Memorizar este golpe</button>
+    <div class="peq" id="memAyuda">Si el golpe te ha salido como querías, púlsalo; si no, haz el siguiente y este se olvida.</div>
     <div class="medidor"><i id="wMed"></i></div>
     <div class="peq">giro en directo</div>
   </section>
@@ -180,6 +184,16 @@ function sueltaRetenido() {
   if (sw) { retenido.espera = true; return; }   // ha empezado otro gesto: se decide cuando acabe
   const g = retenido.g; retenido = null;
   enviar(g); muestra(g);
+  ultimoId = g.id; const b = $('memorizar'); b.disabled = false; b.classList.remove('hecho'); b.textContent = 'Memorizar este golpe';
+}
+// el jugador confirma que el golpe le ha salido bien: solo esos se aprenden en el ordenador
+let ultimoId = null;
+function memorizar() {
+  if (ultimoId == null) return;
+  enviar({ t: 'memoriza', id: ultimoId });
+  const b = $('memorizar'); b.disabled = true; b.classList.add('hecho'); b.textContent = 'Memorizado ✓';
+  if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
+  ultimoId = null;
 }
 function motion(e) {
   const r = e.rotationRate; if (!r) return;
@@ -208,12 +222,15 @@ function golpe(s, dur) {
   const L = lectura(s.pico.a, s.pico.b, s.pico.g);
   const vz = s.vz;   // velocidad vertical acumulada en todo el gesto
   const tipo = L.cabeza > 45 ? 'remate' : L.tipo;   // la cabeza de la pala bastante más alta que en el drive
-  const efecto = vz > 0.6 ? 'liftado' : vz < -0.6 ? 'cortado' : 'plano';
+  // efecto con la velocidad vertical HASTA EL IMPACTO (la de todo el gesto se tuerce con la frenada de después):
+  // la pala baja = cortado, sube = liftado
+  const vzPico = s.pico.vz;
+  const efecto = vzPico > 0.7 ? 'liftado' : vzPico < -0.7 ? 'cortado' : 'plano';
   // raw: calibración (alpha, beta, gamma) y cada lectura [t ms desde el inicio, giro α β γ °/s, acel. sin gravedad x y z,
   // acel. con gravedad x y z (m/s²), orientación α β γ °]; tPico = ms del pico desde el inicio
   const t0 = s.raw.length ? s.raw[0][0] : s.t0;
   const raw = { v: 1, cal: cal.raw, tPico: Math.round(s.pico.t - t0), s: s.raw.map(x => [Math.round(x[0] - t0), ...x.slice(1)]) };
-  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_FUERZA0) / (W_TOPE - W_FUERZA0))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now(), raw };
+  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_FUERZA0) / (W_TOPE - W_FUERZA0))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, vzPico, cabeza: L.cabeza, hora: Date.now(), id: Date.now() + '-' + Math.floor(Math.random() * 1e4), raw };
   propone(g);
 }
 const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
@@ -248,9 +265,10 @@ async function empezar() {
 }
 $('empezar').onclick = empezar;
 $('calibrar').onclick = calibrar;
+$('memorizar').onclick = memorizar;
 const qs = new URLSearchParams(location.search).get('s');
 if (qs) { $('codigo').value = qs.toUpperCase(); }
-window.MANDO = { motion, orient, calibrar, conectar, enviar, usarRelay, get cal() { return cal; }, set codigo(c) { codigo = c; } };   // (pruebas)
+window.MANDO = { motion, orient, calibrar, conectar, enviar, usarRelay, memorizar, get cal() { return cal; }, set codigo(c) { codigo = c; } };   // (pruebas)
 </script>
 </body>
 </html>
