@@ -168,13 +168,18 @@ function calibrar() {
 // Mientras dura, se integra la aceleración vertical del mundo: hacia arriba = liftado, hacia abajo = cortado.
 // La preparación (llevar la pala atrás) también es un giro rápido y se tomaba como golpe: por eso un golpe no se
 // manda hasta 0,6 s después; si en ese tiempo empieza otro, se espera a que acabe y se queda el más fuerte.
-const W_INI = 250, W_FIN = 120, W_MIN = 450, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 150, RETENER = 600;
+// Al llevar el brazo atrás para un drive, la pantalla mira hacia atrás y ese gesto se lee como un revés (y al revés
+// en el revés): si tras un gesto llega otro de distinto tipo, el bueno es el segundo (el primero era la preparación).
+const W_INI = 250, W_FIN = 120, W_MIN = 450, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 150, RETENER = 1000;
 const W_FUERZA0 = 350;   // giro con fuerza 0 % (se mantiene aunque cambie el mínimo, para no cambiar lo aprendido)
 let sw = null, libreDesde = 0, wAhora = 0, ultOri = 0, hist = [];
 let retenido = null;   // { g, timer, espera }
 function propone(g) {
-  if (retenido) {   // dos gestos seguidos: el más fuerte es el golpe (el otro, la preparación o la vuelta)
-    if (g.wMax <= retenido.g.wMax) return;
+  if (retenido) {   // dos gestos seguidos: si son de distinto tipo, el golpe es el segundo (el primero, la preparación);
+    // si son del mismo tipo, el más fuerte (el otro, la preparación o la vuelta)
+    // (si es de distinto tipo pero mucho más flojo, será la vuelta del brazo después del golpe: se ignora)
+    const distinto = g.tipo !== retenido.g.tipo;
+    if (distinto ? g.wMax < 0.7 * retenido.g.wMax : g.wMax <= retenido.g.wMax) return;
     clearTimeout(retenido.timer);
   }
   retenido = { g, espera: false, timer: setTimeout(sueltaRetenido, RETENER) };
