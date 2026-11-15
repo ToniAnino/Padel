@@ -408,13 +408,17 @@ window.AJ = { aj, get golpes() { return ajGolpes; } };   // (pruebas)
 const GU_KEY = 'palaGuiado';
 const EJERCICIOS = [
   { id: 'drive-globo-fondo-izq', nombre: 'Drive · globo al fondo a la izquierda', tipo: 'drive', bote: { x: -3, z: -8.3 }, radio: 1.5, cima: 6, cimaMin: 5 },
+  { id: 'drive-cortado-centro', nombre: 'Drive cortado · bola baja al centro', tipo: 'drive', efecto: 'cortado', bote: { x: 0, z: -7.5 }, radio: 1.5, cima: 1.6, cimaMin: 1.1, cimaMax: 2.6 },
+  { id: 'drive-liftado-der', nombre: 'Drive liftado · cruzado a la derecha', tipo: 'drive', efecto: 'liftado', bote: { x: 3, z: -7 }, radio: 1.5, cima: 2.6, cimaMin: 1.6, cimaMax: 4 },
 ];
+// efecto: se aprende una puntuación = a·(velocidad vertical del gesto, m/s) + b; > 1 liftado, < −1 cortado
+const EF_Y = { cortado: -2, plano: 0, liftado: 2 };
 const PRIOR = {   // lectura inicial (antes de aprender)
-  drive: { dir: [0.45, 0], cima: [0.09, 2.2], dist: [10, 8] },
-  reves: { dir: [0.45, -4], cima: [0.09, -1.0], dist: [10, 8] },
-  remate: { dir: [0.45, 0], cima: [0.03, 2.5], dist: [8, 7] },
+  drive: { dir: [0.45, 0], cima: [0.09, 2.2], dist: [10, 8], efe: [1.67, 0] },
+  reves: { dir: [0.45, -4], cima: [0.09, -1.0], dist: [10, 8], efe: [1.67, 0] },
+  remate: { dir: [0.45, 0], cima: [0.03, 2.5], dist: [8, 7], efe: [1.67, 0] },
 };
-const ESCALA = { dir: 30, cima: 30, dist: 0.3 };   // dispersión típica de cada medida (para el tirón)
+const ESCALA = { dir: 30, cima: 30, dist: 0.3, efe: 1 };   // dispersión típica de cada medida (para el tirón)
 const LAMBDA_A = 3, LAMBDA_B = 1;
 const GU_INI = { x: 0.8, z: 8.3 };   // donde se supone que estás (fondo de vuestro campo)
 let gu = { idx: 0, muestras: [] };
@@ -423,18 +427,25 @@ const guGuarda = () => { try { localStorage.setItem(GU_KEY, JSON.stringify(gu));
 const cvGA = $('guArriba'), cvGL = $('guLado');
 let guUlt = null;   // último intento: { pred, err, dentro, aviso }
 
-const objetivo = e => { const dx = e.bote.x - GU_INI.x, dz = GU_INI.z - e.bote.z; return { dir: Math.atan2(dx, dz) * 180 / Math.PI, dist: Math.hypot(dx, dz), cima: e.cima }; };
-const feat = g => ({ dir: g.dir, cima: g.alt, dist: g.fuerza });
+const objetivo = e => { const dx = e.bote.x - GU_INI.x, dz = GU_INI.z - e.bote.z; return { dir: Math.atan2(dx, dz) * 180 / Math.PI, dist: Math.hypot(dx, dz), cima: e.cima, efe: e.efecto ? EF_Y[e.efecto] : null }; };
+const feat = g => ({ dir: g.dir, cima: g.alt, dist: g.fuerza, efe: g.vz || 0 });
+const EF_TXT = { liftado: 'liftado', cortado: 'cortado', plano: 'plano' };
 function ajusta(tipo, k) {   // [a, b] de una salida, con lo aprendido hasta ahora
   const [a0, b0] = (PRIOR[tipo] || PRIOR.drive)[k], sx2 = ESCALA[k] * ESCALA[k];
   let Sxx = LAMBDA_A * sx2, Sx = 0, n = LAMBDA_B, Sxy = LAMBDA_A * sx2 * a0, Sy = LAMBDA_B * b0;
-  for (const m of gu.muestras) { if (m.tipo !== tipo) continue; const x = m.f[k], y = m.y[k]; Sxx += x * x; Sx += x; n += 1; Sxy += x * y; Sy += y; }
+  for (const m of gu.muestras) {
+    if (m.tipo !== tipo) continue;
+    const x = m.f[k] != null ? m.f[k] : (k === 'efe' ? (m.medido && m.medido.vz) || 0 : null), y = m.y[k];
+    if (x == null || y == null) continue;   // (los golpes sin efecto pedido no enseñan el efecto)
+    Sxx += x * x; Sx += x; n += 1; Sxy += x * y; Sy += y;
+  }
   const det = Sxx * n - Sx * Sx; if (Math.abs(det) < 1e-9) return [a0, b0];
   return [(Sxy * n - Sx * Sy) / det, (Sxx * Sy - Sx * Sxy) / det];
 }
 function predice(g) {
   const t = PRIOR[g.tipo] ? g.tipo : 'drive', f = feat(g), p = {};
-  for (const k of ['dir', 'cima', 'dist']) { const [a, b] = ajusta(t, k); p[k] = a * f[k] + b; }
+  for (const k of ['dir', 'cima', 'dist', 'efe']) { const [a, b] = ajusta(t, k); p[k] = a * f[k] + b; }
+  p.efecto = p.efe > 1 ? 'liftado' : p.efe < -1 ? 'cortado' : 'plano';
   p.dir = lim(p.dir, -60, 60); p.cima = lim(p.cima, 0.9, 9.5); p.dist = lim(p.dist, 3, 19.5);
   const r = p.dir * Math.PI / 180;
   p.bote = { x: GU_INI.x + Math.sin(r) * p.dist, z: GU_INI.z - Math.cos(r) * p.dist };
@@ -451,14 +462,16 @@ window.guiadoNuevo = function (g) {
   const e = EJERCICIOS[gu.idx], obj = objetivo(e);
   if (g.tipo !== e.tipo) { $('guMarcador').innerHTML = '<span class="no">Esperaba un ' + (TIPO[e.tipo] || e.tipo).toLowerCase() + ' y ha llegado un ' + (TIPO[g.tipo] || g.tipo).toLowerCase() + '.</span> No lo cuento: repítelo.'; return; }
   const pred = predice(g);   // primero se predice con lo aprendido (sin este golpe)…
-  const err = Math.hypot(pred.bote.x - e.bote.x, pred.bote.z - e.bote.z), altOk = pred.cima >= e.cimaMin;
-  const dentro = err <= e.radio && altOk, mu = muñeca(g);
-  gu.muestras.push({ hora: new Date(g.hora || Date.now()).toISOString(), ej: e.id, tipo: g.tipo, f: feat(g), y: obj, pred: { dir: +pred.dir.toFixed(1), cima: +pred.cima.toFixed(2), dist: +pred.dist.toFixed(2) }, err: +err.toFixed(2), dentro, medido: (({ raw, t, ...r }) => r)(g), raw: g.raw });
+  const err = Math.hypot(pred.bote.x - e.bote.x, pred.bote.z - e.bote.z), altOk = pred.cima >= e.cimaMin && (!e.cimaMax || pred.cima <= e.cimaMax);
+  const efOk = !e.efecto || pred.efecto === e.efecto;
+  const dentro = err <= e.radio && altOk && efOk, mu = muñeca(g);
+  gu.muestras.push({ hora: new Date(g.hora || Date.now()).toISOString(), ej: e.id, tipo: g.tipo, f: feat(g), y: obj, pred: { dir: +pred.dir.toFixed(1), cima: +pred.cima.toFixed(2), dist: +pred.dist.toFixed(2), efe: +pred.efe.toFixed(2), efecto: pred.efecto }, err: +err.toFixed(2), dentro, medido: (({ raw, t, ...r }) => r)(g), raw: g.raw });
   guGuarda();   // …y luego se aprende de él
   const intentos = gu.muestras.filter(m => m.ej === e.id).length;
   guUlt = { pred, err, dentro, mu };
   $('guMarcador').innerHTML = (dentro ? '<span class="ok">¡Dentro!</span> ' : '<span class="no">A ' + err.toFixed(1).replace('.', ',') + ' m de la zona.</span> ') +
-    'Altura ' + pred.cima.toFixed(1).replace('.', ',') + ' m' + (altOk ? '' : ' (busca al menos ' + e.cimaMin + ' m)') + ' · intento ' + intentos +
+    'Altura ' + pred.cima.toFixed(1).replace('.', ',') + ' m' + (altOk ? '' : pred.cima < e.cimaMin ? ' (busca al menos ' + e.cimaMin + ' m)' : ' (demasiado alta: como mucho ' + e.cimaMax + ' m)') +
+    ' · efecto ' + EF_TXT[pred.efecto] + (efOk ? '' : ' <span class="no">(tiene que ser ' + e.efecto + ')</span>') + ' · intento ' + intentos +
     (dentro ? '<br>Si te parece bien, pulsa <b>Bueno, siguiente golpe</b>; o repite para afinar.' : '<br>Repite el mismo golpe: ya he aprendido de este.') +
     (mu > 0.7 && g.tipo === 'drive' ? '<br><span class="no">Casi todo el giro ha sido de muñeca:</span> prueba con la muñeca más firme, barriendo con el brazo.' : '');
   if (navigator.vibrate) {}   // (la vibración la hace el móvil)
@@ -511,11 +524,12 @@ function pintaModelo() {
   const n = gu.muestras.filter(m => m.tipo === 'drive').length;
   const f = k => { const [a, b] = ajusta('drive', k), [a0, b0] = PRIOR.drive[k]; return a.toFixed(2) + '·x ' + (b >= 0 ? '+ ' : '− ') + Math.abs(b).toFixed(1) + ' <span class="vacio">(al empezar ' + a0 + '·x + ' + b0 + ')</span>'; };
   const ult = gu.muestras.filter(m => m.ej === EJERCICIOS[gu.idx].id).slice(-8).map(m => m.dentro ? '●' : '○').join(' ');
-  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + '<br>distancia = ' + f('dist') + (ult ? '<br>Últimos intentos: ' + ult + ' (● dentro)' : '');
+  $('guModelo').innerHTML = 'Lo aprendido del drive (' + n + ' golpes):<br>dirección = ' + f('dir') + '<br>altura = ' + f('cima') + '<br>distancia = ' + f('dist') + '<br>efecto = ' + f('efe') + (ult ? '<br>Últimos intentos: ' + ult + ' (● dentro)' : '');
 }
 $('guBueno').onclick = () => {
   if (gu.idx < EJERCICIOS.length - 1) { gu.idx++; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); return; }
-  $('guMarcador').innerHTML = '<span class="ok">Hecho.</span> Por ahora solo está este golpe. Descarga los datos y pásamelos para ver cómo ha ido; luego añado el siguiente (revés, centro, bajos…).';
+  $('guMarcador').innerHTML = '<span class="ok">Tanda completa.</span> Descarga los datos y pásamelos para ver cómo ha ido; luego añado más golpes (revés, remate…). He vuelto al primero por si quieres repetir la tanda.';
+  gu.idx = 0; guUlt = null; guGuarda(); pintaGuiado(); pintaModelo();
 };
 $('guOlvidar').onclick = () => { if (gu.muestras.length && confirm('¿Olvidar lo aprendido (' + gu.muestras.length + ' golpes)? Si no los has descargado, se pierden.')) { gu = { idx: 0, muestras: [] }; guUlt = null; guGuarda(); $('guMarcador').textContent = ''; pintaGuiado(); pintaModelo(); } };
 $('guBajar').onclick = () => {
