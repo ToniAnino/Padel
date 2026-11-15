@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pala móvil · ordenador</title>
+<style>
+  :root { --bg:#0d1b2a; --panel:#152a40; --line:rgba(255,255,255,.12); --txt:#eef3f8; --dim:rgba(238,243,248,.62); --verde:#3ddc84; --amar:#ffd23f; --rojo:#ff4757; --azul:#4da3ff; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:22px; margin:0 0 4px } .sub { color:var(--dim); margin:0 0 18px }
+  .grid { display:grid; grid-template-columns:300px 1fr; gap:16px }
+  @media (max-width:760px) { .grid { grid-template-columns:1fr } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px }
+  .card h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 10px; font-weight:600 }
+  #qr { background:#fff; border-radius:10px; padding:8px; display:flex; justify-content:center; min-height:200px; align-items:center; color:#333 }
+  #qr img { width:100%; max-width:240px; height:auto; image-rendering:pixelated }
+  .codigo { font:700 34px/1 ui-monospace,Consolas,monospace; letter-spacing:.18em; text-align:center; margin:12px 0 4px }
+  .estado { display:flex; align-items:center; gap:8px; margin-top:12px; font-weight:600 }
+  .estado i { width:10px; height:10px; border-radius:50%; background:var(--rojo) } .estado.ok i { background:var(--verde) } .estado.esp i { background:var(--amar) }
+  .enlace { font-size:12px; color:var(--dim); word-break:break-all; margin-top:8px }
+  .golpe { display:grid; grid-template-columns:repeat(3,1fr); gap:10px }
+  .dato { background:rgba(255,255,255,.05); border-radius:10px; padding:10px }
+  .dato b { display:block; font-size:24px } .dato span { font-size:12px; color:var(--dim) }
+  .barra { height:8px; background:rgba(255,255,255,.1); border-radius:4px; margin-top:6px; overflow:hidden } .barra i { display:block; height:100%; background:var(--verde); width:0 }
+  .fila { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:14px }
+  canvas { background:#1d4f8f; border-radius:8px; display:block }
+  #lista { margin:0; padding:0; list-style:none; max-height:260px; overflow:auto; font-size:13px }
+  #lista li { padding:6px 0; border-top:1px solid var(--line); color:var(--dim) } #lista li:first-child { color:var(--txt) }
+  .vacio { color:var(--dim); font-size:14px }
+  button { font:inherit; background:#2b4a6b; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pala móvil · prueba de golpes</h1>
+  <p class="sub">Fase 1: el móvil hace de pala. Aquí se ve en directo cómo lee el golpe, antes de llevarlo al juego.</p>
+  <div class="grid">
+    <section class="card">
+      <h2>1 · Empareja el móvil</h2>
+      <div id="qr">Preparando…</div>
+      <div class="codigo" id="codigo">·····</div>
+      <div class="enlace" id="enlace"></div>
+      <div class="estado esp" id="estado"><i></i><span>Conectando con el servidor de emparejamiento…</span></div>
+    </section>
+    <section class="card">
+      <h2>2 · Último golpe</h2>
+      <div id="sinGolpe" class="vacio">Cuando el móvil esté conectado y calibrado, haz un golpe: aparecerá aquí.</div>
+      <div id="golpe" class="golpe" hidden>
+        <div class="dato"><b id="gTipo">—</b><span>golpe</span></div>
+        <div class="dato"><b id="gFuerza">—</b><span>fuerza</span><div class="barra"><i id="gBarra"></i></div></div>
+        <div class="dato"><b id="gDir">—</b><span>dirección</span></div>
+        <div class="dato"><b id="gAlt">—</b><span>cara de la pala</span></div>
+        <div class="dato"><b id="gEfecto">—</b><span>efecto</span></div>
+        <div class="dato"><b id="gCrudo">—</b><span>giro máx · duración</span></div>
+      </div>
+      <div class="fila">
+        <div><canvas id="pista" width="200" height="300"></canvas><div class="vacio" style="font-size:12px;margin-top:4px">Dónde iría la bola (aprox.)</div></div>
+        <div><canvas id="mira" width="200" height="200"></canvas><div class="vacio" style="font-size:12px;margin-top:4px">Hacia dónde apunta la pala ahora</div></div>
+      </div>
+      <h2 style="margin-top:16px">Golpes</h2>
+      <ul id="lista"></ul>
+    </section>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+// Ordenador: crea una sala en el servidor público de PeerJS (solo sirve para emparejar; luego los datos van
+// directos entre el móvil y el ordenador por WebRTC) y enseña el QR con el enlace del mando.
+const PREF = 'padel-pulgares-';
+const LETRAS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // sin 0/O ni 1/I/L, que se confunden
+const $ = id => document.getElementById(id);
+let peer = null, conn = null, ori = null, golpes = [];
+
+function codigoNuevo() { let s = ''; for (let i = 0; i < 5; i++) s += LETRAS[Math.floor(Math.random() * LETRAS.length)]; return s; }
+function estado(txt, cls) { const e = $('estado'); e.className = 'estado ' + (cls || ''); e.querySelector('span').textContent = txt; }
+
+function abrirSala() {
+  const cod = codigoNuevo();
+  peer = new Peer(PREF + cod);
+  peer.on('open', () => {
+    const url = new URL('mando.html?s=' + cod, location.href).href;
+    $('codigo').textContent = cod; $('enlace').textContent = url;
+    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    $('qr').innerHTML = qr.createImgTag(6, 8);
+    estado('Esperando al móvil: escanea el QR (o abre el enlace y pon el código)', 'esp');
+  });
+  peer.on('connection', c => {
+    if (conn) conn.close();
+    conn = c;
+    c.on('open', () => estado('Móvil conectado', 'ok'));
+    c.on('data', recibe);
+    c.on('close', () => { if (conn === c) { conn = null; ori = null; estado('El móvil se ha desconectado: vuelve a abrir el enlace', 'esp'); } });
+  });
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') { peer.destroy(); abrirSala(); return; }   // código ya usado: otro
+    estado('Error de conexión: ' + err.type, '');
+  });
+}
+
+function recibe(d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'ori') { ori = d; return; }
+  if (d.t === 'hola') { estado('Móvil conectado' + (d.cal ? '' : ' · falta calibrar'), 'ok'); return; }
+  if (d.t === 'cal') { estado('Móvil conectado y calibrado', 'ok'); return; }
+  if (d.t === 'golpe') muestraGolpe(d);
+}
+
+const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
+const EFECTO = { liftado: 'Liftado', plano: 'Plano', cortado: 'Cortado' };
+function textoDir(g) { return Math.abs(g) < 6 ? 'centro' : (g > 0 ? 'derecha ' : 'izquierda ') + Math.round(Math.abs(g)) + '°'; }
+function textoAlt(a) { return a > 22 ? 'abierta ' + Math.round(a) + '° (globo)' : a < -12 ? 'cerrada ' + Math.round(-a) + '°' : 'recta ' + Math.round(a) + '°'; }
+
+function muestraGolpe(g) {
+  $('sinGolpe').hidden = true; $('golpe').hidden = false;
+  $('gTipo').textContent = TIPO[g.tipo] || g.tipo;
+  $('gFuerza').textContent = Math.round(g.fuerza * 100) + '%'; $('gBarra').style.width = Math.round(g.fuerza * 100) + '%';
+  $('gDir').textContent = textoDir(g.dir);
+  $('gAlt').textContent = textoAlt(g.alt);
+  $('gEfecto').textContent = EFECTO[g.efecto] || g.efecto;
+  $('gCrudo').textContent = Math.round(g.wMax) + '°/s · ' + Math.round(g.dur) + ' ms';
+  golpes.unshift(g); golpes = golpes.slice(0, 30);
+  $('lista').innerHTML = golpes.map(x => '<li>' + (TIPO[x.tipo] || x.tipo) + ' · ' + Math.round(x.fuerza * 100) + '% · ' + textoDir(x.dir) + ' · ' + textoAlt(x.alt) + ' · ' + (EFECTO[x.efecto] || x.efecto) + '</li>').join('');
+  ultimo = { g, t: performance.now() };
+}
+
+// dibujos: la pista rival vista desde arriba con el bote aproximado, y la mira de hacia dónde apunta la pala
+let ultimo = null;
+function destino(g) {   // aproximación solo para ver la lectura: dirección → lado, fuerza y cara → profundidad
+  const ang = Math.max(-40, Math.min(40, g.dir)) * Math.PI / 180;
+  let prof = 3 + 6 * g.fuerza;                          // m desde la red
+  if (g.alt > 22) prof = Math.min(9.6, prof + 2.5);      // globo: más al fondo
+  if (g.tipo === 'remate') prof = 4 + 4 * g.fuerza;
+  const x = Math.max(-4.8, Math.min(4.8, Math.tan(ang) * (prof + 8)));
+  return { x, z: Math.min(9.8, prof) };
+}
+function dibuja() {
+  const c = $('pista').getContext('2d'), W = 200, H = 300, sx = W / 10, sz = (H - 20) / 10;
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2;
+  c.strokeRect(1, 10, W - 2, H - 20);                         // pista rival (de la red, abajo, al fondo, arriba)
+  c.beginPath(); c.moveTo(0, H - 10); c.lineTo(W, H - 10); c.stroke();
+  c.beginPath(); c.moveTo(0, H - 10 - 6.95 * sz); c.lineTo(W, H - 10 - 6.95 * sz); c.moveTo(W / 2, H - 10); c.lineTo(W / 2, H - 10 - 6.95 * sz); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.5)'; c.font = '11px system-ui'; c.textAlign = 'center'; c.fillText('RED', W / 2, H - 1);
+  if (ultimo) {
+    const d = destino(ultimo.g), px = W / 2 + d.x * sx, py = H - 10 - d.z * sz, a = Math.max(0.25, 1 - (performance.now() - ultimo.t) / 6000);
+    c.fillStyle = 'rgba(255,210,63,' + a + ')'; c.beginPath(); c.arc(px, py, 8, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(255,210,63,' + a * 0.6 + ')'; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(W / 2, H + 30); c.lineTo(px, py); c.stroke(); c.setLineDash([]);
+  }
+  const m = $('mira').getContext('2d'); m.clearRect(0, 0, 200, 200);
+  m.strokeStyle = 'rgba(255,255,255,.25)'; m.lineWidth = 1;
+  for (const r of [30, 60, 90]) { m.beginPath(); m.arc(100, 100, r, 0, Math.PI * 2); m.stroke(); }
+  m.beginPath(); m.moveTo(10, 100); m.lineTo(190, 100); m.moveTo(100, 10); m.lineTo(100, 190); m.stroke();
+  if (ori) {   // ±60° de lado y de altura en el borde
+    const x = 100 + Math.max(-1, Math.min(1, ori.dir / 60)) * 90, y = 100 - Math.max(-1, Math.min(1, ori.alt / 60)) * 90;
+    m.fillStyle = ori.w > 250 ? '#ff4757' : '#3ddc84'; m.beginPath(); m.arc(x, y, 9, 0, Math.PI * 2); m.fill();
+  } else { m.fillStyle = 'rgba(255,255,255,.4)'; m.font = '12px system-ui'; m.textAlign = 'center'; m.fillText('sin datos', 100, 104); }
+  requestAnimationFrame(dibuja);
+}
+abrirSala(); dibuja();
+window.PALA = { recibe, get conn() { return conn; } };   // (pruebas)
+</script>
+</body>
+</html>

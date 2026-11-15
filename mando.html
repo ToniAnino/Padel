@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pala móvil · mando</title>
+<style>
+  :root { --bg:#0d1b2a; --panel:#152a40; --line:rgba(255,255,255,.12); --txt:#eef3f8; --dim:rgba(238,243,248,.62); --verde:#3ddc84; --amar:#ffd23f; --rojo:#ff4757; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent }
+  html, body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overscroll-behavior:none }
+  main { max-width:480px; margin:0 auto; padding:18px 16px 30px; display:flex; flex-direction:column; gap:14px; min-height:100vh }
+  h1 { font-size:20px; margin:0 }
+  .estado { display:flex; align-items:center; gap:8px; font-weight:600; font-size:15px }
+  .estado i { width:10px; height:10px; border-radius:50%; background:var(--rojo); flex:none } .estado.ok i { background:var(--verde) } .estado.esp i { background:var(--amar) }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px }
+  label { font-size:13px; color:var(--dim); display:block; margin-bottom:6px }
+  input { width:100%; font:700 28px/1 ui-monospace,Consolas,monospace; letter-spacing:.2em; text-transform:uppercase; text-align:center; padding:10px; border-radius:10px; border:1px solid var(--line); background:#0a1622; color:var(--txt) }
+  button { font:inherit; font-weight:700; width:100%; border:0; border-radius:14px; padding:16px; color:#0d1b2a; background:var(--verde); cursor:pointer }
+  button.sec { background:#2b4a6b; color:var(--txt) }
+  button:disabled { opacity:.45 }
+  #calibrar { font-size:20px; padding:22px; background:var(--amar) }
+  .ayuda { font-size:14px; color:var(--dim); margin:0 }
+  .ayuda b { color:var(--txt) }
+  #ultimo { text-align:center }
+  #ultimo .tipo { font-size:34px; font-weight:800; margin:2px 0 }
+  #ultimo .det { color:var(--dim); font-size:15px }
+  .medidor { height:10px; background:rgba(255,255,255,.1); border-radius:5px; overflow:hidden; margin-top:10px } .medidor i { display:block; height:100%; width:0; background:var(--verde); transition:width .05s }
+  .peq { font-size:12px; color:var(--dim); text-align:center; margin-top:4px }
+  .aviso { font-size:13px; color:var(--amar); margin:0 }
+  body.golpe main { animation: flash .35s }
+  @keyframes flash { from { background:rgba(61,220,132,.25) } to { background:transparent } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pala móvil</h1>
+  <div class="estado esp" id="estado"><i></i><span>Sin conectar</span></div>
+
+  <section class="card" id="cajaCodigo">
+    <label for="codigo">Código que sale en el ordenador</label>
+    <input id="codigo" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  </section>
+
+  <button id="empezar">Activar sensores y conectar</button>
+
+  <section class="card" id="cajaCal" hidden>
+    <p class="ayuda"><b>Cómo cogerlo:</b> agárralo por abajo como el mango de la pala. Ponte como en el momento de pegar un drive: el <b>móvil tumbado</b> (la parte de arriba hacia tu lado del drive) y la <b>pantalla mirando a la pantalla del ordenador</b>, que es la cara de la pala. Así, pulsa:</p>
+    <div style="height:10px"></div>
+    <button id="calibrar">Calibrar (apuntando a la tele)</button>
+    <div style="height:10px"></div>
+    <p class="aviso">Agárralo fuerte o usa una correa de muñeca, y haz gestos cortos: un golpe de verdad puede lanzar el móvil.</p>
+  </section>
+
+  <section class="card" id="ultimo" hidden>
+    <div class="peq">Último golpe</div>
+    <div class="tipo" id="uTipo">—</div>
+    <div class="det" id="uDet"></div>
+    <div class="medidor"><i id="wMed"></i></div>
+    <div class="peq">giro en directo</div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+// Móvil: lee el giroscopio y el acelerómetro, detecta el golpe y se lo manda al ordenador por WebRTC (PeerJS).
+const PREF = 'padel-pulgares-';
+const $ = id => document.getElementById(id);
+const D = Math.PI / 180;
+let peer = null, conn = null, codigo = '', cal = null, sensoresOk = false;
+
+// ---------- conexión ----------
+function estado(txt, cls) { const e = $('estado'); e.className = 'estado ' + (cls || ''); e.querySelector('span').textContent = txt; }
+function enviar(o) { if (conn && conn.open) try { conn.send(o); } catch (_) {} }
+function conectar() {
+  if (!peer || peer.destroyed) {
+    peer = new Peer();
+    peer.on('open', conectar);
+    peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
+    peer.on('error', err => {
+      if (err.type === 'peer-unavailable') estado('No encuentro ese código: mira el que sale en el ordenador', '');
+      else estado('Error de conexión: ' + err.type, '');
+      setTimeout(conectar, 2500);
+    });
+    estado('Conectando…', 'esp');
+    return;
+  }
+  if (!peer.open) return;
+  if (conn && conn.open) return;
+  const c = peer.connect(PREF + codigo, { reliable: true });
+  conn = c;
+  c.on('open', () => { estado('Conectado con el ordenador', 'ok'); enviar({ t: 'hola', cal: !!cal }); });
+  c.on('close', () => { if (conn === c) { conn = null; estado('Se ha cortado: reconectando…', 'esp'); setTimeout(conectar, 1500); } });
+}
+
+// ---------- orientación ----------
+// Matriz de giro de la especificación (Z-X'-Y'' con alpha, beta, gamma): las columnas son los ejes del móvil en el
+// mundo (x este, y norte, z arriba). El eje z del móvil sale de la pantalla: es la cara de la pala; el eje y va hacia
+// arriba del móvil: es la cabeza de la pala.
+let o = { a: 0, b: 0, g: 0, ok: false };
+function ejes(a, b, g) {
+  const cA = Math.cos(a * D), sA = Math.sin(a * D), cB = Math.cos(b * D), sB = Math.sin(b * D), cG = Math.cos(g * D), sG = Math.sin(g * D);
+  return {
+    z: { x: cA * sG + cG * sA * sB, y: sA * sG - cA * cG * sB, z: cB * cG },
+    y: { x: -cB * sA, y: cA * cB, z: sB },
+    fila3: [-cB * sG, sB, cB * cG]   // para pasar una aceleración del móvil a vertical del mundo
+  };
+}
+const rumbo = v => Math.atan2(v.y, v.x) / D;        // ángulo horizontal (antihorario visto desde arriba)
+const elev = v => Math.asin(Math.max(-1, Math.min(1, v.z))) / D;
+const envolver = x => ((x + 540) % 360) - 180;
+// lectura de la cara de la pala respecto a la calibración: drive con la pantalla, revés con la espalda del móvil
+function lectura(a, b, g) {
+  const E = ejes(a, b, g);
+  let rel = envolver(rumbo(E.z) - cal.r0), cara = E.z, tipo = 'drive';
+  if (Math.abs(rel) > 100) { cara = { x: -E.z.x, y: -E.z.y, z: -E.z.z }; rel = envolver(rumbo(cara) - cal.r0); tipo = 'reves'; }
+  return { dir: -rel, alt: elev(cara) - cal.e0, cabeza: elev(E.y) - cal.c0, tipo };   // dir > 0: a la derecha; cabeza: cuánto más arriba que al calibrar
+}
+function orient(e) {
+  if (e.alpha == null && e.beta == null) return;
+  o = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0, ok: true };
+}
+function calibrar() {
+  if (!o.ok) { estado('Todavía no llegan datos de orientación: mueve un poco el móvil', 'esp'); return; }
+  const E = ejes(o.a, o.b, o.g);
+  cal = { r0: rumbo(E.z), e0: elev(E.z), c0: elev(E.y) };
+  enviar({ t: 'cal' });
+  $('ultimo').hidden = false;
+  if (navigator.vibrate) navigator.vibrate([20, 60, 20]);
+  $('calibrar').textContent = 'Recalibrar';
+}
+
+// ---------- detección del golpe ----------
+// Un golpe es un pico de giro: empieza al pasar de 250 °/s, acaba al bajar de 120 °/s (o a los 0,7 s), y vale si el
+// pico pasa de 350 °/s. La dirección y la cara se toman en el pico (que es cuando la pala va más rápida: el impacto).
+// Mientras dura, se integra la aceleración vertical del mundo: hacia arriba = liftado, hacia abajo = cortado.
+const W_INI = 250, W_FIN = 120, W_MIN = 350, W_TOPE = 1500, DUR_MAX = 700, ESPERA = 300;
+let sw = null, libreDesde = 0, wAhora = 0, ultOri = 0;
+function motion(e) {
+  const r = e.rotationRate; if (!r) return;
+  const w = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0), t = e.timeStamp || performance.now();
+  const dt = Math.min(0.05, (e.interval > 1 ? e.interval / 1000 : e.interval) || 1 / 60);   // (algunos dan ms y otros s)
+  wAhora = w;
+  if (!cal) return;
+  if (!sw && w > W_INI && t > libreDesde) sw = { t0: t, wMax: 0, vz: 0, pico: null };
+  if (sw) {
+    const a = e.acceleration;
+    if (a && a.x != null) { const f = ejes(o.a, o.b, o.g).fila3; sw.vz += (f[0] * a.x + f[1] * a.y + f[2] * a.z) * dt; }
+    if (w > sw.wMax) { sw.wMax = w; sw.pico = { a: o.a, b: o.b, g: o.g, vz: sw.vz }; }
+    if (w < W_FIN || t - sw.t0 > DUR_MAX) {
+      const s = sw; sw = null; libreDesde = t + ESPERA;
+      if (s.wMax >= W_MIN && t - s.t0 > 40 && s.pico) golpe(s, t - s.t0);
+    }
+  }
+}
+function golpe(s, dur) {
+  const L = lectura(s.pico.a, s.pico.b, s.pico.g);
+  const vz = s.vz;   // velocidad vertical acumulada en todo el gesto
+  const tipo = L.cabeza > 45 ? 'remate' : L.tipo;   // la cabeza de la pala bastante más alta que en el drive
+  const efecto = vz > 0.6 ? 'liftado' : vz < -0.6 ? 'cortado' : 'plano';
+  const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_MIN) / (W_TOPE - W_MIN))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, cabeza: L.cabeza, hora: Date.now() };
+  enviar(g);
+  muestra(g);
+}
+const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
+function muestra(g) {
+  $('uTipo').textContent = TIPO[g.tipo] + ' · ' + Math.round(g.fuerza * 100) + '%';
+  $('uDet').textContent = (Math.abs(g.dir) < 6 ? 'al centro' : (g.dir > 0 ? 'a la derecha ' : 'a la izquierda ') + Math.round(Math.abs(g.dir)) + '°') + ' · cara ' + Math.round(g.alt) + '° · ' + g.efecto;
+  if (navigator.vibrate) navigator.vibrate(30);
+  document.body.classList.remove('golpe'); void document.body.offsetWidth; document.body.classList.add('golpe');
+}
+// en directo: hacia dónde apunta la pala y cuánto gira (20 veces por segundo)
+setInterval(() => {
+  $('wMed').style.width = Math.min(100, wAhora / W_TOPE * 100) + '%';
+  if (cal && o.ok) { const L = lectura(o.a, o.b, o.g); enviar({ t: 'ori', dir: L.dir, alt: L.alt, w: wAhora }); }
+}, 50);
+
+// ---------- arranque ----------
+async function empezar() {
+  codigo = $('codigo').value.trim().toUpperCase();
+  if (codigo.length !== 5) { estado('Pon el código de 5 letras que sale en el ordenador', ''); $('codigo').focus(); return; }
+  try {   // iPhone: hay que pedir permiso con un toque
+    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
+      const r1 = await DeviceMotionEvent.requestPermission();
+      const r2 = DeviceOrientationEvent.requestPermission ? await DeviceOrientationEvent.requestPermission() : 'granted';
+      if (r1 !== 'granted' || r2 !== 'granted') { estado('Sin permiso para los sensores: hay que permitirlo', ''); return; }
+    }
+  } catch (err) { estado('No se pudo pedir permiso para los sensores', ''); return; }
+  if (!sensoresOk) { addEventListener('devicemotion', motion); addEventListener('deviceorientation', orient); sensoresOk = true; }
+  try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (_) {}   // que no se apague la pantalla
+  $('empezar').hidden = true; $('cajaCodigo').hidden = true; $('cajaCal').hidden = false;
+  conectar();
+  setTimeout(() => { if (!o.ok) estado('Este navegador no da datos de los sensores', ''); }, 3000);
+}
+$('empezar').onclick = empezar;
+$('calibrar').onclick = calibrar;
+const qs = new URLSearchParams(location.search).get('s');
+if (qs) { $('codigo').value = qs.toUpperCase(); }
+window.MANDO = { motion, orient, calibrar, conectar, enviar, get cal() { return cal; }, set codigo(c) { codigo = c; } };   // (pruebas)
+</script>
+</body>
+</html>
