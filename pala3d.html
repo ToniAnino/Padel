@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pala móvil · 3D</title>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+<style>
+  :root { --bg:#0d1b2a; --panel:#152a40; --line:rgba(255,255,255,.12); --txt:#eef3f8; --dim:rgba(238,243,248,.62); --verde:#3ddc84; --amar:#ffd23f; --rojo:#ff4757; }
+  * { box-sizing:border-box }
+  html, body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
+  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line) }
+  header h1 { font-size:18px; margin:0 }
+  .estado { display:flex; align-items:center; gap:6px; font-weight:600; font-size:14px }
+  .estado i { width:10px; height:10px; border-radius:50%; background:var(--rojo) } .estado.ok i { background:var(--verde) } .estado.esp i { background:var(--amar) }
+  .peq { font-size:12px; color:var(--dim) }
+  button { font:inherit; background:#2b4a6b; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer }
+  button.prim { background:var(--verde); color:#0d1b2a; font-weight:700; border:0 }
+  #qrBox { display:flex; gap:16px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap }
+  #qrBox[hidden] { display:none }
+  #qr { background:#fff; border-radius:8px; padding:6px; width:150px }
+  #qr img { width:100%; height:auto; image-rendering:pixelated }
+  .codigo { font:700 30px/1 ui-monospace,Consolas,monospace; letter-spacing:.18em }
+  #escena { position:relative; width:100%; height:62vh; min-height:320px; background:#0a1622 }
+  #escena canvas { display:block; width:100% !important; height:100% !important }
+  #aviso { position:absolute; left:50%; top:14px; transform:translateX(-50%); background:rgba(13,27,42,.82); border:1px solid var(--line); border-radius:12px; padding:8px 16px; font-size:18px; font-weight:700; text-align:center; pointer-events:none; max-width:90%; }
+  #aviso:empty { display:none }
+  main { max-width:1100px; margin:0 auto; padding:14px 16px 30px }
+  .datos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
+  .dato { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px }
+  .dato b { display:block; font-size:22px } .dato span { font-size:12px; color:var(--dim) }
+  .botones { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center }
+  .chk { display:flex; gap:6px; align-items:center; cursor:pointer }
+  .ayuda { color:var(--dim); font-size:14px; margin:10px 0 0 }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pala móvil · entrenamiento 3D</h1>
+  <div class="estado esp" id="estado"><i></i><span>Conectando…</span></div>
+  <span class="peq" id="sync">reloj sin sincronizar</span>
+  <button id="verQR">Emparejar móvil</button>
+</header>
+<div id="qrBox">
+  <div id="qr">…</div>
+  <div>
+    <div class="codigo" id="codigo">·····</div>
+    <div class="peq" id="enlace"></div>
+    <p class="ayuda">Escanea el QR con el móvil, activa los sensores y calibra (de cara a la pantalla). Luego, cuando llegue la bola, haz el drive con el móvil.</p>
+  </div>
+</div>
+<div id="escena"><div id="aviso"></div></div>
+<main>
+  <div class="datos">
+    <div class="dato"><b id="dMomento">—</b><span>momento del golpe</span></div>
+    <div class="dato"><b id="dDir">—</b><span>dirección (cara + momento)</span></div>
+    <div class="dato"><b id="dAlt">—</b><span>altura máxima</span></div>
+    <div class="dato"><b id="dEfecto">—</b><span>efecto</span></div>
+    <div class="dato"><b id="dCuenta">0</b><span>golpes · memorizados</span></div>
+  </div>
+  <div class="botones">
+    <button id="bola" class="prim">Lanzar bola</button>
+    <label class="chk"><input type="checkbox" id="auto" checked> Bolas seguidas</label>
+    <button id="bajar">Descargar datos (0)</button>
+    <button id="borrar">Borrar todo</button>
+  </div>
+  <p class="ayuda">La bola siempre llega igual, a tu drive. Si le pegas <b>antes</b> (delante del cuerpo) sale más <b>cruzada</b> (a la izquierda); si le pegas <b>más tarde</b>, más <b>paralela</b> (a la derecha). Demasiado pronto o demasiado tarde, no le das. En el móvil, pulsa <b>Memorizar</b> si el golpe te ha salido como querías.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script type="module">
+import * as THREE from 'three';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ahoraAbs = () => performance.timeOrigin + performance.now();
+
+// ================= Conexión con el móvil (igual que pala.html: PeerJS directo y, de reserva, MQTT) =================
+const PREF = 'padel-pulgares-', LETRAS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+let peer = null, conn = null, relay = null, cod = '';
+const estado = (txt, cls) => { const e = $('estado'); e.className = 'estado ' + (cls || ''); e.querySelector('span').textContent = txt; };
+const codigoNuevo = () => { let s = ''; for (let i = 0; i < 5; i++) s += LETRAS[Math.floor(Math.random() * LETRAS.length)]; return s; };
+function abrirSala() {
+  cod = codigoNuevo();
+  peer = new Peer(PREF + cod);
+  peer.on('open', () => {
+    const url = new URL('mando.html?s=' + cod, location.href).href;
+    $('codigo').textContent = cod; $('enlace').textContent = url;
+    const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); $('qr').innerHTML = qr.createImgTag(5, 6);
+    estado('Esperando al móvil', 'esp');
+    escuchaRelay();
+  });
+  peer.on('connection', c => {
+    if (conn) conn.close();
+    conn = c;
+    c.on('open', () => { estado('Móvil conectado (directo)', 'ok'); sincroniza(); });
+    c.on('data', recibe);
+    c.on('close', () => { if (conn === c) { conn = null; estado('El móvil se ha desconectado', 'esp'); } });
+  });
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
+  peer.on('error', err => { if (err.type === 'unavailable-id') { peer.destroy(); abrirSala(); return; } });
+}
+let viaInternet = false;
+function escuchaRelay() {
+  if (typeof mqtt === 'undefined') return;
+  relay = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: 'pp-3d-' + Math.random().toString(36).slice(2, 10), connectTimeout: 10000, reconnectPeriod: 3000 });
+  relay.on('connect', () => relay.subscribe('padel-pulgares/' + cod + '/m2p'));
+  relay.on('message', (t, msg) => {
+    if (conn && conn.open) return;
+    let d; try { d = JSON.parse(msg.toString()); } catch (_) { return; }
+    if (!viaInternet) { viaInternet = true; estado('Móvil conectado (por internet)', 'ok'); sincroniza(); }
+    recibe(d);
+  });
+}
+function alMovil(o) {
+  if (conn && conn.open) { try { conn.send(o); } catch (_) {} return; }
+  if (relay && relay.connected) try { relay.publish('padel-pulgares/' + cod + '/p2m', JSON.stringify(o)); } catch (_) {}
+}
+
+// ================= Sincronización de relojes =================
+// Se mandan «ping» con la hora del ordenador; el móvil contesta con la suya. Con la muestra de ida y vuelta más
+// rápida: desfase = hora del móvil − (hora de envío + ida y vuelta / 2). Así, la hora del golpe que manda el móvil
+// se pasa al reloj del ordenador sin que importe lo que tarde el mensaje.
+let muestras = [], desfase = null, rttMejor = null;
+function sincroniza() { for (let i = 0; i < 10; i++) setTimeout(() => alMovil({ t: 'ping', a: ahoraAbs() }), i * 150); }
+setInterval(() => { if ((conn && conn.open) || viaInternet) sincroniza(); }, 15000);
+function pong(d) {
+  const ahora = ahoraAbs(), rtt = ahora - d.a;
+  muestras.push({ rtt, off: d.b - (d.a + rtt / 2), t: ahora }); muestras = muestras.filter(m => ahora - m.t < 60000).slice(-40);
+  const mejor = muestras.reduce((a, m) => (!a || m.rtt < a.rtt) ? m : a, null);
+  desfase = mejor.off; rttMejor = mejor.rtt;
+  $('sync').textContent = 'reloj sincronizado (ida y vuelta ' + Math.round(rttMejor) + ' ms)';
+}
+
+// ================= Escena 3D =================
+const caja = $('escena');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); caja.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a1622);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.1));
+const sol = new THREE.DirectionalLight(0xffffff, 1.2); sol.position.set(4, 12, 6); scene.add(sol);
+// pista: 10 x 20 m, red en z = 0, vuestro campo z > 0 (abajo de la pantalla)
+const suelo = new THREE.Mesh(new THREE.PlaneGeometry(10, 20), new THREE.MeshStandardMaterial({ color: 0x1d5fa8 }));
+suelo.rotation.x = -Math.PI / 2; scene.add(suelo);
+const fuera = new THREE.Mesh(new THREE.PlaneGeometry(40, 50), new THREE.MeshStandardMaterial({ color: 0x0f2c4d }));
+fuera.rotation.x = -Math.PI / 2; fuera.position.y = -0.01; scene.add(fuera);
+const lineaMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+const linea = pts => scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p[0], 0.01, p[1]))), lineaMat));
+linea([[-5, -10], [5, -10], [5, 10], [-5, 10], [-5, -10]]); linea([[-5, -6.95], [5, -6.95]]); linea([[-5, 6.95], [5, 6.95]]); linea([[0, -6.95], [0, 6.95]]);
+const red = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.88, 0.04), new THREE.MeshStandardMaterial({ color: 0xdddddd, transparent: true, opacity: 0.55 }));
+red.position.set(0, 0.44, 0); scene.add(red);
+// paredes del fondo rival (cristal) para que se vea el fondo
+const cristal = new THREE.Mesh(new THREE.BoxGeometry(10, 3, 0.05), new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.18 }));
+cristal.position.set(0, 1.5, -10); scene.add(cristal);
+// zonas de referencia: cruzado (izquierda, fondo) y paralelo (derecha, fondo)
+const zona = (x, z, color) => { const m = new THREE.Mesh(new THREE.CircleGeometry(1.4, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.015, z); scene.add(m); };
+zona(-3.2, -7.2, 0x3ddc84); zona(3.2, -7.2, 0xffd23f);
+// rival que lanza (de adorno)
+const persona = color => { const g = new THREE.Group(); const cuerpo = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.9, 4, 10), new THREE.MeshStandardMaterial({ color })); cuerpo.position.y = 0.85; g.add(cuerpo);
+  const cab = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf0c8a0 })); cab.position.y = 1.65; g.add(cab); scene.add(g); return g; };
+const rival = persona(0xe0303a); rival.position.set(-1.5, 0, -9);
+// vuestro jugador (diestro, en el fondo derecho) con su pala
+const yo = persona(0x2f6fd6);
+const pala = new THREE.Group(); const cabezaPala = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 24), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+cabezaPala.rotation.z = Math.PI / 2; cabezaPala.position.x = 0.5; pala.add(cabezaPala);
+const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0x888888 })); mango.rotation.z = Math.PI / 2; mango.position.x = 0.15; pala.add(mango);
+pala.position.set(0.25, 1.05, 0); yo.add(pala);
+// bola
+const bola = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), new THREE.MeshStandardMaterial({ color: 0xd8f53a, emissive: 0x334400 }));
+scene.add(bola);
+const sombra = new THREE.Mesh(new THREE.CircleGeometry(0.07, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
+sombra.rotation.x = -Math.PI / 2; scene.add(sombra);
+const marca = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.2, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })); marca.rotation.x = -Math.PI / 2; marca.visible = false; scene.add(marca);
+function ajustaTam() { const w = caja.clientWidth, h = caja.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(ajustaTam).observe(caja); ajustaTam();
+
+// ================= La bola que viene (siempre igual) =================
+const G = 9.8, REBOTE = 0.72, ROCE = 0.85;
+const CONTACTO = { x: 1.55, z: 7.8 };   // donde le pegas (a tu derecha, delante del cuerpo)
+function trayectoriaEntrante() {   // muestras cada 1/240 s desde el lanzamiento hasta 1,2 s después del contacto
+  const S = { x: -1.5, y: 1.0, z: -8.5 }, B = { x: 0.8, z: 4.5 }, T = 1.3;   // (le llega a ~1,6 m del centro)
+  let p = { ...S }, v = { x: (B.x - S.x) / T, z: (B.z - S.z) / T, y: (0.5 * G * T * T - S.y) / T };
+  const pts = [], dt = 1 / 240; let t = 0, tC = null, pC = null;
+  while (t < 6) {
+    pts.push({ t, x: p.x, y: p.y, z: p.z });
+    v.y -= G * dt; p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt; t += dt;
+    if (p.y < 0.06 && v.y < 0) { p.y = 0.06; v.y = -v.y * REBOTE; v.x *= ROCE; v.z *= ROCE; }
+    if (tC == null && p.z >= CONTACTO.z) { tC = t; pC = { ...p }; }
+    if (tC != null && t > tC + 1.2) break;
+  }
+  return { pts, tC, pC };
+}
+const ENTRA = trayectoriaEntrante();
+// el jugador se pone de modo que la bola le llegue a su derecha, delante del cuerpo; la cámara, detrás de él
+yo.position.set(ENTRA.pC.x - 0.75, 0, ENTRA.pC.z + 0.35);
+camera.position.set(yo.position.x + 0.3, 2.7, yo.position.z + 3.6); camera.lookAt(0, 0.6, -3);
+const enPunto = (tray, t) => { const i = clamp(Math.round(t * 240), 0, tray.pts.length - 1); return tray.pts[i]; };
+
+// ================= Estado del punto =================
+// fase: 'espera' (sin bola) · 'viene' (la bola viene) · 'sale' (golpeada) · 'fallo'
+let fase = 'espera', tLanz = 0, salida = null, siguiente = null;
+const VENTANA = 350;            // ms: más lejos del momento ideal que esto, no le das
+const PREPARACION = -450;       // ms: un gesto tan adelantado es la preparación (no cuenta ni como fallo)
+const ESPERA_FALLO = 900;       // ms después del contacto: si no ha llegado ningún golpe que valga, fallo
+const K_MOMENTO = 0.10;         // grados por ms: 100 ms tarde = 10° más paralela (a la derecha)
+function aviso(txt) { $('aviso').innerHTML = txt; }
+function lanzar() {
+  if (fase === 'viene' || fase === 'sale') return;
+  clearTimeout(siguiente); fase = 'viene'; tLanz = ahoraAbs(); salida = null; marca.visible = false;
+  aviso(desfase == null ? 'Bola… (el reloj del móvil aún no está sincronizado)' : '');
+}
+const tContactoAbs = () => tLanz + ENTRA.tC * 1000;
+function programaSiguiente() { clearTimeout(siguiente); if ($('auto').checked) siguiente = setTimeout(lanzar, 2600); }
+
+// ================= Llega un gesto del móvil =================
+let golpes = [], ultimo = null;
+try { golpes = JSON.parse(localStorage.getItem('pala3d') || '[]'); } catch (_) { golpes = []; }
+const guarda = () => { try { localStorage.setItem('pala3d', JSON.stringify(golpes)); } catch (_) {} };
+function recibe(d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'pong') { pong(d); return; }
+  if (d.t === 'hola') { estado('Móvil conectado' + (d.cal ? '' : ' · falta calibrar'), 'ok'); sincroniza(); $('qrBox').hidden = true; return; }
+  if (d.t === 'gesto') { gesto(d); return; }
+  if (d.t === 'memoriza') { if (ultimo && !ultimo.memo) { ultimo.memo = true; guarda(); pintaCuenta(); aviso('Memorizado ✓'); } return; }
+}
+function gesto(g) {
+  if (fase !== 'viene' || desfase == null || g.tPicoAbs == null) return;
+  const tGolpe = g.tPicoAbs - desfase, dt = tGolpe - tContactoAbs();   // + tarde, − pronto
+  if (dt < PREPARACION) return;   // la preparación: se ignora
+  if (Math.abs(dt) > VENTANA) { fallo(dt < 0 ? 'Demasiado pronto' : 'Demasiado tarde', dt, g); return; }
+  if (g.tipo !== 'drive') { fallo('Eso ha sido un ' + (g.tipo === 'reves' ? 'revés' : g.tipo) + ': aquí toca drive', dt, g); return; }
+  golpea(g, dt);
+}
+// salida: dirección = cara de la pala + momento; altura y distancia con la lectura sencilla de pala.html
+function golpea(g, dt) {
+  const vzp = g.vzPico || 0;
+  const dirCara = 0.9 * g.dir, dirMomento = K_MOMENTO * dt;
+  const dir = clamp(dirCara + dirMomento, -55, 55);
+  const cima = clamp(1.6 + 0.05 * g.alt + 0.22 * vzp, 1.05, 8);
+  const dist = clamp(8 + 10 * g.fuerza + 3, 7, 18.5);
+  const efecto = vzp > 3.75 ? 'liftado' : vzp < -0.5 ? 'cortado' : 'plano';
+  // trayectoria de salida desde el punto de contacto: parábola que sube a «cima» y baja a la distancia pedida
+  const P = ENTRA.pC, h0 = P.y, H = Math.max(cima, h0 + 0.2), vy = Math.sqrt(2 * G * (H - h0)), T = vy / G + Math.sqrt(2 * H / G);
+  const r = dir * Math.PI / 180, vh = dist / T;
+  salida = { t0: ahoraAbs(), P, v: { x: Math.sin(r) * vh, y: vy, z: -Math.cos(r) * vh }, bote: { x: P.x + Math.sin(r) * dist, z: P.z - Math.cos(r) * dist } };
+  fase = 'sale'; giroPala = 1;
+  const dentro = Math.abs(salida.bote.x) <= 5 && salida.bote.z <= 0 && salida.bote.z >= -10;
+  const momentoTxt = Math.abs(dt) < 25 ? 'justo' : Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde');
+  $('dMomento').textContent = momentoTxt; $('dDir').textContent = (Math.abs(dir) < 3 ? 'centro' : (dir < 0 ? 'cruzado ' : 'paralelo ') + Math.round(Math.abs(dir)) + '°');
+  $('dDir').title = 'cara ' + Math.round(dirCara) + '° · momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°';
+  $('dAlt').textContent = cima.toFixed(1).replace('.', ',') + ' m'; $('dEfecto').textContent = efecto;
+  aviso((dentro ? '' : '<span style="color:var(--rojo)">Fuera</span> · ') + momentoTxt + ' · ' + $('dDir').textContent + ' <span class="peq">(cara ' + Math.round(dirCara) + '°, momento ' + (dirMomento >= 0 ? '+' : '') + Math.round(dirMomento) + '°)</span>');
+  ultimo = { hora: new Date().toISOString(), id: g.id, memo: false, dt: Math.round(dt), rtt: Math.round(rttMejor || 0), resultado: { dir: +dir.toFixed(1), dirCara: +dirCara.toFixed(1), dirMomento: +dirMomento.toFixed(1), cima: +cima.toFixed(2), dist: +dist.toFixed(2), efecto, dentro, bote: { x: +salida.bote.x.toFixed(2), z: +salida.bote.z.toFixed(2) } }, medido: (({ raw, t, ...x }) => x)(g), raw: g.raw };
+  golpes.push(ultimo); guarda(); pintaCuenta();
+  programaSiguiente();
+}
+function fallo(txt, dt, g) {
+  fase = 'fallo';
+  aviso('<span style="color:var(--rojo)">' + txt + '</span>' + (dt != null ? ' <span class="peq">(' + Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') + ')</span>' : ''));
+  if (g) { golpes.push({ hora: new Date().toISOString(), id: g.id, memo: false, fallo: txt, dt: dt != null ? Math.round(dt) : null, rtt: Math.round(rttMejor || 0), medido: (({ raw, t, ...x }) => x)(g), raw: g.raw }); guarda(); pintaCuenta(); }
+  $('dMomento').textContent = dt != null ? Math.round(Math.abs(dt)) + ' ms ' + (dt < 0 ? 'antes' : 'tarde') : '—';
+  programaSiguiente();
+}
+function pintaCuenta() {
+  $('dCuenta').textContent = golpes.filter(g => !g.fallo).length + ' · ' + golpes.filter(g => g.memo).length;
+  $('bajar').textContent = 'Descargar datos (' + golpes.length + ')';
+}
+pintaCuenta();
+
+// ================= Animación =================
+let giroPala = 0, tAnt = performance.now();
+function frame() {
+  const ahora = ahoraAbs(), dtF = Math.min(0.05, (performance.now() - tAnt) / 1000); tAnt = performance.now();
+  let p = null;
+  if (fase === 'viene' || fase === 'fallo') {
+    const t = (ahora - tLanz) / 1000;
+    if (fase === 'viene' && ahora > tContactoAbs() + ESPERA_FALLO) fallo('No le has dado', null, null);
+    p = t <= ENTRA.pts[ENTRA.pts.length - 1].t ? enPunto(ENTRA, t) : null;
+  } else if (fase === 'sale' && salida) {
+    const t = (ahora - salida.t0) / 1000, s = salida;
+    let x = s.P.x + s.v.x * t, z = s.P.z + s.v.z * t, y = s.P.y + s.v.y * t - 0.5 * G * t * t;
+    const tB = (s.v.y + Math.sqrt(s.v.y * s.v.y + 2 * G * (s.P.y - 0.06))) / G;   // momento del bote
+    if (t > tB) { marca.visible = true; marca.position.set(s.bote.x, 0.02, s.bote.z);
+      const t2 = t - tB, vy2 = (s.v.y - G * tB) * -REBOTE; y = 0.06 + vy2 * t2 - 0.5 * G * t2 * t2; if (y < 0.06) y = 0.06;
+      x = s.bote.x + s.v.x * ROCE * t2; z = s.bote.z + s.v.z * ROCE * t2; }
+    p = { x, y, z };
+    if (t > 3) fase = 'espera';
+  }
+  bola.visible = sombra.visible = !!p;
+  if (p) { bola.position.set(p.x, p.y, p.z); sombra.position.set(p.x, 0.012, p.z); }
+  // la pala gira al golpear
+  if (giroPala > 0) giroPala = Math.max(0, giroPala - dtF * 3);
+  pala.rotation.y = giroPala > 0 ? -1.2 + 2.4 * (1 - giroPala) : -0.4;   // (atrás → delante al golpear)
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+
+// ================= Botones =================
+$('bola').onclick = lanzar;
+$('verQR').onclick = () => { $('qrBox').hidden = !$('qrBox').hidden; };
+$('bajar').onclick = () => {
+  if (!golpes.length) return;
+  const f = new Date(), p = n => String(n).padStart(2, '0');
+  const blob = new Blob([JSON.stringify({ app: 'pala-movil', tipo: '3d', v: 1, contacto: CONTACTO, tContacto: ENTRA.tC, kMomento: K_MOMENTO, ventana: VENTANA, golpes }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'pala3d-' + f.getFullYear() + p(f.getMonth() + 1) + p(f.getDate()) + '-' + p(f.getHours()) + p(f.getMinutes()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$('borrar').onclick = () => { if (golpes.length && confirm('¿Borrar los ' + golpes.length + ' golpes guardados? Si no los has descargado, se pierden.')) { golpes = []; guarda(); pintaCuenta(); } };
+$('auto').onchange = () => { if ($('auto').checked && fase === 'espera') programaSiguiente(); };
+abrirSala();
+window.P3D = { recibe, lanzar, get fase() { return fase; }, get desfase() { return desfase; }, get golpes() { return golpes; }, ENTRA, tContactoAbs };   // (pruebas)
+</script>
+</body>
+</html>

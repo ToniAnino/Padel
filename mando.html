@@ -82,6 +82,13 @@ const diag = { srv: 'conectando', ice: '—', relay: 'no' };
 function pintaDiag() { $('diag').textContent = 'servidor: ' + diag.srv + ' · directa: ' + diag.ice + ' · por internet: ' + diag.relay; }
 let relay = null, relayOk = false, ultOriRelay = 0;
 const TEMA = () => 'padel-pulgares/' + codigo;
+// Reloj: el entrenamiento en 3D necesita saber CUÁNDO fue el golpe (no cuándo llega el mensaje). El móvil contesta a
+// los «ping» del ordenador con su hora, y así el ordenador calcula la diferencia entre los dos relojes.
+const ahoraAbs = () => performance.timeOrigin + performance.now();
+function recibeOrdenador(d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'ping') enviar({ t: 'pong', a: d.a, b: ahoraAbs() });
+}
 function enviar(o) {
   if (conn && conn.open) { try { conn.send(o); } catch (_) {} return; }
   if (relayOk) {
@@ -97,7 +104,9 @@ function usarRelay() {
     relayOk = true; diag.relay = 'sí'; pintaDiag();
     if (!(conn && conn.open)) estado('Conectado por internet (la vía directa no ha funcionado)', 'ok');
     enviar({ t: 'hola', cal: !!cal, via: 'internet' });
+    relay.subscribe(TEMA() + '/p2m');   // mensajes del ordenador (para sincronizar los relojes)
   });
+  relay.on('message', (tema, msg) => { try { recibeOrdenador(JSON.parse(msg.toString())); } catch (_) {} });
   relay.on('close', () => { relayOk = false; diag.relay = 'cortada'; pintaDiag(); });
   relay.on('error', e => { diag.relay = 'error'; pintaDiag(); });
 }
@@ -122,6 +131,7 @@ function conectar() {
   conn = c; diag.ice = 'buscando'; pintaDiag();
   setTimeout(() => { const pc = c.peerConnection; if (pc) pc.addEventListener('iceconnectionstatechange', () => { diag.ice = pc.iceConnectionState; pintaDiag(); }); }, 0);
   c.on('open', () => { diag.ice = 'abierta'; pintaDiag(); estado('Conectado con el ordenador (directo)', 'ok'); enviar({ t: 'hola', cal: !!cal, via: 'directa' }); });
+  c.on('data', recibeOrdenador);
   c.on('close', () => { if (conn === c) { conn = null; diag.ice = 'cerrada'; pintaDiag(); if (!relayOk) estado('Se ha cortado: reconectando…', 'esp'); setTimeout(conectar, 1500); } });
 }
 
@@ -236,6 +246,9 @@ function golpe(s, dur) {
   const t0 = s.raw.length ? s.raw[0][0] : s.t0;
   const raw = { v: 1, cal: cal.raw, tPico: Math.round(s.pico.t - t0), s: s.raw.map(x => [Math.round(x[0] - t0), ...x.slice(1)]) };
   const g = { t: 'golpe', tipo, fuerza: Math.max(0, Math.min(1, (s.wMax - W_FUERZA0) / (W_TOPE - W_FUERZA0))), dir: L.dir, alt: L.alt, efecto, wMax: s.wMax, dur, vz, vzPico, cabeza: L.cabeza, hora: Date.now(), id: Date.now() + '-' + Math.floor(Math.random() * 1e4), raw };
+  // hora exacta del impacto (pico) en el reloj del móvil (algunos navegadores dan el timeStamp ya en hora absoluta)
+  g.tPicoAbs = s.pico.t > 1e12 ? s.pico.t : performance.timeOrigin + s.pico.t;
+  enviar({ ...g, t: 'gesto' });   // todos los gestos, al momento (el entrenamiento 3D elige el que coincide con la bola)
   propone(g);
 }
 const TIPO = { drive: 'Drive', reves: 'Revés', remate: 'Remate' };
