@@ -66,6 +66,7 @@
 </main>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 // Ordenador: crea una sala en el servidor público de PeerJS (solo sirve para emparejar; luego los datos van
 // directos entre el móvil y el ordenador por WebRTC) y enseña el QR con el enlace del mando.
@@ -86,6 +87,7 @@ function abrirSala() {
     const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
     $('qr').innerHTML = qr.createImgTag(6, 8);
     estado('Esperando al móvil: escanea el QR (o abre el enlace y pon el código)', 'esp');
+    escuchaRelay(cod);
   });
   peer.on('connection', c => {
     if (conn) conn.close();
@@ -101,11 +103,26 @@ function abrirSala() {
   });
 }
 
+// vía de reserva por internet: si la directa no se abre, el móvil manda los golpes por un servidor MQTT público
+let relay = null, viaInternet = false;
+function escuchaRelay(cod) {
+  if (typeof mqtt === 'undefined') return;
+  if (relay) try { relay.end(true); } catch (_) {}
+  relay = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: 'pp-o-' + Math.random().toString(36).slice(2, 10), connectTimeout: 10000, reconnectPeriod: 3000 });
+  relay.on('connect', () => relay.subscribe('padel-pulgares/' + cod + '/m2p'));
+  relay.on('message', (tema, msg) => {
+    if (conn && conn.open) return;   // con la directa abierta, se usa esa
+    let d; try { d = JSON.parse(msg.toString()); } catch (_) { return; }
+    if (!viaInternet) { viaInternet = true; estado('Móvil conectado por internet', 'ok'); }
+    recibe(d);
+  });
+}
 function recibe(d) {
   if (!d || typeof d !== 'object') return;
   if (d.t === 'ori') { ori = d; return; }
-  if (d.t === 'hola') { estado('Móvil conectado' + (d.cal ? '' : ' · falta calibrar'), 'ok'); return; }
-  if (d.t === 'cal') { estado('Móvil conectado y calibrado', 'ok'); return; }
+  const via = conn && conn.open ? ' (directo)' : ' (por internet)';
+  if (d.t === 'hola') { estado('Móvil conectado' + via + (d.cal ? '' : ' · falta calibrar'), 'ok'); return; }
+  if (d.t === 'cal') { estado('Móvil conectado y calibrado' + via, 'ok'); return; }
   if (d.t === 'golpe') muestraGolpe(d);
 }
 

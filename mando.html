@@ -35,6 +35,7 @@
 <main>
   <h1>Pala móvil</h1>
   <div class="estado esp" id="estado"><i></i><span>Sin conectar</span></div>
+  <div class="peq" id="diag" style="text-align:left;margin-top:-8px"></div>
 
   <section class="card" id="cajaCodigo">
     <label for="codigo">Código que sale en el ordenador</label>
@@ -60,6 +61,7 @@
   </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 // Móvil: lee el giroscopio y el acelerómetro, detecta el golpe y se lo manda al ordenador por WebRTC (PeerJS).
 const PREF = 'padel-pulgares-';
@@ -69,26 +71,54 @@ let peer = null, conn = null, codigo = '', cal = null, sensoresOk = false;
 
 // ---------- conexión ----------
 function estado(txt, cls) { const e = $('estado'); e.className = 'estado ' + (cls || ''); e.querySelector('span').textContent = txt; }
-function enviar(o) { if (conn && conn.open) try { conn.send(o); } catch (_) {} }
+// Dos vías: la directa (WebRTC, rápida, la misma wifi o redes que se dejan) y, si en 7 s no se abre, la de reserva
+// por internet (un servidor MQTT público hace de cartero; algo más lenta, pero funciona con datos móviles o con
+// wifis que aíslan los aparatos). El ordenador escucha por las dos.
+const diag = { srv: 'conectando', ice: '—', relay: 'no' };
+function pintaDiag() { $('diag').textContent = 'servidor: ' + diag.srv + ' · directa: ' + diag.ice + ' · por internet: ' + diag.relay; }
+let relay = null, relayOk = false, ultOriRelay = 0;
+const TEMA = () => 'padel-pulgares/' + codigo;
+function enviar(o) {
+  if (conn && conn.open) { try { conn.send(o); } catch (_) {} return; }
+  if (relayOk) {
+    if (o.t === 'ori') { const t = performance.now(); if (t - ultOriRelay < 100) return; ultOriRelay = t; }   // por internet, la mira 10 veces/s
+    try { relay.publish(TEMA() + '/m2p', JSON.stringify(o)); } catch (_) {}
+  }
+}
+function usarRelay() {
+  if (relay || (conn && conn.open) || typeof mqtt === 'undefined') return;
+  diag.relay = 'conectando'; pintaDiag();
+  relay = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: 'pp-m-' + Math.random().toString(36).slice(2, 10), connectTimeout: 10000, reconnectPeriod: 3000 });
+  relay.on('connect', () => {
+    relayOk = true; diag.relay = 'sí'; pintaDiag();
+    if (!(conn && conn.open)) estado('Conectado por internet (la vía directa no ha funcionado)', 'ok');
+    enviar({ t: 'hola', cal: !!cal, via: 'internet' });
+  });
+  relay.on('close', () => { relayOk = false; diag.relay = 'cortada'; pintaDiag(); });
+  relay.on('error', e => { diag.relay = 'error'; pintaDiag(); });
+}
 function conectar() {
   if (!peer || peer.destroyed) {
     peer = new Peer();
-    peer.on('open', conectar);
-    peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
+    peer.on('open', () => { diag.srv = 'ok'; pintaDiag(); conectar(); });
+    peer.on('disconnected', () => { diag.srv = 'desconectado'; pintaDiag(); try { peer.reconnect(); } catch (_) {} });
     peer.on('error', err => {
-      if (err.type === 'peer-unavailable') estado('No encuentro ese código: mira el que sale en el ordenador', '');
-      else estado('Error de conexión: ' + err.type, '');
-      setTimeout(conectar, 2500);
+      if (err.type === 'peer-unavailable') { estado('No encuentro ese código: mira el que sale en el ordenador', ''); diag.ice = 'no encuentra el código'; }
+      else { diag.srv = 'error ' + err.type; if (!relayOk) estado('Problema con la vía directa: probando por internet…', 'esp'); usarRelay(); }
+      pintaDiag();
+      setTimeout(conectar, 4000);
     });
-    estado('Conectando…', 'esp');
+    estado('Conectando…', 'esp'); pintaDiag();
+    setTimeout(() => { if (!(conn && conn.open)) { if (!relayOk) estado('La vía directa no responde: probando por internet…', 'esp'); usarRelay(); } }, 7000);
     return;
   }
   if (!peer.open) return;
   if (conn && conn.open) return;
   const c = peer.connect(PREF + codigo, { reliable: true });
-  conn = c;
-  c.on('open', () => { estado('Conectado con el ordenador', 'ok'); enviar({ t: 'hola', cal: !!cal }); });
-  c.on('close', () => { if (conn === c) { conn = null; estado('Se ha cortado: reconectando…', 'esp'); setTimeout(conectar, 1500); } });
+  conn = c; diag.ice = 'buscando'; pintaDiag();
+  setTimeout(() => { const pc = c.peerConnection; if (pc) pc.addEventListener('iceconnectionstatechange', () => { diag.ice = pc.iceConnectionState; pintaDiag(); }); }, 0);
+  c.on('open', () => { diag.ice = 'abierta'; pintaDiag(); estado('Conectado con el ordenador (directo)', 'ok'); enviar({ t: 'hola', cal: !!cal, via: 'directa' }); });
+  c.on('close', () => { if (conn === c) { conn = null; diag.ice = 'cerrada'; pintaDiag(); if (!relayOk) estado('Se ha cortado: reconectando…', 'esp'); setTimeout(conectar, 1500); } });
 }
 
 // ---------- orientación ----------
@@ -194,7 +224,7 @@ $('empezar').onclick = empezar;
 $('calibrar').onclick = calibrar;
 const qs = new URLSearchParams(location.search).get('s');
 if (qs) { $('codigo').value = qs.toUpperCase(); }
-window.MANDO = { motion, orient, calibrar, conectar, enviar, get cal() { return cal; }, set codigo(c) { codigo = c; } };   // (pruebas)
+window.MANDO = { motion, orient, calibrar, conectar, enviar, usarRelay, get cal() { return cal; }, set codigo(c) { codigo = c; } };   // (pruebas)
 </script>
 </body>
 </html>
