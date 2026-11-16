@@ -1431,9 +1431,13 @@ function hash01(a, b) { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.545
 function meshKick(b, axis) {
   b.meshN = (b.meshN || 0) + 1;
   const sd = b.seed || 0, n = b.meshN, v = b.v, s = v.length();
-  const u1 = 2 * hash01(sd, n) - 1, u2 = 2 * hash01(sd + 7.1, n) - 1, u3 = hash01(sd + 3.7, n);
-  if (axis === 'x') { v.z += 0.22 * s * u1; v.x *= 0.75 + 0.5 * u3; } else { v.x += 0.22 * s * u1; v.z *= 0.75 + 0.5 * u3; }
-  v.y += 0.15 * s * u2;
+  const u1 = 2 * hash01(sd, n) - 1, u2 = 2 * hash01(sd + 7.1, n) - 1, u3 = hash01(sd + 3.7, n), u4 = hash01(sd + 5.3, n);
+  // la reja no es lisa: cada alambre la desvía a su manera (salida de lado y arriba/abajo poco previsible)
+  // y la frena: pierde buena parte de lo que llevaba a lo largo de la reja y sale con poca fuerza
+  const t = 0.5 + 0.3 * u4;   // lo que conserva a lo largo de la reja
+  if (axis === 'x') { v.z = v.z * t + 0.4 * s * u1; v.x *= 0.6 + 0.6 * u3; }
+  else { v.x = v.x * t + 0.4 * s * u1; v.z *= 0.6 + 0.6 * u3; }
+  v.y = v.y * t + 0.3 * s * u2;
   b.w.multiplyScalar(0.5);   // el giro se pierde en la malla
 }
 // vuelo en el aire durante h segundos (gravedad, frenado y efecto), sin choques
