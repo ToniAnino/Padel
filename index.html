@@ -177,9 +177,8 @@
   #ladder .retar.sel{background:#fff}
   #ladder #escReset{padding:6px 10px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   #ladder .ltit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin:4px 0 6px}
-  #result .fichar{display:inline-block;margin:8px 4px 0;padding:8px 10px;border:0;border-radius:10px;background:#fff;color:#000;font:inherit;font-size:13px;font-weight:900;cursor:pointer}
-  #result .fichar.no{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6)}
   .aspecto{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
+  .aspecto input.nomb{flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:14px}
   .aspecto .at{font-size:12px;font-weight:800;letter-spacing:1px;margin-bottom:4px}
   .arow{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:4px 0;font-size:12px}
   .arow > span{width:78px;opacity:.75}
@@ -337,7 +336,7 @@ const DRIVE_NET = 1.35;           // altura a la que el golpe normal pasa por la
 const E_FLOOR = 0.72, F_FLOOR = 0.85, E_WALL = 0.7;
 const US = 0, RIVAL = 1;
 // Ajustes elegidos en el menú (se recuerdan en este navegador)
-const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', match: '3', tipo: 'rapido', us: ['dani', 'sara'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal' };
+const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
 if (CFG.match === '1') CFG.match = '5p';   // el antiguo «1 set» es ahora el partido a 5 puntos
@@ -676,8 +675,8 @@ function buildStats(p) {
 // Progreso de cada jugador (se guarda en el navegador): experiencia, nivel, puntos sin gastar y mejoras por barra.
 // Cada barra puede subir como mucho 20 sobre la de partida (y nunca de 99): así cada jugador sigue siendo quien es.
 let PROG = {};
-try { PROG = JSON.parse(localStorage.getItem('padel.progreso') || '{}') || {}; } catch (_) { PROG = {}; }
-const saveProg = () => { try { localStorage.setItem('padel.progreso', JSON.stringify(PROG)); } catch (_) {} };
+try { PROG = JSON.parse(localStorage.getItem('padel.progreso2') || '{}') || {}; } catch (_) { PROG = {}; }
+const saveProg = () => { try { localStorage.setItem('padel.progreso2', JSON.stringify(PROG)); } catch (_) {} };
 const progOf = id => {
   const q = PROG[id] ??= {};
   q.xp = Number.isFinite(q.xp) ? q.xp : 0; q.lvl = Number.isInteger(q.lvl) && q.lvl > 0 ? q.lvl : 1;
@@ -722,10 +721,29 @@ function applyLookOv(p) {
   if (p.s !== 'h') delete p.acc.barba;
   p.pv = (p.pv || 0) + 1;   // retrato nuevo
 }
-for (const p of ROSTER) {
+// Vuestros dos jugadores (los «player»): solo a ellos se les pone nombre, cuerpo y aspecto; empiezan con nivel bajo
+// y suben gastando vosotros la experiencia. Se guardan en el navegador.
+const PROPIOS_KEY = 'padel.propios', PROPIO_BASE = 38;
+const PROPIOS_DEF = [
+  { id: 'p1', n: 'Leo Martín',  s: 'h', alt: 1.78, cx: 'n', piel: 1, pelo: 'corto',  pc: 0x2b1d14, cam: 0x0ea5e9, man: true,  pan: 0x111827, zap: 0xffffff, acc: {} },
+  { id: 'p2', n: 'Nora Ruiz',   s: 'm', alt: 1.68, cx: 'n', piel: 1, pelo: 'coleta', pc: 0x5a3420, cam: 0xf4f4f4, man: false, pan: 0x1e3a8a, zap: 0xffffff, acc: { cinta: 0xf4f4f4 } },
+];
+let PROPIOS;
+try { PROPIOS = JSON.parse(localStorage.getItem(PROPIOS_KEY) || 'null'); } catch (_) { PROPIOS = null; }
+if (!Array.isArray(PROPIOS) || PROPIOS.length !== 2 || !PROPIOS.every(p => p && PROPIOS_DEF.some(d => d.id === p.id))) PROPIOS = PROPIOS_DEF.map(p => ({ ...p, acc: { ...p.acc } }));
+const savePropios = () => { try { localStorage.setItem(PROPIOS_KEY, JSON.stringify(PROPIOS.map(({ id, n, s, alt, cx }) => ({ ...PROPIOS_DEF.find(d => d.id === id), id, n, s, alt, cx })))); } catch (_) {} };
+for (const d of PROPIOS) ROSTER.push({ ...d, acc: { ...(d.acc || {}) }, base: PROPIO_BASE, perf: 'completo', propio: true });
+// Contrincantes nuevos que van apareciendo en la escalera (aleatorios, de nivel de partida por debajo de 60)
+const NUEVOS_KEY = 'padel.nuevos';
+let NUEVOS;
+try { NUEVOS = JSON.parse(localStorage.getItem(NUEVOS_KEY) || '[]'); } catch (_) { NUEVOS = []; }
+if (!Array.isArray(NUEVOS)) NUEVOS = [];
+for (const d of NUEVOS) if (d && d.id && PERFILES[d.perf]) ROSTER.push({ ...d, acc: { ...(d.acc || {}) }, nuevo: true });
+function prepPlayer(p) {
   p.st0 = buildStats(p); p.st = { ...p.st0 }; refreshStats(p); applyLookOv(p);
   p.tag = PERFILES[p.perf].tag[p.s === 'm' ? 1 : 0];
 }
+for (const p of ROSTER) prepPlayer(p);
 const media = p => Math.round(STAT_KEYS.reduce((a, k) => a + p.st[k], 0) / STAT_KEYS.length);
 const byId = id => ROSTER.find(p => p.id === id) || ROSTER[0];
 
@@ -1893,7 +1911,7 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
   // (o el remate), cómo le llega la bola y si el globo se coge de volea o tras el bote
   if (!libre && Math.abs(tz) > 1 && Math.abs(tz) <= 9.7) {
     const n = aimSpread(pl);
-    tx = clamp(tx + n * tri(), -4.75, 4.75);
+    tx = clamp(tx + n * tri(), -5.6, 5.6);   // el error puede mandarla a la pared lateral sin botar (mala)
     tz = Math.sign(tz) * clamp(Math.abs(tz) + n * (type === 'lob' ? 1.3 : 1) * tri(), 1, 9.75);   // en el globo, sobre todo el largo
   }
   // Golpe forzado (bola rápida, a los pies, lejos del cuerpo o en el aire): menos precisión y menos potencia.
@@ -1904,7 +1922,7 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
     S.lastForced = diff;
     if (diff > 0.25) {
       const n = Math.min(2, 1.1 * diff);
-      tx = clamp(tx + rand(-n, n), -4.8, 4.8);
+      tx = clamp(tx + rand(-n, n), -5.6, 5.6);
       tz = Math.sign(tz) * clamp(Math.abs(tz) + rand(-n, n * 0.6), 1, 10.3);   // puede irse largo
       if (type === 'drive' && netH !== SMASH_NET) netH = Math.max(netH ?? DRIVE_NET, DRIVE_NET + 0.35 * diff);   // más bombeada y lenta
     }
@@ -2047,18 +2065,41 @@ function ptsText() {
 const setsText = () => S.sets.map(s => s[0] + '-' + s[1]).join('  ');
 // factor de dificultad: rivales mejores dan más experiencia (hasta el doble); mucho peores, casi nada
 const xpFactor = () => clamp(1 + (pairMed(CFG.riv) - pairMed(CFG.us)) / 20, 0.25, 2);
-// suma experiencia a vuestros dos jugadores; devuelve el aviso si alguno sube de nivel
-function gainXP(base) {
-  const xp = Math.max(1, Math.round(base * xpFactor()));
-  S.xpMatch = (S.xpMatch || 0) + xp;
-  let aviso = '';
-  for (const id of CFG.us) {
-    const q = progOf(id);
-    q.xp += xp;
-    while (q.xp >= xpNeed(q.lvl)) { q.xp -= xpNeed(q.lvl); q.lvl++; q.pts += PTS_NIVEL; aviso = ' · ¡' + byId(id).n.split(' ')[0].toUpperCase() + ' SUBE A NIVEL ' + q.lvl + '!'; }
+// lo mismo visto desde los rivales (ganarle a una pareja mejor da más)
+const xpFactorRiv = () => clamp(1 + (pairMed(CFG.us) - pairMed(CFG.riv)) / 20, 0.25, 2);
+// solo se gana experiencia en competición (la escalera y las que vengan); Rápido y Entreno son de entrenamiento
+const compite = () => CFG.tipo === 'escalera';
+// los rivales gastan solos sus puntos de mejora: sobre todo en lo fuerte de su estilo, algo al azar
+function autoMejora(p) {
+  const q = progOf(p.id), pf = PERFILES[p.perf].m;
+  while (q.pts > 0) {
+    const cand = STAT_KEYS.filter(k => p.st0[k] + (q.add[k] | 0) < statCap(p, k));
+    if (!cand.length) break;
+    const w = cand.map(k => 1 + Math.max(0, pf[k] || 0) / 4);
+    let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0;
+    while (r > w[i] && i < w.length - 1) r -= w[i++];
+    q.add[cand[i]] = (q.add[cand[i]] | 0) + 1; q.pts--;
+  }
+  refreshStats(p);
+}
+// al acabar un partido de competición: cada pareja suma lo que ha ido ganando (puntos, juegos, sets y el partido);
+// el que pierde se lleva la mitad. Devuelve el texto de quién sube de nivel.
+function repartirXP(ganador) {
+  S.xpMatch = 0; S.xpRivMatch = 0; S.xpRivIds = CFG.riv.slice();
+  if (!compite()) return '';
+  const raw = S.xpRaw || [0, 0], sube = [];
+  for (const t of [US, RIVAL]) {
+    const xp = Math.max(1, Math.round(raw[t] * (t === ganador ? 1 : 0.5) * (t === US ? xpFactor() : xpFactorRiv())));
+    if (t === US) S.xpMatch = xp; else S.xpRivMatch = xp;
+    for (const id of t === US ? CFG.us : CFG.riv) {
+      const q = progOf(id), p = byId(id);
+      q.xp += xp;
+      while (q.xp >= xpNeed(q.lvl)) { q.xp -= xpNeed(q.lvl); q.lvl++; q.pts += PTS_NIVEL; sube.push(p.n.split(' ')[0] + ' sube a nivel ' + q.lvl); }
+      if (!p.propio) autoMejora(p);
+    }
   }
   saveProg();
-  return aviso;
+  return sube.join(' · ');
 }
 function endPoint(winner, reason) {
   S.phase = 'point'; S.timer = 1.8;
@@ -2086,11 +2127,15 @@ function endPoint(winner, reason) {
   if (CFG.match === '5p' && S.score[winner] >= 5) fin = true;   // partido a 5 puntos: el primero que llega
   updateHud();
   bounceRing.visible = targetRing.visible = false;
-  // experiencia: punto 1, juego 5, set 15, partido ganado 40 (perdido 10), por lo difíciles que sean los rivales
-  const xp = (winner === US ? 1 + (juego ? 5 : 0) + (set ? 15 : 0) : 0) + (fin ? (winner === US ? 40 : 10) : 0);
-  const subida = xp ? gainXP(xp) : '';
+  // experiencia (para las dos parejas): punto 3, juego 5, set 15 y 15 por jugar el partido;
+  // se reparte al acabar, el que pierde la mitad y según lo difíciles que fueran los contrarios
+  S.xpRaw = S.xpRaw || [0, 0];
+  S.xpRaw[winner] += 3 + (juego ? 5 : 0) + (set ? 15 : 0);
+  if (fin) { S.xpRaw[winner] += 15; S.xpRaw[L] += 15; }   // (lo de jugar el partido, igual para los dos)
+  const subida = '';
   if (fin) {            // fin del partido: se enseña el resultado y luego el menú
     S.over = true; S.timer = 3.5; clearSave();
+    S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     S.trainTxt = trainTick();   // los entrenamientos cuentan un partido más
     showBanner(winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '5p' ? S.score.join('-') : setsText()) + subida, winner === US ? 'gana' : 'riv', 1.4);
@@ -3314,7 +3359,7 @@ function difLabel(d) {
 // solo parejas equilibradas (los dos de nivel parecido), como en un torneo de verdad
 const gapOf = p => Math.abs(media(byId(p[0])) - media(byId(p[1])));
 function rivalPairs() {
-  const free = ROSTER.filter(p => !CFG.us.includes(p.id)), out = [];
+  const free = ROSTER.filter(p => !p.propio && !CFG.us.includes(p.id)), out = [];   // (vuestros jugadores propios nunca son rivales)
   for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) out.push([free[i].id, free[j].id]);
   return out.filter(p => gapOf(p) <= 14).sort((a, b) => pairMed(a) - pairMed(b));
 }
@@ -3332,88 +3377,122 @@ function stepRivals(dir) {
   CFG.riv = L.filter(p => Math.abs(pairMed(p) - target) < 3).sort((a, b) => gapOf(a) - gapOf(b))[0];
   saveCfg(); applyLineup();
 }
-// ================= Escalera y fichajes =================
-// 8 parejas fijas (de dos jugadores de nivel parecido) ordenadas de mejor a peor y vosotros abajo del todo.
-// Se reta a una de las 2 parejas de justo encima; si se gana, os ponéis en su puesto y ellas bajan uno.
-// Vuestra plantilla empieza con los 4 jugadores más flojos; al ganar un reto se puede fichar a uno de los rivales.
-const ESC_KEY = 'padel.escalera';
+// ================= Escalera =================
+// Todas las parejas rivales (dos jugadores de nivel parecido) ordenadas de mejor a peor y vosotros (vuestros dos
+// jugadores propios) abajo del todo. Se reta a una de las 2 parejas de justo encima; si se gana, os ponéis en su
+// puesto y ellas bajan uno. Cada NUEVOS_CADA partidos ganados entra una pareja nueva, colocada según su nivel.
+const ESC_KEY = 'padel.escalera2', NUEVOS_CADA = 3;
 const media0 = p => STAT_KEYS.reduce((a, k) => a + p.st0[k], 0) / STAT_KEYS.length;
+const idsPropios = () => PROPIOS.map(p => p.id);
+const esRival = id => ROSTER.some(p => p.id === id && !p.propio);
 function escNew() {
-  const s = [...ROSTER].sort((a, b) => media0(a) - media0(b)).map(p => p.id);
-  const squad = s.slice(0, 4), rest = s.slice(4), pairs = [];
-  for (let i = 0; i < rest.length; i += 2) pairs.push([rest[i], rest[i + 1]]);
-  return { ladder: [...pairs.reverse(), 'US'], squad, campeones: false };
+  const s = ROSTER.filter(p => !p.propio).sort((a, b) => media(a) - media(b)).map(p => p.id);
+  if (s.length % 2) s.shift();   // (si son impares, el más flojo se queda fuera)
+  const pairs = [];
+  for (let i = 0; i < s.length; i += 2) pairs.push([s[i], s[i + 1]]);
+  return { ladder: [...pairs.reverse(), 'US'], campeones: false, ganados: 0 };
 }
 let ESC;
 try { ESC = JSON.parse(localStorage.getItem(ESC_KEY) || 'null'); } catch (_) { ESC = null; }
-if (!ESC || !Array.isArray(ESC.ladder) || !ESC.ladder.includes('US') || !Array.isArray(ESC.squad) || ESC.squad.length < 2) ESC = escNew();
+if (!ESC || !Array.isArray(ESC.ladder) || ESC.ladder.filter(e => e === 'US').length !== 1 ||
+    !ESC.ladder.every(e => e === 'US' || (Array.isArray(e) && e.length === 2 && e.every(esRival)))) ESC = escNew();
+ESC.ganados = ESC.ganados | 0;
 const saveEsc = () => { try { localStorage.setItem(ESC_KEY, JSON.stringify(ESC)); } catch (_) {} };
 const escPos = () => ESC.ladder.indexOf('US');
 const samePair = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === 2 && b.includes(a[0]) && b.includes(a[1]);
 const retables = () => { const p = escPos(); return [p - 1, p - 2].filter(i => i >= 0).map(i => ESC.ladder[i]); };
-// en la escalera: vuestra pareja de la plantilla y rivales = una pareja que se pueda retar
+// en la escalera jugáis siempre con vuestros dos jugadores, y los rivales son una pareja que se pueda retar
 function escSanitize() {
-  if (!CFG.us.every(id => ESC.squad.includes(id)) || CFG.us[0] === CFG.us[1])   // los dos mejores de la plantilla
-    CFG.us = [...ESC.squad].sort((a, b) => media(byId(b)) - media(byId(a))).slice(0, 2);
+  CFG.us = idsPropios();
   const R = retables();
-  if (!R.length) { CFG.riv = ESC.ladder.find(e => e !== 'US' && !e.some(id => CFG.us.includes(id))) || CFG.riv; return; }   // ya sois los primeros
+  if (!R.length) { CFG.riv = ESC.ladder.find(e => e !== 'US') || CFG.riv; return; }   // ya sois los primeros
   if (!R.some(p => samePair(p, CFG.riv))) escRetar(R[0], false);
 }
-// elegir reto: si alguno de vuestra pareja está en esa pareja rival (porque lo fichasteis), se cambia por otro de la plantilla
 function escRetar(pair, pintar = true) {
-  CFG.riv = [...pair];
-  CFG.us = CFG.us.map(id => pair.includes(id) ? null : id);
-  for (let i = 0; i < 2; i++) if (!CFG.us[i]) CFG.us[i] = ESC.squad.find(id => !pair.includes(id) && !CFG.us.includes(id));
-  if (CFG.us.some(id => !id)) return false;
+  CFG.riv = [...pair]; CFG.us = idsPropios();
   saveCfg(); if (pintar) applyLineup();
   return true;
 }
+// Contrincantes nuevos: aleatorios, con nivel de partida por debajo de 60 (los demás van subiendo con el tiempo,
+// así siempre hay rivales asequibles)
+const NOMBRES = {
+  h: ['Luis', 'Adrián', 'Mario', 'Diego', 'Raúl', 'Jorge', 'Víctor', 'Gonzalo', 'Nacho', 'Carlos', 'Fran', 'Samuel', 'Bruno', 'Íker', 'Martín', 'Héctor'],
+  m: ['Alba', 'Clara', 'Noelia', 'Rocío', 'Inés', 'Patricia', 'Sofía', 'Lidia', 'Silvia', 'Eva', 'Cristina', 'Belén', 'Ana', 'Rosa', 'Julia', 'Carla'],
+};
+const APELLIDOS = ['Molina', 'Ortega', 'Delgado', 'Ramos', 'Gallego', 'Vega', 'Medina', 'Herrera', 'Cano', 'Marín', 'Iglesias', 'Santos',
+  'Crespo', 'Fuentes', 'Pascual', 'Rojas', 'Benítez', 'Nieto', 'Carrasco', 'Sanz', 'Lozano', 'Moya', 'Varela', 'Duarte'];
+const elige = a => a[Math.floor(Math.random() * a.length)];
+function nuevoJugador(cerca) {
+  const s = Math.random() < 0.5 ? 'h' : 'm', usados = new Set(ROSTER.map(p => p.n));
+  let n = '';
+  for (let k = 0; k < 40 && (!n || usados.has(n)); k++) n = elige(NOMBRES[s]) + ' ' + elige(APELLIDOS);
+  const acc = {}, r = Math.random(), col = elige(PAL);
+  if (r < 0.2) acc.cinta = col; else if (r < 0.35) acc.gorra = col; else if (r < 0.45) acc.visera = col;
+  if (Math.random() < 0.25) acc.munequeras = elige(PAL);
+  if (Math.random() < 0.15) acc.gafas = 1;
+  if (s === 'h' && Math.random() < 0.3) acc.barba = 1;
+  const base = Math.round(cerca ? clamp(cerca + rand(-6, 6), 30, 58) : rand(30, 58));
+  return {
+    id: 'n' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36), n, s,
+    alt: +(s === 'h' ? rand(1.70, 1.95) : rand(1.58, 1.80)).toFixed(2), cx: elige(['d', 'n', 'n', 'f']),
+    piel: Math.floor(Math.random() * SKIN_TONES.length),
+    pelo: elige(s === 'h' ? ['corto', 'corto', 'rapado', 'rizado', 'calvo', 'melena'] : ['coleta', 'coleta', 'mono', 'melena', 'rizado', 'corto']),
+    pc: elige(PAL_PELO), cam: elige(PAL), man: Math.random() < 0.5, pan: elige(PAL), zap: elige(PAL), acc, base,
+    perf: elige(Object.keys(PERFILES)),
+  };
+}
+function nuevaPareja() {
+  const a = nuevoJugador(), b = nuevoJugador(a.base);
+  for (const d of [a, b]) { NUEVOS.push(d); const p = { ...d, acc: { ...d.acc }, nuevo: true }; ROSTER.push(p); prepPlayer(p); }
+  try { localStorage.setItem(NUEVOS_KEY, JSON.stringify(NUEVOS)); } catch (_) {}
+  const par = [a.id, b.id], m = pairMed(par);
+  let i = ESC.ladder.findIndex(e => (e === 'US' ? pairMed(idsPropios()) : pairMed(e)) < m);
+  if (i < 0) i = ESC.ladder.length;
+  ESC.ladder.splice(i, 0, par);
+  return 'Nueva pareja en la escalera: ' + a.n.split(' ')[0] + ' y ' + b.n.split(' ')[0] + ' (puesto ' + (i + 1) + ')';
+}
 function escOnMatchEnd(ganado) {
-  S.escTxt = ''; S.fichaje = null;
+  S.escTxt = '';
   if (CFG.tipo !== 'escalera') return;
-  const pos = escPos(), j = ESC.ladder.findIndex(e => e !== 'US' && samePair(e, CFG.riv));
-  if (!ganado || j < 0 || j > pos) { S.escTxt = ganado ? '' : 'Seguís en el puesto ' + (pos + 1) + ' de la escalera.'; return; }
-  ESC.ladder.splice(pos, 1); ESC.ladder.splice(j, 0, 'US');
-  ESC.campeones = ESC.campeones || j === 0;
-  S.escTxt = j === 0 ? '¡SOIS LOS NÚMERO 1 DE LA ESCALERA!' : 'Subís al puesto ' + (j + 1) + ' de la escalera.';
-  const libres = CFG.riv.filter(id => !ESC.squad.includes(id));
-  if (libres.length) S.fichaje = libres;
+  const txt = [], pos = escPos(), j = ESC.ladder.findIndex(e => e !== 'US' && samePair(e, CFG.riv));
+  if (ganado) {
+    ESC.ganados++;
+    if (j >= 0 && j < pos) {
+      ESC.ladder.splice(pos, 1); ESC.ladder.splice(j, 0, 'US');
+      ESC.campeones = ESC.campeones || j === 0;
+      txt.push(j === 0 ? '¡SOIS LOS NÚMERO 1 DE LA ESCALERA!' : 'Subís al puesto ' + (j + 1) + ' de la escalera.');
+    }
+    if (ESC.ganados % NUEVOS_CADA === 0) txt.push(nuevaPareja());
+  } else txt.push('Seguís en el puesto ' + (pos + 1) + ' de la escalera.');
+  S.escTxt = txt.join(' · ');
   saveEsc();
   escSanitize(); applyLineup();   // siguiente reto preparado
 }
 function paintLadder() {
   const el = document.getElementById('ladder');
   if (CFG.tipo !== 'escalera') { el.innerHTML = ''; return; }
-  const pos = escPos(), R = retables();
+  const R = retables(), nv = id => { const l = progOf(id).lvl; return l > 1 ? ' <small>Nv ' + l + '</small>' : ''; };
+  const faltan = NUEVOS_CADA - ESC.ganados % NUEVOS_CADA;
   el.innerHTML = '<div class="ltit">ESCALERA' + (ESC.campeones ? ' · ¡YA HABÉIS SIDO NÚMERO 1!' : '') + '</div>' + ESC.ladder.map((e, i) => {
     if (e === 'US') return `<div class="lrow us"><span class="lpos">${i + 1}</span><span class="lnm"><b>VOSOTROS</b> · ${CFG.us.map(id => byId(id).n.split(' ')[0]).join(' y ')}</span><span class="lmed">${Math.round(pairMed(CFG.us))}</span></div>`;
     const reto = R.some(p => p === e), sel = samePair(e, CFG.riv);
     return `<div class="lrow${sel && reto ? ' reto' : ''}"><span class="lpos">${i + 1}</span><img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">
-      <span class="lnm">${e.map(id => byId(id).n.split(' ')[0]).join(' y ')}</span><span class="lmed">${Math.round(pairMed(e))}</span>
+      <span class="lnm">${e.map(id => byId(id).n.split(' ')[0] + nv(id)).join(' y ')}</span><span class="lmed">${Math.round(pairMed(e))}</span>
       ${reto ? `<button class="retar${sel ? ' sel' : ''}" data-i="${i}">${sel ? 'RETADOS' : 'RETAR'}</button>` : ''}</div>`;
-  }).join('') + `<div class="ltit" style="margin-top:8px">VUESTRA PLANTILLA: ${ESC.squad.map(id => byId(id).n.split(' ')[0]).join(', ')}</div>
+  }).join('') + `<div class="ltit" style="margin-top:8px">PARTIDOS GANADOS: ${ESC.ganados} · PAREJA NUEVA ${faltan === 1 ? 'AL PRÓXIMO' : 'DENTRO DE ' + faltan}</div>
   <button class="ed" id="escReset" style="margin-top:4px">Empezar la escalera de nuevo</button>`;
 }
 document.getElementById('ladder').addEventListener('click', e => {
   const b = e.target.closest('.retar');
-  if (b) { if (!escRetar(ESC.ladder[+b.dataset.i])) showMsg('No hay jugadores libres en la plantilla para ese reto', 2); return; }
-  if (e.target.id === 'escReset') askConfirm('¿Empezar la escalera de nuevo? Se pierden el puesto y los fichajes (no la experiencia).', 'Sí, empezar', () => {
+  if (b) { escRetar(ESC.ladder[+b.dataset.i]); return; }
+  if (e.target.id === 'escReset') askConfirm('¿Empezar la escalera de nuevo? Se pierde el puesto (no la experiencia).', 'Sí, empezar', () => {
     ESC = escNew(); saveEsc(); escSanitize(); saveCfg(); applyLineup(); paintLineup();
   });
-});
-// fichaje tras ganar un reto
-document.getElementById('result').addEventListener('click', e => {
-  const b = e.target.closest('.fichar'); if (!b) return;
-  const id = b.dataset.id;
-  if (id && !ESC.squad.includes(id)) { ESC.squad.push(id); saveEsc(); S.escTxt = byId(id).n + ' ficha por vuestro equipo.'; }
-  S.fichaje = null;
-  if (CFG.tipo === 'escalera') escSanitize();
-  paintPlay(); applyLineup();
 });
 function sanitizeLineup() {
   const ok = id => ROSTER.some(p => p.id === id);
   if (CFG.tipo !== 'entreno' && CFG.tipo !== 'escalera') CFG.tipo = 'rapido';
-  if (!Array.isArray(CFG.us) || CFG.us.length !== 2 || !CFG.us.every(ok) || CFG.us[0] === CFG.us[1]) CFG.us = ['dani', 'sara'];
+  if (!Array.isArray(CFG.us) || CFG.us.length !== 2 || !CFG.us.every(ok) || CFG.us[0] === CFG.us[1]) CFG.us = ['p1', 'p2'];
   // rivales: los guardados si valen; si no (o la primera vez), una pareja igualada
   const r = CFG.riv;
   if (!Array.isArray(r) || r.length !== 2 || !r.every(ok) || new Set([...CFG.us, ...r]).size !== 4) pickEvenRivals();
@@ -3439,7 +3518,7 @@ function paintLineup() {
   document.getElementById('rivNav').style.display = rap ? 'flex' : 'none';
   document.getElementById('tipoTxt').textContent = rap
     ? 'Elige tu pareja; los rivales se ajustan a vuestro nivel (con las flechas, más fáciles o más difíciles).'
-    : esc ? 'Escalera: retad a una de las 2 parejas de justo encima. Si ganáis, os quedáis su puesto y podéis fichar a uno de ellos. Vuestra pareja sale de vuestra plantilla (' + ESC.squad.length + ' jugadores).'
+    : esc ? 'Escalera: jugáis con vuestros dos jugadores. Retad a una de las 2 parejas de justo encima; si ganáis, os quedáis su puesto. Todos ganan experiencia (el que pierde, la mitad) y cada ' + NUEVOS_CADA + ' partidos ganados aparece una pareja nueva.'
     : 'Entrenamiento: toca cualquier jugador para cambiarlo, también los rivales, aunque sean de menos nivel.';
   paintLadder();
   if (rap) {
@@ -3454,7 +3533,7 @@ function cardHtml(p, elegible, actual) {
   const bars = STAT_KEYS.map(k => {
     const v = p.st[k], b0 = p.st0[k], c = v >= 75 ? '#4ade80' : v >= 50 ? '#facc15' : v >= 30 ? '#fb923c' : '#f87171';
     // la parte mejorada se ve más clara; con puntos, botón + hasta el tope de esa barra
-    const mas = q.pts > 0 ? (v < statCap(p, k) ? `<button class="mas" data-k="${k}">+</button>` : '<em class="tope">tope</em>') : '';
+    const mas = q.pts > 0 && p.propio ? (v < statCap(p, k) ? `<button class="mas" data-k="${k}">+</button>` : '<em class="tope">tope</em>') : '';
     const ent = q.train && q.train.k === k ? ' ⬆' : '';   // barra en entrenamiento
     return `<div class="bar"><span>${STAT_NAMES[k]}${ent}</span><i style="--v:${v}%;--c:${c};--b:${v > b0 ? b0 : 0}%"></i><b>${v}</b>${mas}</div>`;
   }).join('');
@@ -3466,10 +3545,10 @@ function cardHtml(p, elegible, actual) {
     <div class="ch"><img src="${portrait(p)}" alt=""><div class="ci"><div class="cn">${p.n}</div>
       <div class="cs">${p.tag} · ${p.s === 'm' ? 'mujer' : 'hombre'} · ${p.alt.toFixed(2).replace('.', ',')} m · ${p.cx === 'f' ? 'fuerte' : p.cx === 'd' ? 'delgad' + (p.s === 'm' ? 'a' : 'o') : 'normal'}</div></div>
       <div class="cm">${media(p)}${q.pts ? '<em class="pt">+' + q.pts + '</em>' : ''}</div></div>
-    <div class="cd">${prog}${pickSlot < 2 && elegible ? trainHtml(p) : ''}${bars}
+    <div class="cd">${prog}${p.propio && elegible ? trainHtml(p) : ''}${bars}
       <div class="estilo">Estilo: ${est}<i style="--v:${p.st.agr}%"></i><small><span>defensivo</span><span>agresivo</span></small></div>
       ${elegible ? `<button class="elegir">${actual ? 'SIGUE' : 'ELEGIR'}</button>` : ''}
-      ${CFG.us.includes(p.id) && elegible ? editorHtml(p) : ''}</div></div>`;
+      ${p.propio && elegible ? editorHtml(p) : ''}</div></div>`;
 }
 // bloque de entrenamiento en la ficha de vuestros jugadores
 function trainHtml(p) {
@@ -3489,7 +3568,13 @@ function editorHtml(p) {
   const op = (f, pairs, cur) => pairs.map(([v, n]) => `<button class="ed${String(cur) === String(v) ? ' on' : ''}" data-f="${f}" data-v="${v}">${n}</button>`).join('');
   const a = p.acc, cab = a.gorra ? 'gorra' : a.visera ? 'visera' : a.cinta ? 'cinta' : 'nada';
   const accCol = a.gorra || a.visera || a.cinta || a.munequeras || 0xf4f4f4;
-  return `<div class="aspecto"><div class="at">ASPECTO (el cuerpo y las barras no cambian)</div>
+  const alturas = (p.s === 'm' ? [1.58, 1.63, 1.68, 1.73, 1.78] : [1.68, 1.74, 1.80, 1.86, 1.92]).map(h => [h, h.toFixed(2).replace('.', ',')]);
+  return `<div class="aspecto"><div class="at">NOMBRE Y CUERPO (el cuerpo cambia algo las barras de partida)</div>
+    <div class="arow"><span>Nombre</span><input class="nomb" type="text" maxlength="22" value="${p.n.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' })[c])}"></div>
+    <div class="arow"><span>Sexo</span>${op('sexo', [['h', 'Hombre'], ['m', 'Mujer']], p.s)}</div>
+    <div class="arow"><span>Altura</span>${op('alt', alturas, alturas.reduce((b, a) => Math.abs(a[0] - p.alt) < Math.abs(b[0] - p.alt) ? a : b)[0])}</div>
+    <div class="arow"><span>Complexión</span>${op('cx', [['d', 'Delgad' + (p.s === 'm' ? 'a' : 'o')], ['n', 'Normal'], ['f', 'Fuerte']], p.cx)}</div>
+    <div class="at" style="margin-top:8px">ASPECTO</div>
     <div class="arow"><span>Piel</span>${SKIN_TONES.map((c, i) => `<button class="ed sw${p.piel === i ? ' on' : ''}" data-f="piel" data-v="${i}" style="background:${hexc(c)}"></button>`).join('')}</div>
     <div class="arow"><span>Pelo</span>${op('pelo', Object.entries(PELOS), p.pelo)}</div>
     <div class="arow"><span>Color pelo</span>${sw('pc', PAL_PELO, p.pc)}</div>
@@ -3505,7 +3590,20 @@ function editorHtml(p) {
     <div class="arow"><button class="ed" data-f="reset" data-v="1">Volver al aspecto original</button></div></div>`;
 }
 // aplica un cambio del editor, lo guarda y lo enseña en la ficha y en la pista
+// nombre y cuerpo de vuestros jugadores propios: se guardan con ellos y se rehacen las barras de partida
+function editPropio(p, f, v) {
+  const d = PROPIOS.find(x => x.id === p.id); if (!d) return;
+  if (f === 'nombre') { const n = String(v).trim().slice(0, 22); if (!n) return; d.n = p.n = n; }
+  else if (f === 'sexo') {
+    d.s = p.s = v === 'm' ? 'm' : 'h';
+    d.alt = p.alt = d.s === 'm' ? Math.min(p.alt, 1.78) : Math.max(p.alt, 1.68);   // altura razonable al cambiar de sexo
+  }
+  else if (f === 'alt') d.alt = p.alt = clamp(Number(v) || 1.75, 1.5, 2.0);
+  else if (f === 'cx') d.cx = p.cx = ['d', 'n', 'f'].includes(v) ? v : 'n';
+  savePropios(); prepPlayer(p);
+}
 function editLook(p, f, v) {
+  if (['sexo', 'alt', 'cx', 'nombre'].includes(f)) { editPropio(p, f, v); return; }
   const q = progOf(p.id);
   if (f === 'reset') { delete q.look; saveProg(); applyLookOv(p); return; }
   const L = q.look ??= {};
@@ -3535,13 +3633,21 @@ function openPicker(slot) {
   document.getElementById('pkHint').textContent = soloVer
     ? (esc ? 'En la escalera los rivales son la pareja a la que retáis (se elige en la lista de la escalera).'
            : 'En partido rápido los rivales se cambian con las flechas, según vuestro nivel. En Entrenamiento puedes poner a cualquiera.')
-    : esc ? 'En la escalera vuestra pareja sale de vuestra plantilla. Ganando retos podéis fichar a más jugadores.'
+    : esc ? 'En la escalera jugáis siempre con vuestros dos jugadores. Toca su ficha para ponerles nombre, cuerpo y aspecto.'
     : 'Toca un jugador para ver sus barras. Los que ya juegan en otro sitio no salen.';
-  const list = soloVer ? [byId(cur)] : ROSTER.filter(p => (p.id === cur || !lineup.includes(p.id)) && (!esc || ESC.squad.includes(p.id)))
+  const list = soloVer ? [byId(cur)] : ROSTER.filter(p => (p.id === cur || !lineup.includes(p.id)) && (!esc || p.propio))
     .sort((a, b) => (b.id === cur) - (a.id === cur) || media(b) - media(a));
   document.getElementById('pkList').innerHTML = list.map(p => cardHtml(p, !soloVer, p.id === cur)).join('');
   picker.classList.add('open'); picker.scrollTop = 0;
 }
+// nombre de vuestros jugadores: se guarda al terminar de escribir
+document.getElementById('pkList').addEventListener('change', e => {
+  const inp = e.target.closest('input.nomb'), card = e.target.closest('.card'); if (!inp || !card) return;
+  const p = byId(card.dataset.id);
+  editPropio(p, 'nombre', inp.value);
+  inp.value = p.n; card.querySelector('.cn').textContent = p.n;
+  paintLineup();
+});
 document.getElementById('pkClose').addEventListener('click', () => { picker.classList.remove('open'); paintLineup(); });
 document.getElementById('pkList').addEventListener('click', e => {
   const card = e.target.closest('.card'); if (!card) return;
@@ -3551,9 +3657,11 @@ document.getElementById('pkList').addEventListener('click', e => {
     editLook(p, ed.dataset.f, ed.dataset.v);
     card.outerHTML = cardHtml(p, !!card.querySelector('.elegir'), card.classList.contains('cur'));
     document.querySelector(`#pkList .card[data-id="${p.id}"]`).classList.add('open');
+    if (['sexo', 'alt', 'cx'].includes(ed.dataset.f)) applyLineup();   // el cuerpo: se rehace el jugador en la pista
     applyLook(); paintLineup(); renderer.render(scene, camera);
     return;
   }
+  if (e.target.closest('input')) return;   // (escribiendo el nombre: no se pliega la ficha)
   const entr = e.target.closest('.entr');
   if (entr) {                // entrenar esa barra: gasta experiencia
     const p = byId(card.dataset.id), q = progOf(p.id);
@@ -3587,7 +3695,7 @@ document.getElementById('rivNext').addEventListener('click', () => stepRivals(1)
 // Partida guardada en el navegador (localStorage): marcador tras cada punto; al abrir se recupera
 const SAVE_KEY = 'padel.partida';
 function saveMatch() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ score: S.score, pts: S.pts, games: S.games, sets: S.sets, tb: S.tb, xpMatch: S.xpMatch || 0, saqueIni: S.saqueIni, mode: CFG.mode, match: CFG.match, lineup: lineupKey(), t: Date.now() })); } catch (_) {}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ score: S.score, pts: S.pts, games: S.games, sets: S.sets, tb: S.tb, xpRaw: S.xpRaw || [0, 0], saqueIni: S.saqueIni, mode: CFG.mode, match: CFG.match, lineup: lineupKey(), t: Date.now() })); } catch (_) {}
 }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (_) {} }
 function loadMatch() {
@@ -3599,7 +3707,7 @@ function loadMatch() {
     const sets = Array.isArray(d.sets) && d.sets.every(ok) ? d.sets : [];
     if ((d.match || 'libre') !== CFG.match) return false;   // guardada con otro tipo de partido
     if (d.lineup && d.lineup !== lineupKey()) return false;   // o con otros jugadores
-    S.score = d.score; S.pts = d.pts.map(n => Math.min(n, d.tb ? 99 : 4)); S.games = d.games; S.sets = sets; S.tb = !!d.tb; S.xpMatch = Number.isFinite(d.xpMatch) ? d.xpMatch : 0; S.saqueIni = d.saqueIni === 0 ? 0 : 1;
+    S.score = d.score; S.pts = d.pts.map(n => Math.min(n, d.tb ? 99 : 4)); S.games = d.games; S.sets = sets; S.tb = !!d.tb; S.xpRaw = Array.isArray(d.xpRaw) && d.xpRaw.length === 2 ? d.xpRaw.map(Number) : [0, 0]; S.saqueIni = d.saqueIni === 0 ? 0 : 1;
     return d.score[0] + d.score[1] > 0;
   } catch (_) { return false; }
 }
@@ -3618,23 +3726,23 @@ function paintPlay() {
   if (S.over) {
     const ganado = CFG.match === '5p' ? S.score[0] > S.score[1] : S.sets.filter(s => s[0] > s[1]).length > S.sets.filter(s => s[1] > s[0]).length;
     res.className = ganado ? '' : 'lost';
-    const pend = CFG.us.filter(id => progOf(id).pts > 0).map(id => byId(id).n.split(' ')[0]);
+    const pend = CFG.us.filter(id => byId(id).propio && progOf(id).pts > 0).map(id => byId(id).n.split(' ')[0]);
     res.innerHTML = (ganado ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO') + '<small>' + (CFG.match === '5p' ? S.score.join('-') : S.sets.map(s => s.join('-')).join('  ')) + '</small>'
-      + '<small>+' + (S.xpMatch || 0) + ' de experiencia</small>'
+      + (compite() ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(' y ') + ' +' + (S.xpRivMatch || 0) + '</small>'
+                   : '<small>Partido de entrenamiento: no da experiencia</small>')
+      + (S.subeTxt ? '<small class="mej">' + S.subeTxt + '</small>' : '')
       + (pend.length ? '<small class="mej">' + pend.join(' y ') + ' ' + (pend.length > 1 ? 'tienen' : 'tiene') + ' puntos para mejorar: toca su ficha</small>' : '')
       + (S.escTxt ? '<small class="mej">' + S.escTxt + '</small>' : '')
-      + (S.trainTxt ? '<small class="mej">' + S.trainTxt + '</small>' : '')
-      + (S.fichaje ? '<div>' + S.fichaje.map(id => `<button class="fichar" data-id="${id}">Fichar a ${byId(id).n.split(' ')[0]}</button>`).join('')
-          + '<button class="fichar no" data-id="">No fichar</button></div>' : '');
+      + (S.trainTxt ? '<small class="mej">' + S.trainTxt + '</small>' : '');
   }
   document.getElementById('restart').textContent = aMedias ? 'Partida nueva' : 'Reiniciar partido';
 }
 // fin del partido: menú con el resultado; «Partido nuevo» empieza otro
 function endMatch() { S.timer = 0; openMenu(); }
 function resetMatch() {
-  S.score = [0, 0]; S.pts = [0, 0]; S.games = [0, 0]; S.sets = []; S.tb = false; S.over = false; S.xpMatch = 0; clearSave();
+  S.score = [0, 0]; S.pts = [0, 0]; S.games = [0, 0]; S.sets = []; S.tb = false; S.over = false; S.xpMatch = 0; S.xpRivMatch = 0; S.xpRaw = [0, 0]; S.subeTxt = ''; clearSave();
   S.saqueIni = Math.random() < 0.5 ? 0 : 1;   // a suertes quién empieza sacando
-  S.escTxt = ''; S.fichaje = null;
+  S.escTxt = '';
   updateHud();
   S.pause = null; S.hitter = null; showMsg('', 0);
   resetPoint();
@@ -3778,7 +3886,7 @@ requestAnimationFrame(frame);
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
   S, ball, players, tapPause, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
-  pala, palaRecibe, palaLee,
+  pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
   fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
