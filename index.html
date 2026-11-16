@@ -90,6 +90,7 @@
   /* marcas de vistas guardadas bajo la barra (la rayita queda justo bajo el valor; tocándola se va a él) */
   #menu .mark{position:absolute;bottom:0;padding-top:6px;font-size:10px;line-height:1;white-space:nowrap;color:rgba(255,255,255,.8);cursor:pointer}
   #menu .mark::before{content:'';position:absolute;top:0;left:var(--tick);width:2px;height:5px;margin-left:-1px;background:#fff}
+  #menu #play:disabled{opacity:.45;cursor:default}
   #menu #play{display:block;width:100%;margin-top:18px;padding:13px;border:0;border-radius:12px;background:#2f7bff;
     color:#fff;font:inherit;font-size:17px;font-weight:900;letter-spacing:3px;cursor:pointer}
   #menu #restart{display:none;width:100%;margin-top:10px;padding:12px;border:1px solid rgba(255,255,255,.55);border-radius:12px;
@@ -177,7 +178,29 @@
   #ladder .retar.sel{background:#fff}
   #ladder #escReset{padding:6px 10px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   #ladder .ltit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin:4px 0 6px}
-  .aspecto{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
+  #ladder .cruce{margin-bottom:6px}
+  #ladder .cruce .lrow{margin-bottom:2px}
+  .tor{padding:8px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,.05);font-size:12px}
+  .tor .tn{font-weight:800;font-size:14px}
+  .tor .tp{float:right;font-weight:900;color:#fde047}
+  .tor .td{opacity:.75;margin-top:2px}
+  .tor .apuntar{display:block;width:100%;margin-top:6px;padding:8px;border:0;border-radius:8px;background:#fde047;color:#000;font:inherit;font-size:12px;font-weight:900;cursor:pointer}
+  .tor .apuntar:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.6);cursor:default;font-weight:600}
+  .tor .tbs{display:flex;gap:6px;margin-top:6px}
+  .tor .tb{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
+  .tor .tb.compra{background:#2f7bff;border-color:#2f7bff;font-weight:800}
+  .tor .tb.on{background:#22c55e33;border-color:#22c55e}
+  .tor .tb:disabled{opacity:.35;cursor:default}
+  #ladder #torDejar{padding:6px 10px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
+  #menu #tiendaBtn{display:block;width:100%;margin-top:8px;padding:9px;border:1px solid #fde047;border-radius:10px;background:transparent;color:#fde047;font:inherit;font-size:13px;font-weight:900;letter-spacing:1px;cursor:pointer}
+  #tienda{position:fixed;inset:0;z-index:11;display:none;background:#06080d;overflow-y:auto;padding:12px;box-sizing:border-box}
+  #tienda.open{display:block}
+  #tienda .pbox{max-width:360px;margin:0 auto}
+  #tienda .phead{display:flex;justify-content:space-between;align-items:center;font-weight:900;letter-spacing:2px;margin-bottom:6px}
+  #tienda #tdClose{width:36px;height:36px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;font-size:18px;cursor:pointer}
+  #tienda .ltit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin:10px 0 6px}
+  #tdDinero{color:#fde047}
+padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
   .aspecto input.nomb{flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:14px}
   .aspecto .at{font-size:12px;font-weight:800;letter-spacing:1px;margin-bottom:4px}
   .arow{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:4px 0;font-size:12px}
@@ -228,6 +251,7 @@
       <div class="opts row" data-k="tipo">
         <button data-v="rapido">Rápido</button>
         <button data-v="escalera">Escalera</button>
+        <button data-v="torneo">Torneos</button>
         <button data-v="entreno">Entreno</button>
       </div>
       <div class="tipoTxt" id="tipoTxt"></div>
@@ -237,6 +261,7 @@
         <div class="slots"><button class="slot" data-s="2"></button><button class="slot" data-s="3"></button></div>
         <div id="rivNav"><button id="rivPrev">◀ Más fáciles</button><button id="rivNext">Más difíciles ▶</button></div></div>
       <div id="ladder"></div>
+      <button id="tiendaBtn">TIENDA</button>
       <h2>Trayectoria</h2>
       <div class="opts row" data-k="trail">
         <button data-v="completa">Completa</button>
@@ -288,6 +313,10 @@
     <div id="picker"><div class="pbox">
       <div class="phead"><span id="pkTitle"></span><button id="pkClose" aria-label="Cerrar">✕</button></div>
       <div id="pkHint"></div><div id="pkList"></div>
+    </div></div>
+    <div id="tienda"><div class="pbox">
+      <div class="phead"><span>TIENDA · <span id="tdDinero"></span></span><button id="tdClose" aria-label="Cerrar">✕</button></div>
+      <div style="font-size:12px;opacity:.65">Lo que compréis es de ese jugador y lo lleva puesto en todos los partidos. El dinero se gana en los torneos.</div><div id="tdList"></div>
     </div></div>
     <div id="confirm"><div class="cbox"><p id="cfTxt"></p><div class="cbtn"><button id="cfNo">Cancelar</button><button id="cfSi">Sí</button></div></div></div>
   </div>
@@ -693,7 +722,8 @@ const xpNeed = lvl => 100 + 25 * (lvl - 1);          // cada nivel cuesta un poc
 // barras efectivas: se cambian en el mismo objeto (los jugadores en pista lo ven al momento)
 function refreshStats(p) {
   const add = progOf(p.id).add;
-  for (const k of STAT_KEYS) p.st[k] = Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0));
+  // (el material suma por encima del tope de mejora, nunca de 99)
+  for (const k of STAT_KEYS) p.st[k] = Math.min(99, Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0)) + bonoMaterial(p, k));
   const tr = progOf(p.id).train;   // el entrenamiento puede pasar del tope de mejora (es temporal), no de 99
   if (tr) p.st[tr.k] = Math.min(99, p.st[tr.k] + TRAIN_BONUS);
 }
@@ -722,6 +752,47 @@ function applyLookOv(p) {
   if (p.s !== 'h') delete p.acc.barba;
   p.pv = (p.pv || 0) + 1;   // retrato nuevo
 }
+// ================= Dinero y material (palas y zapatillas) =================
+// Las palas mejoran los golpes y las zapatillas el movimiento. Vuestros dos jugadores llevan lo que compréis en la
+// tienda (cada uno lo suyo); los rivales llevan material según su nivel de partida.
+const PALAS = [
+  { id: 'pIni',   n: 'Iniciación Soft', pr: 80,   b: { pre: 2, pot: 1, aer: 1 } },
+  { id: 'pClubC', n: 'Club Control',    pr: 220,  b: { pre: 4, aer: 3, pot: 1 } },
+  { id: 'pClubP', n: 'Club Potencia',   pr: 220,  b: { pot: 4, rem: 3, pre: 1 } },
+  { id: 'pProR',  n: 'Pro Redonda',     pr: 650,  b: { pre: 7, aer: 5, pot: 3, rem: 2 } },
+  { id: 'pProD',  n: 'Pro Diamante',    pr: 650,  b: { pot: 7, rem: 6, aer: 3, pre: 2 } },
+  { id: 'pElite', n: 'Élite Carbono',   pr: 1600, b: { pre: 10, pot: 9, rem: 8, aer: 8 } },
+];
+const ZAPAS = [
+  { id: 'zIni',   n: 'Running',    pr: 60,   b: { vel: 2, ref: 1 } },
+  { id: 'zClub',  n: 'Club Grip',  pr: 180,  b: { vel: 4, ref: 3, res: 2 } },
+  { id: 'zPro',   n: 'Pro Clay',   pr: 520,  b: { vel: 7, ref: 5, res: 4 } },
+  { id: 'zElite', n: 'Élite Aero', pr: 1400, b: { vel: 10, ref: 8, res: 7 } },
+];
+const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' }))];
+const itemDe = id => ITEMS.find(x => x.id === id);
+const BOLSA_KEY = 'padel.bolsa';
+let BOLSA;
+try { BOLSA = JSON.parse(localStorage.getItem(BOLSA_KEY) || 'null'); } catch (_) { BOLSA = null; }
+if (!BOLSA || typeof BOLSA !== 'object') BOLSA = { dinero: 50 };
+BOLSA.dinero = Math.max(0, Math.round(+BOLSA.dinero || 0));
+if (!BOLSA.tiene || typeof BOLSA.tiene !== 'object') BOLSA.tiene = {};
+if (!BOLSA.lleva || typeof BOLSA.lleva !== 'object') BOLSA.lleva = {};
+const saveBolsa = () => { try { localStorage.setItem(BOLSA_KEY, JSON.stringify(BOLSA)); } catch (_) {} };
+const euros = n => n.toLocaleString('es-ES') + ' €';
+function materialDe(p) {
+  if (p.propio) { const l = BOLSA.lleva[p.id] || {}; return [itemDe(l.pala), itemDe(l.zap)].filter(Boolean); }
+  const b = p.base, nv = b >= 85 ? 3 : b >= 70 ? 2 : b >= 55 ? 1 : b >= 40 ? 0 : -1;
+  if (nv < 0) return [];
+  const pega = ['pegador', 'rematador', 'voleador'].includes(p.perf);
+  return [itemDe(['pIni', pega ? 'pClubP' : 'pClubC', pega ? 'pProD' : 'pProR', 'pElite'][nv]), ZAPAS[nv]];
+}
+const bonoMaterial = (p, k) => materialDe(p).reduce((a, it) => a + (it.b[k] || 0), 0);
+const efectoTxt = it => Object.entries(it.b).map(([k, v]) => '+' + v + ' ' + STAT_NAMES[k]).join(' · ');
+const materialTxt = p => {
+  const m = materialDe(p), pala = m.find(x => x.tipo === 'pala'), zap = m.find(x => x.tipo === 'zap');
+  return 'Pala: ' + (pala ? pala.n : 'básica') + ' · Zapatillas: ' + (zap ? zap.n : 'básicas');
+};
 // Vuestros dos jugadores (los «player»): solo a ellos se les pone nombre, cuerpo y aspecto; empiezan con nivel bajo
 // y suben gastando vosotros la experiencia. Se guardan en el navegador.
 const PROPIOS_KEY = 'padel.propios', PROPIO_BASE = 38;
@@ -2074,7 +2145,7 @@ const xpFactor = () => clamp(1 + (pairMed(CFG.riv) - pairMed(CFG.us)) / 20, 0.25
 // lo mismo visto desde los rivales (ganarle a una pareja mejor da más)
 const xpFactorRiv = () => clamp(1 + (pairMed(CFG.us) - pairMed(CFG.riv)) / 20, 0.25, 2);
 // solo se gana experiencia en competición (la escalera y las que vengan); Rápido y Entreno son de entrenamiento
-const compite = () => CFG.tipo === 'escalera';
+const compite = () => CFG.tipo === 'escalera' || CFG.tipo === 'torneo';
 // los rivales gastan solos sus puntos de mejora: sobre todo en lo fuerte de su estilo, algo al azar
 function autoMejora(p) {
   const q = progOf(p.id), pf = PERFILES[p.perf].m;
@@ -2147,6 +2218,7 @@ function endPoint(winner, reason) {
     S.over = true; S.timer = 3.5; clearSave();
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
+    torOnMatchEnd(winner === US);
     S.trainTxt = trainTick();   // los entrenamientos cuentan un partido más
     // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
     const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
@@ -3448,7 +3520,7 @@ const NOMBRES = {
 const APELLIDOS = ['Molina', 'Ortega', 'Delgado', 'Ramos', 'Gallego', 'Vega', 'Medina', 'Herrera', 'Cano', 'Marín', 'Iglesias', 'Santos',
   'Crespo', 'Fuentes', 'Pascual', 'Rojas', 'Benítez', 'Nieto', 'Carrasco', 'Sanz', 'Lozano', 'Moya', 'Varela', 'Duarte'];
 const elige = a => a[Math.floor(Math.random() * a.length)];
-function nuevoJugador(cerca) {
+function nuevoJugador(cerca, fija) {
   const s = Math.random() < 0.5 ? 'h' : 'm', usados = new Set(ROSTER.map(p => p.n));
   let n = '';
   for (let k = 0; k < 40 && (!n || usados.has(n)); k++) n = elige(NOMBRES[s]) + ' ' + elige(APELLIDOS);
@@ -3457,9 +3529,9 @@ function nuevoJugador(cerca) {
   if (Math.random() < 0.25) acc.munequeras = elige(PAL);
   if (Math.random() < 0.15) acc.gafas = 1;
   if (s === 'h' && Math.random() < 0.3) acc.barba = 1;
-  const base = Math.round(cerca ? clamp(cerca + rand(-6, 6), 30, 58) : rand(30, 58));
+  const base = Math.round(fija ?? (cerca ? clamp(cerca + rand(-6, 6), 30, 58) : rand(30, 58)));
   return {
-    id: 'n' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36), n, s,
+    id: 'n' + Date.now().toString(36) + Math.floor(Math.random() * 1e9).toString(36), n, s,
     alt: +(s === 'h' ? rand(1.70, 1.95) : rand(1.58, 1.80)).toFixed(2), cx: elige(['d', 'n', 'n', 'f']),
     piel: Math.floor(Math.random() * SKIN_TONES.length),
     pelo: elige(s === 'h' ? ['corto', 'corto', 'rapado', 'rizado', 'calvo', 'melena'] : ['coleta', 'coleta', 'mono', 'melena', 'rizado', 'corto']),
@@ -3496,6 +3568,7 @@ function escOnMatchEnd(ganado) {
 }
 function paintLadder() {
   const el = document.getElementById('ladder');
+  if (CFG.tipo === 'torneo') { paintTorneo(el); return; }
   if (CFG.tipo !== 'escalera') { el.innerHTML = ''; return; }
   const R = retables(), nv = id => { const l = progOf(id).lvl; return l > 1 ? ' <small>Nv ' + l + '</small>' : ''; };
   const faltan = NUEVOS_CADA - ESC.ganados % NUEVOS_CADA;
@@ -3515,15 +3588,170 @@ document.getElementById('ladder').addEventListener('click', e => {
     ESC = escNew(); saveEsc(); escSanitize(); saveCfg(); applyLineup(); paintLineup();
   });
 });
+// ================= Torneos =================
+// Eliminatoria de 8 parejas (cuartos, semifinal y final) con vuestros dos jugadores. Cada torneo tiene cuota de
+// inscripción, nivel máximo (la media de vuestra pareja) y premios en metálico para campeón, finalista y tercero
+// (el que cae en semifinales). Los rivales salen de la plantilla según el nivel del torneo.
+const TORNEOS = [
+  { id: 't1', n: 'Torneo del Barrio',   max: 50, cuota: 0,   premios: [150, 70, 30],     riv: [28, 46] },
+  { id: 't2', n: 'Open Comarcal',       max: 60, cuota: 30,  premios: [350, 160, 70],    riv: [38, 56] },
+  { id: 't3', n: 'Copa Provincial',     max: 72, cuota: 80,  premios: [800, 380, 160],   riv: [48, 68] },
+  { id: 't4', n: 'Campeonato Regional', max: 85, cuota: 160, premios: [1700, 800, 350],  riv: [60, 82] },
+  { id: 't5', n: 'Gran Máster',         max: 0,  cuota: 320, premios: [3800, 1800, 800], riv: [72, 99] },
+];
+const RONDAS = ['Cuartos de final', 'Semifinal', 'Final'];
+const TOR_KEY = 'padel.torneo';
+let TOR;
+try { TOR = JSON.parse(localStorage.getItem(TOR_KEY) || 'null'); } catch (_) { TOR = null; }
+const torValido = t => t && TORNEOS.some(x => x.id === t.id) && Array.isArray(t.cuadro) && t.cuadro.length === 3 &&
+  t.cuadro[0].length === 8 && t.cuadro.flat().every(e => e === 'US' || (Array.isArray(e) && e.length === 2 && e.every(esRival)));
+if (TOR && !torValido(TOR)) TOR = null;
+const saveTor = () => { try { localStorage.setItem(TOR_KEY, JSON.stringify(TOR)); } catch (_) {} };
+const torDe = id => TORNEOS.find(x => x.id === id);
+const enTorneo = () => CFG.tipo === 'torneo' && !!TOR;
+const nombresPar = e => e === 'US' ? 'VOSOTROS' : e.map(id => byId(id).n.split(' ')[0]).join(' y ');
+const medEntrada = e => e === 'US' ? pairMed(idsPropios()) : pairMed(e);
+// por qué no os podéis apuntar (o '' si sí)
+function noApuntar(t) {
+  if (t.max && pairMed(idsPropios()) > t.max) return 'Vuestro nivel (' + Math.round(pairMed(idsPropios())) + ') pasa del máximo';
+  if (BOLSA.dinero < t.cuota) return 'Os falta dinero para la cuota';
+  return '';
+}
+function apuntarse(t) {
+  if (noApuntar(t)) return;
+  BOLSA.dinero -= t.cuota; saveBolsa();
+  // 14 rivales de la franja del torneo; si no hay bastantes, se apuntan jugadores nuevos del circuito de ese nivel
+  // (se quedan en la plantilla para los torneos siguientes)
+  const [lo, hi] = t.riv;
+  const ids = ROSTER.filter(p => !p.propio && media(p) >= lo && media(p) <= hi).map(p => p.id).sort(() => Math.random() - 0.5).slice(0, 14);
+  while (ids.length < 14) {
+    const d = { ...nuevoJugador(null, rand(lo + 1, hi - 3)), circuito: true };
+    NUEVOS.push(d); const p = { ...d, acc: { ...d.acc }, nuevo: true }; ROSTER.push(p); prepPlayer(p); ids.push(p.id);
+  }
+  try { localStorage.setItem(NUEVOS_KEY, JSON.stringify(NUEVOS)); } catch (_) {}
+  const elegidos = ids.map(id => ({ id, m: media(byId(id)) })).sort((a, b) => a.m - b.m);
+  const parejas = [];
+  for (let i = 0; i + 1 < elegidos.length; i += 2) parejas.push([elegidos[i].id, elegidos[i + 1].id]);   // de nivel parecido
+  const cuadro0 = [...parejas, 'US'].sort(() => Math.random() - 0.5);
+  TOR = { id: t.id, cuadro: [cuadro0, [], []], ronda: 0 };
+  saveTor(); torPrepara();
+}
+// el rival que os toca en la ronda actual
+function torRival() {
+  const r = TOR.cuadro[TOR.ronda], i = r.indexOf('US');
+  return i < 0 ? null : r[i ^ 1];
+}
+function torPrepara() {
+  if (!enTorneo()) return;
+  CFG.us = idsPropios();
+  const r = torRival(); if (r) CFG.riv = [...r];
+  saveCfg();
+}
+// partido entre dos parejas de la máquina: gana más a menudo la de más nivel
+const simula = (a, b) => Math.random() < 1 / (1 + Math.exp(-(medEntrada(a) - medEntrada(b)) / 6)) ? a : b;
+function torOnMatchEnd(ganado) {
+  S.torTxt = '';
+  if (CFG.tipo !== 'torneo' || !TOR) return;
+  const t = torDe(TOR.id), k = TOR.ronda, r = TOR.cuadro[k], sig = [];
+  for (let i = 0; i < r.length; i += 2) {
+    const a = r[i], b = r[i + 1];
+    sig.push(a === 'US' || b === 'US' ? (ganado ? 'US' : (a === 'US' ? b : a)) : simula(a, b));
+  }
+  let premio = 0, puesto = 0;
+  if (!ganado) {
+    puesto = k === 2 ? 2 : k === 1 ? 3 : 0;
+    S.torTxt = (k === 2 ? 'Subcampeones del ' : k === 1 ? 'Terceros en el ' : 'Eliminados en cuartos del ') + t.n + '.';
+  } else if (k === 2) {
+    puesto = 1; S.torTxt = '¡CAMPEONES DEL ' + t.n.toUpperCase() + '!';
+  } else {
+    TOR.cuadro[k + 1] = sig; TOR.ronda = k + 1;
+    S.torTxt = 'Pasáis a la ' + RONDAS[k + 1].toLowerCase() + ' del ' + t.n + '.';
+    saveTor(); torPrepara(); applyLineup();
+    return;
+  }
+  if (puesto) { premio = t.premios[puesto - 1]; BOLSA.dinero += premio; saveBolsa(); S.torTxt += ' Premio: ' + euros(premio) + '.'; }
+  TOR = null; try { localStorage.removeItem(TOR_KEY); } catch (_) {}
+}
+function paintTorneo(el) {
+  const fila = (e, cls) => `<div class="lrow${e === 'US' ? ' us' : ''}${cls || ''}">${e === 'US' ? '' : `<img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">`}<span class="lnm">${e === 'US' ? '<b>VOSOTROS</b> · ' + CFG.us.map(id => byId(id).n.split(' ')[0]).join(' y ') : nombresPar(e)}</span><span class="lmed">${Math.round(medEntrada(e))}</span></div>`;
+  const cab = `<div class="ltit">DINERO: ${euros(BOLSA.dinero)}</div>`;
+  if (!TOR) {
+    el.innerHTML = cab + '<div class="ltit">TORNEOS</div>' + TORNEOS.map(t => {
+      const no = noApuntar(t);
+      return `<div class="tor"><div class="tn">${t.n}</div>
+        <div class="td">${t.max ? 'Nivel máximo ' + t.max : 'Sin nivel máximo'} · rivales de ${t.riv[0]} a ${t.riv[1]} · cuota ${t.cuota ? euros(t.cuota) : 'gratis'}</div>
+        <div class="td">Premios: 1.º ${euros(t.premios[0])} · 2.º ${euros(t.premios[1])} · 3.º ${euros(t.premios[2])}</div>
+        <button class="apuntar" data-t="${t.id}"${no ? ' disabled' : ''}>${no || 'APUNTARSE'}</button></div>`;
+    }).join('');
+    return;
+  }
+  const t = torDe(TOR.id);
+  el.innerHTML = cab + `<div class="ltit">${t.n.toUpperCase()} · ${RONDAS[TOR.ronda].toUpperCase()}</div>` +
+    TOR.cuadro.map((r, k) => k > TOR.ronda || !r.length ? '' : `<div class="ltit" style="opacity:.6">${RONDAS[k]}</div>` +
+      r.map((e, i) => (i % 2 ? '' : '<div class="cruce">') + fila(e, k === TOR.ronda && (e === 'US' || r[i ^ 1] === 'US') ? ' reto' : '') + (i % 2 ? '</div>' : '')).join('')).join('') +
+    `<div class="ltit" style="margin-top:6px">Premios: 1.º ${euros(t.premios[0])} · 2.º ${euros(t.premios[1])} · 3.º ${euros(t.premios[2])}</div>
+     <button class="ed" id="torDejar" style="margin-top:4px">Abandonar el torneo</button>`;
+}
+document.getElementById('ladder').addEventListener('click', e => {
+  const b = e.target.closest('.apuntar');
+  if (b) {
+    const t = torDe(b.dataset.t);
+    askConfirm('¿Os apuntáis al ' + t.n + (t.cuota ? ' por ' + euros(t.cuota) : ' (gratis)') + '?', 'Sí, apuntarnos', () => { apuntarse(t); applyLineup(); paintLineup(); paintPlay(); });
+    return;
+  }
+  if (e.target.id === 'torDejar') askConfirm('¿Abandonar el torneo? Se pierde la cuota.', 'Sí, abandonar', () => {
+    TOR = null; try { localStorage.removeItem(TOR_KEY); } catch (_) {}
+    resetMatch(); paintLineup(); paintPlay();
+  });
+});
+// ================= Tienda =================
+const tiendaEl = document.getElementById('tienda');
+function paintTienda() {
+  document.getElementById('tdDinero').textContent = euros(BOLSA.dinero);
+  const props = PROPIOS.map(d => byId(d.id));
+  const bloque = (tit, lista, tipo) => `<div class="ltit">${tit}</div>` + lista.map(it => {
+    const btns = props.map(p => {
+      const tiene = (BOLSA.tiene[p.id] || []).includes(it.id), lleva = (BOLSA.lleva[p.id] || {})[tipo] === it.id, nom = p.n.split(' ')[0];
+      if (lleva) return `<button class="tb on" data-a="quitar" data-p="${p.id}" data-i="${it.id}">${nom} la lleva ✓</button>`;
+      if (tiene) return `<button class="tb" data-a="llevar" data-p="${p.id}" data-i="${it.id}">Que la lleve ${nom}</button>`;
+      return `<button class="tb compra" data-a="comprar" data-p="${p.id}" data-i="${it.id}"${BOLSA.dinero < it.pr ? ' disabled' : ''}>Comprar para ${nom}</button>`;
+    }).join('');
+    return `<div class="tor"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div>`;
+  }).join('');
+  document.getElementById('tdList').innerHTML = bloque('PALAS (mejoran los golpes)', PALAS, 'pala') + bloque('ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap');
+}
+function ponMaterial(pid, id) {
+  const it = itemDe(id); if (!it) return;
+  (BOLSA.lleva[pid] ??= {})[it.tipo] = id;
+  saveBolsa(); refreshStats(byId(pid));
+}
+document.getElementById('tiendaBtn').addEventListener('click', () => { paintTienda(); tiendaEl.classList.add('open'); tiendaEl.scrollTop = 0; });
+document.getElementById('tdClose').addEventListener('click', () => { tiendaEl.classList.remove('open'); paintLineup(); paintPlay(); });
+document.getElementById('tdList').addEventListener('click', e => {
+  const b = e.target.closest('.tb'); if (!b || b.disabled) return;
+  const pid = b.dataset.p, it = itemDe(b.dataset.i), p = byId(pid);
+  if (b.dataset.a === 'comprar') {
+    askConfirm('¿Comprar ' + it.n + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '?', 'Sí, comprar', () => {
+      if (BOLSA.dinero < it.pr) return;
+      BOLSA.dinero -= it.pr; (BOLSA.tiene[pid] ??= []).push(it.id);
+      ponMaterial(pid, it.id); paintTienda();
+    });
+    return;
+  }
+  if (b.dataset.a === 'llevar') ponMaterial(pid, it.id);
+  else { delete (BOLSA.lleva[pid] || {})[it.tipo]; saveBolsa(); refreshStats(p); }
+  paintTienda();
+});
 function sanitizeLineup() {
   const ok = id => ROSTER.some(p => p.id === id);
-  if (CFG.tipo !== 'entreno' && CFG.tipo !== 'escalera') CFG.tipo = 'rapido';
+  if (!['entreno', 'escalera', 'torneo'].includes(CFG.tipo)) CFG.tipo = 'rapido';
   if (!Array.isArray(CFG.us) || CFG.us.length !== 2 || !CFG.us.every(ok) || CFG.us[0] === CFG.us[1]) CFG.us = ['p1', 'p2'];
   // rivales: los guardados si valen; si no (o la primera vez), una pareja igualada
   const r = CFG.riv;
   if (!Array.isArray(r) || r.length !== 2 || !r.every(ok) || new Set([...CFG.us, ...r]).size !== 4) pickEvenRivals();
   else if (CFG.tipo === 'rapido' && gapOf(r) > 14) pickEvenRivals();   // en partido rápido, pareja equilibrada
   if (CFG.tipo === 'escalera') escSanitize();
+  if (CFG.tipo === 'torneo') { CFG.us = idsPropios(); torPrepara(); }
 }
 function applyLineup() {
   [...CFG.us, ...CFG.riv].forEach((id, i) => players[i].setProfile(byId(id)));
@@ -3545,7 +3773,9 @@ function paintLineup() {
   document.getElementById('tipoTxt').textContent = rap
     ? 'Elige tu pareja; los rivales se ajustan a vuestro nivel (con las flechas, más fáciles o más difíciles).'
     : esc ? 'Escalera: jugáis con vuestros dos jugadores. Retad a una de las 2 parejas de justo encima; si ganáis, os quedáis su puesto. Todos ganan experiencia (el que pierde, la mitad) y cada ' + NUEVOS_CADA + ' partidos ganados aparece una pareja nueva.'
+    : CFG.tipo === 'torneo' ? (TOR ? 'Torneo: jugáis con vuestros dos jugadores. Si perdéis, quedáis eliminados; los tres primeros se llevan premio.' : 'Torneos: apuntaos a uno de vuestro nivel. Eliminatoria de 8 parejas; campeón, finalista y tercero ganan dinero para la tienda.')
     : 'Entrenamiento: toca cualquier jugador para cambiarlo, también los rivales, aunque sean de menos nivel.';
+  document.getElementById('tiendaBtn').textContent = 'TIENDA · ' + euros(BOLSA.dinero);
   paintLadder();
   if (rap) {
     const L = rivalPairs();
@@ -3559,7 +3789,7 @@ function cardHtml(p, elegible, actual) {
   const bars = STAT_KEYS.map(k => {
     const v = p.st[k], b0 = p.st0[k], c = v >= 75 ? '#4ade80' : v >= 50 ? '#facc15' : v >= 30 ? '#fb923c' : '#f87171';
     // la parte mejorada se ve más clara; con puntos, botón + hasta el tope de esa barra
-    const mas = q.pts > 0 && p.propio ? (v < statCap(p, k) ? `<button class="mas" data-k="${k}">+</button>` : '<em class="tope">tope</em>') : '';
+    const mas = q.pts > 0 && p.propio ? (p.st0[k] + (q.add[k] | 0) < statCap(p, k) ? `<button class="mas" data-k="${k}">+</button>` : '<em class="tope">tope</em>') : '';
     const ent = q.train && q.train.k === k ? ' ⬆' : '';   // barra en entrenamiento
     return `<div class="bar"><span>${STAT_NAMES[k]}${ent}</span><i style="--v:${v}%;--c:${c};--b:${v > b0 ? b0 : 0}%"></i><b>${v}</b>${mas}</div>`;
   }).join('');
@@ -3571,7 +3801,7 @@ function cardHtml(p, elegible, actual) {
     <div class="ch"><img src="${portrait(p)}" alt=""><div class="ci"><div class="cn">${p.n}</div>
       <div class="cs">${p.tag} · ${p.s === 'm' ? 'mujer' : 'hombre'} · ${p.alt.toFixed(2).replace('.', ',')} m · ${p.cx === 'f' ? 'fuerte' : p.cx === 'd' ? 'delgad' + (p.s === 'm' ? 'a' : 'o') : 'normal'}</div></div>
       <div class="cm">${media(p)}${q.pts ? '<em class="pt">+' + q.pts + '</em>' : ''}</div></div>
-    <div class="cd">${prog}${p.propio && elegible ? trainHtml(p) : ''}${bars}
+    <div class="cd">${prog}<div class="prog">${materialTxt(p)}</div>${p.propio && elegible ? trainHtml(p) : ''}${bars}
       <div class="estilo">Estilo: ${est}<i style="--v:${p.st.agr}%"></i><small><span>defensivo</span><span>agresivo</span></small></div>
       ${elegible ? `<button class="elegir">${actual ? 'SIGUE' : 'ELEGIR'}</button>` : ''}
       ${p.propio && elegible ? editorHtml(p) : ''}</div></div>`;
@@ -3659,9 +3889,9 @@ function openPicker(slot) {
   document.getElementById('pkHint').textContent = soloVer
     ? (esc ? 'En la escalera los rivales son la pareja a la que retáis (se elige en la lista de la escalera).'
            : 'En partido rápido los rivales se cambian con las flechas, según vuestro nivel. En Entrenamiento puedes poner a cualquiera.')
-    : esc ? 'En la escalera jugáis siempre con vuestros dos jugadores. Toca su ficha para ponerles nombre, cuerpo y aspecto.'
+    : esc || CFG.tipo === 'torneo' ? 'En la escalera y en los torneos jugáis siempre con vuestros dos jugadores. Toca su ficha para ponerles nombre, cuerpo y aspecto.'
     : 'Toca un jugador para ver sus barras. Los que ya juegan en otro sitio no salen.';
-  const list = soloVer ? [byId(cur)] : ROSTER.filter(p => (p.id === cur || !lineup.includes(p.id)) && (!esc || p.propio))
+  const list = soloVer ? [byId(cur)] : ROSTER.filter(p => (p.id === cur || !lineup.includes(p.id)) && (!(esc || CFG.tipo === 'torneo') || p.propio))
     .sort((a, b) => (b.id === cur) - (a.id === cur) || media(b) - media(a));
   document.getElementById('pkList').innerHTML = list.map(p => cardHtml(p, !soloVer, p.id === cur)).join('');
   picker.classList.add('open'); picker.scrollTop = 0;
@@ -3700,7 +3930,7 @@ document.getElementById('pkList').addEventListener('click', e => {
   const mas = e.target.closest('.mas');
   if (mas) {                 // gastar un punto de mejora en esa barra
     const p = byId(card.dataset.id), q = progOf(p.id), k = mas.dataset.k;
-    if (q.pts > 0 && p.st[k] < statCap(p, k)) { q.add[k] = (q.add[k] | 0) + 1; q.pts--; refreshStats(p); saveProg(); }
+    if (q.pts > 0 && p.st0[k] + (q.add[k] | 0) < statCap(p, k)) { q.add[k] = (q.add[k] | 0) + 1; q.pts--; refreshStats(p); saveProg(); }
     card.outerHTML = cardHtml(p, !!card.querySelector('.elegir'), card.classList.contains('cur'));
     document.querySelector(`#pkList .card[data-id="${p.id}"]`).classList.add('open');
     paintLineup(); paintPlay();
@@ -3746,6 +3976,10 @@ function scoreText() {
 function paintPlay() {
   const started = menuEl.classList.contains('started'), aMedias = S.score[0] + S.score[1] > 0 && !S.over;
   document.getElementById('play').textContent = S.over ? 'PARTIDO NUEVO' : started ? 'CONTINUAR' : aMedias ? 'CONTINUAR PARTIDA (' + scoreText() + ')' : 'JUGAR';
+  // en Torneos solo se juega estando apuntados a uno
+  const sinTorneo = CFG.tipo === 'torneo' && !TOR && !started && !aMedias;
+  document.getElementById('play').disabled = sinTorneo;
+  if (sinTorneo) document.getElementById('play').textContent = S.over ? 'APUNTAOS A OTRO TORNEO' : 'APUNTAOS A UN TORNEO';
   // resultado del partido terminado
   const res = document.getElementById('result');
   res.style.display = S.over ? 'block' : 'none';
@@ -3759,6 +3993,7 @@ function paintPlay() {
       + (S.subeTxt ? '<small class="mej">' + S.subeTxt + '</small>' : '')
       + (pend.length ? '<small class="mej">' + pend.join(' y ') + ' ' + (pend.length > 1 ? 'tienen' : 'tiene') + ' puntos para mejorar: toca su ficha</small>' : '')
       + (S.escTxt ? '<small class="mej">' + S.escTxt + '</small>' : '')
+      + (S.torTxt ? '<small class="mej">' + S.torTxt + '</small>' : '')
       + (S.trainTxt ? '<small class="mej">' + S.trainTxt + '</small>' : '');
   }
   document.getElementById('restart').textContent = aMedias ? 'Partida nueva' : 'Reiniciar partido';
@@ -3768,7 +4003,7 @@ function endMatch() { S.timer = 0; openMenu(); }
 function resetMatch() {
   S.score = [0, 0]; S.pts = [0, 0]; S.games = [0, 0]; S.sets = []; S.tb = false; S.over = false; S.xpMatch = 0; S.xpRivMatch = 0; S.xpRaw = [0, 0]; S.subeTxt = ''; clearSave();
   S.saqueIni = Math.random() < 0.5 ? 0 : 1;   // a suertes quién empieza sacando
-  S.escTxt = '';
+  S.escTxt = ''; S.torTxt = '';
   updateHud();
   S.pause = null; S.hitter = null; showMsg('', 0);
   resetPoint();
@@ -3858,10 +4093,11 @@ menuEl.addEventListener('click', e => {
   if (k === 'tipo') {
     if (CFG.tipo === 'rapido') pickEvenRivals();
     if (CFG.tipo === 'escalera') escSanitize();
+    if (CFG.tipo === 'torneo') { CFG.us = idsPropios(); torPrepara(); }
     applyLineup();
   }
   // la escalera se juega a partido con final (si estaba «Sin final», a 6 puntos)
-  if (CFG.tipo === 'escalera' && CFG.match === 'libre') { CFG.match = '6p'; CFG.scoring = 'simple'; }
+  if ((CFG.tipo === 'escalera' || CFG.tipo === 'torneo') && CFG.match === 'libre') { CFG.match = '6p'; CFG.scoring = 'simple'; }
   if (k === 'view') resize();
   saveCfg(); paintMenu(); paintPlay();
   applyLook(); updateHud(); renderer.render(scene, camera);   // se ve el cambio detrás del menú
@@ -3912,7 +4148,7 @@ requestAnimationFrame(frame);
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
   S, ball, players, tapPause, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
-  pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get ESC() { return ESC; },
+  pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
   fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
