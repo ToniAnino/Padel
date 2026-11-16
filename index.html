@@ -3252,9 +3252,20 @@ function bolaEnToma(pos, look) {   // ¿se ve la bola con la cámara en pos mira
   _pf.set(ball.p.x + ball.v.x * T, Math.max(0.05, ball.p.y + ball.v.y * T - 4.9 * T * T), Math.min(ball.p.z + ball.v.z * T, 9.9));
   return fuera(ball.p) + fuera(_pf);
 }
+// En «alterna» la cámara no salta de un jugador al otro: se pone en un punto entre los dos según dónde esté la
+// bola a lo ancho (bola a la izquierda, detrás del de la izquierda; en el centro, entre los dos) y se desliza suave.
+let tpMezcla = null;
+function anclaAlterna(dt) {
+  const [a, b] = ours[0].pos.x <= ours[1].pos.x ? [ours[0], ours[1]] : [ours[1], ours[0]];
+  const ancho = b.pos.x - a.pos.x;
+  const want = ancho > 0.6 ? clamp((ball.p.x - a.pos.x) / ancho, 0, 1) : 0.5;
+  if (tpMezcla === null || dt === 0) tpMezcla = want;
+  else tpMezcla += (want - tpMezcla) * Math.min(1, dt * 2.5);
+  return { pos: a.pos.clone().lerp(b.pos, tpMezcla) };
+}
 function updateCam(dt) {
   if (!terceraP()) return;
-  const me = ctrlP();
+  const me = CFG.view === 'tpx' ? anclaAlterna(dt) : ctrlP();
   // si la bola se sale de la toma (un globo que pasa por encima, una bola que va al fondo detrás del jugador), la
   // cámara se aleja hacia atrás y sube lo justo para que siga viéndose; cuando vuelve, se acerca otra vez
   let eWant = 0;
