@@ -2139,7 +2139,8 @@ function endPoint(winner, reason) {
   // experiencia (para las dos parejas): punto 3, juego 5, set 15 y 15 por jugar el partido;
   // se reparte al acabar, el que pierde la mitad y según lo difíciles que fueran los contrarios
   S.xpRaw = S.xpRaw || [0, 0];
-  S.xpRaw[winner] += 3 + (juego ? 5 : 0) + (set ? 15 : 0);
+  // (juegos y sets solo cuentan con el marcador de pádel: a puntos no hay juegos de verdad)
+  S.xpRaw[winner] += 3 + (conSets && juego ? 5 : 0) + (set ? 15 : 0);
   if (fin) { S.xpRaw[winner] += 15; S.xpRaw[L] += 15; }   // (lo de jugar el partido, igual para los dos)
   const subida = '';
   if (fin) {            // fin del partido: se enseña el resultado y luego el menú
@@ -2147,8 +2148,11 @@ function endPoint(winner, reason) {
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     S.trainTxt = trainTick();   // los entrenamientos cuentan un partido más
-    showBanner(winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + subida, winner === US ? 'gana' : 'riv', 1.4);
+    // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
+    const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
+    showBanner(winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + xpTxt, winner === US ? 'gana' : 'riv', 1.4);
     fillBigScore(winner, juego); S.bigAt = S.timer - 1.4;
+    if (xpTxt) document.getElementById('bsSub').textContent += xpTxt;
     return;
   }
   const quien = winner === US ? '¡PUNTO VUESTRO!' : 'PUNTO RIVAL';
