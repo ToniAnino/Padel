@@ -1684,19 +1684,22 @@ function placeServeBall() {
 // prepara un saque (también el segundo tras una falta): bola en la mano del que saca
 // sitio de vuestros jugadores para el saque: sacando, el que saca detrás de la línea de saque en su lado y el
 // compañero en la red al otro lado; restando, los dos atrás, cada uno en el lado donde está
+// Cada uno de los vuestros tiene su lado fijo: TÚ la derecha y COMPI la izquierda. Al sacar se juega «a la
+// australiana»: el compañero se queda en la red en su lado aunque el que saca lo haga desde ese mismo lado
+// (después del saque lo lleváis corriendo a su lado); al restar, cada uno espera en el suyo.
+const ladoDe = o => o === ours[0] ? 1 : -1;   // vuestra derecha es x > 0
 function ourServeSpots(server) {
   if (server.team === US) {
-    const half = S.serveRight ? 1 : -1, mate = ours.find(o => o !== server);   // vuestra derecha es x > 0
-    return [[server, { x: half * 2.3, z: 7.3 }], [mate, { x: -half * 2.3, z: 4.5 }]];   // (7,3: detrás de la línea de saque y fuera de la esquina de abajo, donde algunas webs ponen su aviso)
+    const half = S.serveRight ? 1 : -1, mate = ours.find(o => o !== server);
+    const aus = ladoDe(mate) === half;   // australiana: el compañero en la red del mismo lado, algo abierto para no estorbar el saque
+    return [[server, { x: half * 2.3, z: 7.3 }], [mate, { x: ladoDe(mate) * (aus ? 2.9 : 2.3), z: 4.5 }]];   // (7,3: detrás de la línea de saque y fuera de la esquina de abajo, donde algunas webs ponen su aviso)
   }
-  const izq = ours[0].pos.x <= ours[1].pos.x ? ours[0] : ours[1], der = izq === ours[0] ? ours[1] : ours[0];
-  return [[izq, { x: -2.4, z: 7.5 }], [der, { x: 2.4, z: 7.5 }]];
+  return ours.map(o => [o, { x: ladoDe(o) * 2.4, z: 7.5 }]);
 }
-// saque rival desde x = sx: va cruzado, al lado contrario; resta el vuestro que está en ese lado (no por ser TÚ o COMPI:
-// desde que os colocáis solos podéis estar cambiados de lado)
+// saque rival desde x = sx: va cruzado, al lado contrario; resta el vuestro de ese lado
 function ourReceiver(sx) {
   const side = -Math.sign(sx) || 1;
-  return Math.abs(ours[0].pos.x - side * 2.4) <= Math.abs(ours[1].pos.x - side * 2.4) ? ours[0] : ours[1];
+  return ours.find(o => ladoDe(o) === side);
 }
 function setupServe() {
   const server = S.server, us = server.team === US;
