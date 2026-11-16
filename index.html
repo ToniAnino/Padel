@@ -1693,7 +1693,7 @@ function setupServe() {
   server.swingT = -1; server.stroke = 'fore';
   placeServeBall();
   S.serveDrop = false; S.serveBounced = false; S.serveCheck = false; S.serveNet = false; S.receiver = null; S.serveAim = null; S.serveMesh = false; S.serveLeave = false;
-  S.phase = 'serve'; S.timer = 1.4; S.lastHitter = 1 - server.team; S.bounces = 0; S.firstSide = -1;
+  S.phase = 'serve'; S.timer = 1.4; S.lastHitter = 1 - server.team; S.bounces = 0; S.firstSide = -1; S.mala = false;
   trailReset(); bounceRing.visible = targetRing.visible = false;
   if (us) showMsg((S.firstServe ? '' : '2º SAQUE · ') + 'SACA ' + server.label + (sacaSolo(server) ? '' : ' · TOCA EN LA PISTA DÓNDE'), sacaSolo(server) ? 1.4 : 99);
 }
@@ -1937,6 +1937,7 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
   ball.spin = type === 'lob' && netH >= 8 ? 'globoAlto' : kind;   // (etiqueta: la IA sabe qué golpe le llega)
   S.lastHitter = pl.team; S.bounces = 0; S.firstSide = -1; S.sinceHit = 0; S.peak = ball.p.y;
   S.glassPlay = false; S.fromGlass = false; S.glassLow = false; S.letBounce = false;
+  S.mala = vaMala();   // va directa a la pared (o fuera) sin botar: el que la recibe la deja pasar
   for (const o of players) if (o.team !== pl.team && o.jumpT < 0) o.splitT = 0;   // los contrarios hacen el paso de ajuste
   // ante un mate que va a llegar a la pared del fondo, el rival la deja pasar y la coge de vuelta
   // (los rivales de poco nivel a veces intentan darle de primeras)
@@ -1986,9 +1987,21 @@ function smashReachesBackWall() {
   return false;
 }
 const BODY_R = 0.35;   // si el mate va al cuerpo (más cerca que esto) no queda otra que darle
+// ¿la bola recién golpeada toca una pared (cristal o reja) o sale de la pista antes de botar? Entonces es mala
+// y quien la recibe no la toca (si la volea, sigue en juego y le quita el punto al que la ha tirado mal)
+function vaMala() {
+  const b = cloneBall();
+  for (let i = 0; i < 4 * 240; i++) {
+    const ev = stepBall(b, 1 / 240);
+    if (ev === 'wall' || ev === 'out') return true;
+    if (ev === 'floor') return false;
+  }
+  return false;
+}
 
 function canHit(pl) {
   if (pl.team === S.lastHitter || S.sinceHit < 0.25 || S.bounces >= 2 || ball.killed) return false;   // tras un por 3/4 no hay nada que hacer
+  if (S.mala && S.bounces === 0) return false;   // va directa a la pared: se deja pasar
   if (S.waitWall && Math.hypot(ball.p.x - pl.pos.x, ball.p.z - pl.pos.z) > BODY_R) return false;
   if (S.glassPlay && pl.team === RIVAL) return false;   // la esperan a la salida del cristal
   if (S.letBounce && pl.team === RIVAL && S.bounces === 0) return false;   // la dejan botar a propósito
@@ -2155,6 +2168,7 @@ function planRivals(ourType) {
   }
 }
 function scanRivalHit(pegadoAlCristal) {
+  if (S.mala) return null;   // mala: no van a por ella
   const b = cloneBall();   // (con el efecto, para prever bien el bote)
   const h = 1 / 120;
   let t = 0, bounces = 0, firstSide = -1, pick = null, fallback = null, wallBack = !S.waitWall && !S.glassPlay, peak = S.peak || 0;
@@ -2961,7 +2975,7 @@ function physics(dt) {
     if (S.sinceHit > 0.15 && ball.p.y > 0.2 && ball.p.y < 1.9) {
       const hitBody = players.find(p => p.team !== S.lastHitter && sideOf(ball.p.z) === p.team &&
         Math.hypot(ball.p.x - p.pos.x, ball.p.z - p.pos.z) < 0.26 && !canHit(p) && !(p === S.receiver && S.bounces === 0) &&
-        !(p.team === RIVAL && (S.letBounce || S.glassPlay || S.glassLow)) && !(S.serveLeave && p === S.receiver));   // si la dejan pasar a propósito, se apartan
+        !(p.team === RIVAL && (S.letBounce || S.glassPlay || S.glassLow)) && !(S.serveLeave && p === S.receiver) && !S.mala);   // si la dejan pasar a propósito, se apartan
       if (hitBody) { ball.v.multiplyScalar(-0.2); endPoint(1 - hitBody.team, 'le da en el cuerpo'); continue; }
     }
     // el saque le da al compañero del que resta antes de botar: punto para el que saca
@@ -3005,6 +3019,7 @@ function physics(dt) {
 // Trayectoria prevista de la bola (1,4 s) para que los jugadores preparen el golpe
 const PREP_T = 1.0;   // segundos antes del golpe en que empieza a preparar
 function ballPath() {
+  if (S.mala && S.bounces === 0) return [];   // mala: nadie se prepara para golpearla
   const b = cloneBall();   // (con el efecto, para prever bien el bote)
   let bounces = S.bounces, first = S.firstSide, wall = !S.waitWall, glass = false, peak = S.peak || 0;
   const out = [];
