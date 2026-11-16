@@ -2123,8 +2123,8 @@ function endPoint(winner, reason) {
     const g = S.games;
     if (conSets) {
       // set: 6 juegos con 2 de diferencia, 7-5, o 7-6 tras el tie-break a 6-6;
-      // partido a 4 juegos: gana el primero que llega a 4 y, a 3-3, tie-break (4-3)
-      if (CFG.match === '4j') { if (g[winner] >= 4) set = true; else if (g[0] === 3 && g[1] === 3) S.tb = true; }
+      // partido a 4 juegos: a 4 con 2 de diferencia (4-2, 5-3) y, a 4-4, tie-break (5-4)
+      if (CFG.match === '4j') { if ((g[winner] >= 4 && g[winner] - g[L] >= 2) || g[winner] === 5) set = true; else if (g[0] === 4 && g[1] === 4) S.tb = true; }
       else if ((g[winner] >= 6 && g[winner] - g[L] >= 2) || g[winner] === 7) set = true;
       else if (g[0] === 6 && g[1] === 6) S.tb = true;
       if (set) {
