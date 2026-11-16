@@ -2026,7 +2026,9 @@ function vaMala() {
 
 function canHit(pl) {
   if (pl.team === S.lastHitter || S.sinceHit < 0.25 || S.bounces >= 2 || ball.killed) return false;   // tras un por 3/4 no hay nada que hacer
-  if (S.mala && S.bounces === 0) return false;   // va directa a la pared: se deja pasar
+  // va directa a la pared: los rivales la dejan pasar (y en 3ª persona 1P, los vuestros);
+  // si lleváis a los dos, los vuestros, si están en posición, le dan como si no supieran que va fuera (y sigue en juego)
+  if (S.mala && S.bounces === 0 && !(pl.team === US && !unoSolo() && !palaOn())) return false;
   if (S.waitWall && Math.hypot(ball.p.x - pl.pos.x, ball.p.z - pl.pos.z) > BODY_R) return false;
   if (S.glassPlay && pl.team === RIVAL) return false;   // la esperan a la salida del cristal
   if (S.letBounce && pl.team === RIVAL && S.bounces === 0) return false;   // la dejan botar a propósito
@@ -3071,7 +3073,7 @@ function physics(dt) {
 // Trayectoria prevista de la bola (1,4 s) para que los jugadores preparen el golpe
 const PREP_T = 1.0;   // segundos antes del golpe en que empieza a preparar
 function ballPath() {
-  if (S.mala && S.bounces === 0) return [];   // mala: nadie se prepara para golpearla
+  if (S.mala && S.bounces === 0 && (S.lastHitter === US || unoSolo() || palaOn())) return [];   // mala: no se preparan (los vuestros, si los lleváis los dos, sí)
   const b = cloneBall();   // (con el efecto, para prever bien el bote)
   let bounces = S.bounces, first = S.firstSide, wall = !S.waitWall, glass = false, peak = S.peak || 0;
   const out = [];
