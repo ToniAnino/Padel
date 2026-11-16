@@ -614,20 +614,20 @@ function makeLabel(text, bg, fg) {
 
 // ================= Plantilla de jugadores =================
 // Barras (1-100; 50 = el nivel medio de antes). El estilo (agr) no es una barra: de defensivo a agresivo.
-const STAT_KEYS = ['vel', 'ref', 'pre', 'pot', 'rem', 'par', 'col', 'vis', 'equ', 'saq', 'res'];
-const STAT_NAMES = { vel: 'Velocidad', ref: 'Reflejos', pre: 'Precisión', pot: 'Potencia', rem: 'Remate', par: 'Defensa de pared',
+const STAT_KEYS = ['vel', 'ref', 'pre', 'pot', 'rem', 'aer', 'par', 'col', 'vis', 'equ', 'saq', 'res'];
+const STAT_NAMES = { vel: 'Velocidad', ref: 'Reflejos', pre: 'Precisión', pot: 'Potencia', rem: 'Remate', aer: 'Juego aéreo', par: 'Defensa de pared',
   col: 'Colocación', vis: 'Visión de juego', equ: 'Juego en equipo', saq: 'Saque', res: 'Resistencia' };
 const SKIN_TONES = [0xf1c7a5, 0xe8b896, 0xd9a27a, 0xc68c64, 0x9c6644, 0x6b4428];
 // perfiles de juego: lo que hace bien (y lo que paga por ello) y lo agresivo que es
 const PERFILES = {
-  muro:       { tag: ['Muro', 'Muro'], agr: 22, m: { par: 14, pre: 8, ref: 4, res: 4, pot: -8, rem: -10 } },
-  rematador:  { tag: ['Rematador', 'Rematadora'], agr: 86, m: { rem: 16, pot: 8, saq: 4, pre: -8, par: -8, res: -4 } },
+  muro:       { tag: ['Muro', 'Muro'], agr: 22, m: { par: 14, pre: 8, ref: 4, res: 4, pot: -8, rem: -10, aer: -8 } },
+  rematador:  { tag: ['Rematador', 'Rematadora'], agr: 86, m: { rem: 16, aer: 10, pot: 8, saq: 4, pre: -8, par: -8, res: -4 } },
   estratega:  { tag: ['Estratega', 'Estratega'], agr: 48, m: { vis: 16, col: 10, pre: 4, pot: -8, vel: -6 } },
   velocista:  { tag: ['Rápido', 'Rápida'], agr: 60, m: { vel: 14, ref: 8, res: 4, pot: -8, rem: -6 } },
-  voleador:   { tag: ['Voleador', 'Voleadora'], agr: 76, m: { ref: 12, rem: 8, col: 6, par: -12, res: -4 } },
-  incansable: { tag: ['Incansable', 'Incansable'], agr: 40, m: { res: 18, equ: 8, par: 4, vis: -6, rem: -6 } },
+  voleador:   { tag: ['Voleador', 'Voleadora'], agr: 76, m: { aer: 16, ref: 12, rem: 8, col: 6, par: -12, res: -4 } },
+  incansable: { tag: ['Incansable', 'Incansable'], agr: 40, m: { res: 18, equ: 8, par: 4, vis: -6, rem: -6, aer: -4 } },
   completo:   { tag: ['Completo', 'Completa'], agr: 55, m: {} },
-  pegador:    { tag: ['Pegador', 'Pegadora'], agr: 82, m: { pot: 16, saq: 10, rem: 4, pre: -12, vis: -6 } },
+  pegador:    { tag: ['Pegador', 'Pegadora'], agr: 82, m: { pot: 16, saq: 10, rem: 4, aer: 4, pre: -12, vis: -6 } },
   companero:  { tag: ['Buen compañero', 'Buena compañera'], agr: 50, m: { equ: 18, col: 8, vis: 4, rem: -8, pot: -4 } },
 };
 // h: hombre/mujer; alt: altura (m); cx: complexión (d delgada, n normal, f fuerte); pelo: estilo y color;
@@ -663,8 +663,8 @@ function buildStats(p) {
   if (p.s === 'm') mods.push({ pot: -12, rem: -6, pre: 6, par: 6, vis: 4, ref: 3, res: 3 });
   if (p.cx === 'f') mods.push({ pot: 12, rem: 6, vel: -9, res: -3 });
   if (p.cx === 'd') mods.push({ vel: 8, ref: 4, res: 3, pot: -7 });
-  if (p.alt >= 1.85) mods.push({ rem: 8, saq: 5, vel: -4, par: -4 });
-  if (p.alt <= 1.66) mods.push({ vel: 5, par: 6, ref: 2, rem: -8, saq: -3 });
+  if (p.alt >= 1.85) mods.push({ rem: 8, aer: 5, saq: 5, vel: -4, par: -4 });
+  if (p.alt <= 1.66) mods.push({ vel: 5, par: 6, ref: 2, rem: -8, aer: -4, saq: -3 });
   let seed = 0; for (const ch of p.id) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
   STAT_KEYS.forEach((k, i) => {
     const jitter = ((seed * (i + 7)) % 9) - 4;   // un poco de variación propia (siempre la misma)
@@ -1997,7 +1997,7 @@ const lobFactor = () => S.peak > LOB_PEAK ? (S.bounces === 0 ? 1.35 : 0.7) : 1;
 // radio de dispersión del golpe (m): 0,15 los muy precisos .. 2,1 los muy imprecisos, por lo difícil y el globo
 function aimSpread(pl) {
   const k = ball.p.y > SMASH_Y ? 'rem' : 'pre';
-  return (0.3 + 1.8 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor();
+  return (0.3 + 1.8 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor() * calidadGolpe(pl);
 }
 const isBackWall = p => Math.abs(p.z) > HL - 0.1;
 // ¿el mate bota en el campo rival y llega a su pared del fondo antes del segundo bote?
@@ -2170,7 +2170,7 @@ function loserByBounces() {
 }
 function onFloor(side) {
   S.bounces++;
-  if (S.bounces === 1) { S.firstSide = side; bounceRing.visible = false; targetRing.visible = false; }
+  if (S.bounces === 1) { S.firstSide = side; S.tBote = S.sinceHit; bounceRing.visible = false; targetRing.visible = false; }
   else if (S.bounces === 2) {
     const loser = loserByBounces();
     endPoint(1 - loser, S.firstSide === S.lastHitter ? 'red' : 'doble bote');
@@ -2276,6 +2276,17 @@ const aiSpeed = r => (5.0 - 2.2 * below(r, 'vel') + 1.2 * above(r, 'vel')) * fat
 const ourSpeed = o => (4.9 + 1.9 * STAT(o, 'vel') / 100) * fatigue(o);                    // los vuestros: 5,0 .. 6,8 m/s
 const aiReaction = r => 0.25 + 0.4 * below(r, 'ref') - 0.13 * above(r, 'ref');            // 0,65 .. 0,25 .. 0,12 s
 const aiError = (r, k = 'pre') => 0.08 + 0.37 * below(r, k) - 0.07 * above(r, k);         // 45 % .. 8 % .. 1 %
+// Calidad del golpe según cómo le llega la bola (los dos equipos): tras el bote y con tiempo (bota, pasan 0,3 s o más
+// y se golpea a buena altura) se falla y se desvía menos; a bote pronto (recién botada o a los pies), más; de volea
+// o de remate, según el juego aéreo. Multiplica los fallos y la dispersión (1 = normal).
+function calidadGolpe(pl) {
+  if (S.phase === 'serve') return 1;
+  if (S.bounces === 0) return 1.35 - 0.7 * STAT(pl, 'aer') / 100;   // volea o remate: 1,2 (20) .. 1 (50) .. 0,7 (93)
+  const tb = S.sinceHit - (S.tBote ?? 0), y = ball.p.y;
+  if (tb < 0.18 || y < 0.45) return 1.3;                 // bote pronto
+  if (tb >= 0.3 && y >= 0.5 && y <= 1.4) return 0.7;     // con tiempo
+  return 1;
+}
 // cuánto juega a la defensiva (más globos y bolas seguras): 1,5 muy defensivo .. 0,5 muy agresivo
 const defensivo = pl => 1.5 - STAT(pl, 'agr') / 100;
 // dificultad de la bola que le llega (0 fácil .. ~2 muy difícil): rápida, baja o lejos del cuerpo
@@ -2341,7 +2352,7 @@ function aiHit(r) {
   let type, tx, tz, netH, bt0;
   const near = Math.abs(r.pos.z);   // distancia del rival a la red
   // remates, bandejas y víboras también se fallan (más cuanto más difícil y menos nivel)
-  if (ball.p.y > SMASH_Y && near <= DEEP_Z && Math.random() < aiError(r, 'rem') * 0.7 * (1 + diff) * lobFactor()) {
+  if (ball.p.y > SMASH_Y && near <= DEEP_Z && Math.random() < aiError(r, 'rem') * 0.7 * (1 + diff) * lobFactor() * calidadGolpe(r)) {
     if (Math.random() < 0.55) netError(r);                                              // a la red
     else doHit(r, rand(-4.5, 4.5), rand(10.6, 11.5), 'timed', 0.9);                      // larga, fuera
     return;
@@ -2368,7 +2379,8 @@ function aiHit(r) {
   } else S.lastAiBranch = 'normal';
   if (!decided && ball.p.y > SMASH_Y && near > DEEP_Z) { ({ type, tx, tz, netH } = deepHighBall(r)); decided = true; }
   // a poco nivel, muchas bolas altas no las rematan: las devuelven blandas o en globo
-  const smashes = !decided && ball.p.y > SMASH_Y && Math.random() > 0.8 * below(r, 'rem');
+  // (con buen juego aéreo se atreven más a rematar)
+  const smashes = !decided && ball.p.y > SMASH_Y && Math.random() > 0.8 * (below(r, 'rem') + below(r, 'aer')) / 2;
   if (!decided && ball.p.y > SMASH_Y && !smashes) {
     if (Math.random() < 0.5) doHit(r, rand(-2, 2), rand(4.5, 7), 'soft', 2.6);
     else doHit(r, rand(-3, 3), rand(5.5, 8), 'lob');
@@ -2395,7 +2407,8 @@ function aiHit(r) {
     return;
   }
   if (decided) { /* ya elegido (bola alta desde el fondo) */ }
-  else if (diff > 1 && Math.random() < (0.85 - 0.35 * lvl(r, 'vis') / 100) * (0.6 + 0.4 * defensivo(r))) {   // golpe muy forzado: se defiende (globo o al centro)
+  // (de volea, con buen juego aéreo atacan en vez de defenderse)
+  else if (diff > 1 && !(S.bounces === 0 && Math.random() < above(r, 'aer')) && Math.random() < (0.85 - 0.35 * lvl(r, 'vis') / 100) * (0.6 + 0.4 * defensivo(r))) {   // golpe muy forzado: se defiende (globo o al centro)
     if (Math.random() < 0.55) { type = 'lob'; tx = rand(-2, 2); tz = rand(6.5, 8.8); }
     else { type = 'drive'; tx = rand(-1.2, 1.2); tz = rand(5.5, 8); netH = DRIVE_NET + 0.5; }
   }
@@ -2411,7 +2424,7 @@ function aiHit(r) {
   } else { type = 'drive'; tx = rand(-4, 4); tz = rand(2.5, 8.5); }
   // por debajo de 50 apuntan peor
   tx = clamp(tx, -4.7, 4.7); tz = clamp(tz, 1, 9.6);   // (la dispersión se aplica en doHit)
-  if (Math.random() < (aiError(r) * (1 + 2 * diff) + 0.06 * diff) * lobFactor()) {   // fallo: a la red o largo
+  if (Math.random() < (aiError(r) * (1 + 2 * diff) + 0.06 * diff) * lobFactor() * calidadGolpe(r)) {   // fallo: a la red o largo
     if (ball.p.y > SMASH_Y) { type = 'lob'; netH = undefined; tz = rand(10.8, 12.5); }   // bola alta: globo que se va largo
     else if (Math.random() < 0.6) { netError(r); return; } else { type = 'drive'; tz = rand(10.6, 12); }
   }
@@ -2510,7 +2523,7 @@ function autoHit(pl) {
     tx = openX(); tz = rand(-6.5, -4); txt = '¡MATE!';
   } else if (ball.p.y > SMASH_Y) {                       // si no, bandeja: controlada a la esquina del fondo
     tx = (Math.sign(openX()) || 1) * rand(2, 3.8); tz = rand(-9.3, -8.2); txt = 'BANDEJA';
-  } else if (shotDifficulty(pl) > 1 && Math.random() < 0.6 * defensivo(pl)) {   // muy forzado: globo defensivo
+  } else if (shotDifficulty(pl) > 1 && !(S.bounces === 0 && Math.random() < above(pl, 'aer')) && Math.random() < 0.6 * defensivo(pl)) {   // muy forzado: globo defensivo
     type = 'lob'; tx = rand(-2, 2); tz = rand(-8.8, -6.5); txt = 'GLOBO (DEFENSA)';
   } else if (atNet(r0) && atNet(r1) && pl.pos.z > 5 && Math.random() < 0.5 * defensivo(pl)) {   // desde el fondo contra dos en la red: globo
     type = 'lob'; tx = clamp(-(r0.pos.x + r1.pos.x) / 2 + rand(-1, 1), -3.5, 3.5); tz = rand(-9, -7.8); txt = 'GLOBO';
@@ -2547,7 +2560,7 @@ function ourAim(pl, tx, tz) {
 }
 function ourMiss(pl) {
   const k = ball.p.y > SMASH_Y ? 'rem' : 'pre';
-  if (Math.random() >= aiError(pl, k) * 0.55 * (1 + shotDifficulty(pl)) * lobFactor()) return false;
+  if (Math.random() >= aiError(pl, k) * 0.55 * (1 + shotDifficulty(pl)) * lobFactor() * calidadGolpe(pl)) return false;
   S.receiver = null;
   if (Math.random() < 0.55) netError(pl); else doHit(pl, rand(-4.5, 4.5), -rand(10.6, 11.5), 'timed', 0.9);
   showMsg('¡FALLO!', 0.8);
@@ -3899,7 +3912,7 @@ requestAnimationFrame(frame);
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
   S, ball, players, tapPause, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
-  pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, get ESC() { return ESC; },
+  pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
   fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
