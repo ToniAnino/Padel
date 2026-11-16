@@ -279,8 +279,8 @@
       <h2>Partido</h2>
       <div class="opts row" data-k="match">
         <button data-v="libre">Sin final</button>
-        <button data-v="5p">5 puntos</button>
-        <button data-v="3">3 sets</button>
+        <button data-v="6p">6 puntos</button>
+        <button data-v="4j">4 juegos</button>
       </div>
       <button id="play">JUGAR</button>
       <button id="restart">Reiniciar partido</button>
@@ -339,9 +339,10 @@ const US = 0, RIVAL = 1;
 const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
-if (CFG.match === '1') CFG.match = '5p';   // el antiguo «1 set» es ahora el partido a 5 puntos
-// a 5 puntos se cuenta por puntos; los sets, con el marcador de pádel
-if (CFG.match === '5p') CFG.scoring = 'simple'; else if (CFG.match !== 'libre') CFG.scoring = 'padel';
+if (CFG.match === '1' || CFG.match === '5p') CFG.match = '6p';   // los antiguos «1 set» y «5 puntos» son ahora el partido a 6 puntos
+if (CFG.match === '3') CFG.match = '4j';                          // y el de «3 sets», el de 4 juegos
+// a 6 puntos se cuenta por puntos; a 4 juegos, con el marcador de pádel
+if (CFG.match === '6p') CFG.scoring = 'simple'; else if (CFG.match !== 'libre') CFG.scoring = 'padel';
 if (CFG.view === 'fp') CFG.view = 'tp';   // (la primera persona se cambió por la tercera)
 if (CFG.mode !== 'partido') CFG.mode = 'manual';   // el antiguo modo Posición es el de tiempo real sin marcar destino   // los sets van con el marcador de pádel
 function saveCfg() { try { localStorage.setItem('padel.cfg2', JSON.stringify(CFG)); } catch (_) {} }
@@ -1626,7 +1627,7 @@ function showBanner(title, sub, cls, secs) {
 function fillBigScore(winner, juego) {
   const u = document.getElementById('bsU'), r = document.getElementById('bsR'), sub = document.getElementById('bsSub');
   let su, sr, gu = '', gr = '', txt = '';
-  if (CFG.scoring !== 'padel') { su = String(S.score[0]); sr = String(S.score[1]); txt = CFG.match === '5p' ? 'A 5 PUNTOS' : 'PUNTOS'; }
+  if (CFG.scoring !== 'padel') { su = String(S.score[0]); sr = String(S.score[1]); txt = CFG.match === '6p' ? 'A 6 PUNTOS (2 DE DIFERENCIA)' : 'PUNTOS'; }
   else if (juego || S.tb && S.pts[0] + S.pts[1] === 0) { su = String(S.games[0]); sr = String(S.games[1]); txt = 'JUEGOS' + (S.tb ? ' · TIE-BREAK' : ''); }
   else { [su, sr] = ptsText(); gu = 'Juegos ' + S.games[0]; gr = 'Juegos ' + S.games[1]; txt = S.tb ? 'TIE-BREAK' : 'PUNTOS'; }
   if (CFG.scoring === 'padel' && S.sets.length) txt += ' · SETS ' + setsText();
@@ -1662,9 +1663,9 @@ function resetPoint() {
 // En el tie-break (y a puntos) el saque cambia tras el primer punto y luego cada dos. El primer punto de cada
 // juego se saca desde la derecha y después se va alternando.
 function whoServes() {
-  // partido a 5 puntos: el saque cambia de pareja en cada punto; dentro de la pareja saca cada vez el otro
+  // partido a 6 puntos: el saque cambia de pareja en cada punto; dentro de la pareja saca cada vez el otro
   // jugador, y cada uno va alternando derecha e izquierda
-  if (CFG.match === '5p') {
+  if (CFG.match === '6p') {
     const n = S.score[0] + S.score[1], k = Math.floor(n / 2);
     return { team: (S.saqueIni + n) % 2, idx: k % 2, right: Math.floor(k / 2) % 2 === 0 };
   }
@@ -2057,7 +2058,7 @@ function updateHud() {
   hud.innerHTML = `NOSOTROS ${st(0)}<span class="g">${S.games[0]}</span> <b>${pa}</b> – <b class="r">${pb}</b> <span class="g">${S.games[1]}</span>${st(1)} RIVALES` + modoHud();
 }
 // nombre del modo de juego, en pequeño debajo del marcador
-const modoHud = () => '<div class="modo">' + (CFG.mode === 'partido' ? 'CON PAUSA' : 'TIEMPO REAL') + (CFG.match === '5p' ? ' · A 5 PUNTOS' : '') + '</div>';
+const modoHud = () => '<div class="modo">' + (CFG.mode === 'partido' ? 'CON PAUSA' : 'TIEMPO REAL') + (CFG.match === '6p' ? ' · A 6 PUNTOS' : CFG.match === '4j' ? ' · A 4 JUEGOS' : '') + '</div>';
 // puntos del juego en curso: 0-15-30-40, iguales y ventaja; en el tie-break, números
 function ptsText() {
   const [a, b] = S.pts;
@@ -2106,13 +2107,14 @@ function repartirXP(ganador) {
   saveProg();
   return sube.join(' · ');
 }
+const TB_PTS = () => CFG.match === '4j' ? 3 : 7;   // puntos del tie-break
 function endPoint(winner, reason) {
   S.phase = 'point'; S.timer = 1.8;
   S.score[winner]++;
   // marcador de pádel: 0-15-30-40, iguales y ventaja; quien gana el juego suma un juego
   const P = S.pts, L = 1 - winner, conSets = CFG.scoring === 'padel' && CFG.match !== 'libre';
   let juego = false, set = false, fin = false;
-  if (S.tb) { P[winner]++; juego = P[winner] >= 7 && P[winner] - P[L] >= 2; }   // tie-break: a 7 con 2 de diferencia
+  if (S.tb) { P[winner]++; juego = P[winner] >= TB_PTS() && P[winner] - P[L] >= 2; }   // tie-break: a 7 (a 3 en el de 4 juegos) con 2 de diferencia
   else if (P[winner] >= 3 && P[winner] - P[L] >= 1) juego = true;     // tenía 40 (o ventaja) y gana el punto
   else if (P[L] === 4) P[L] = 3;                                  // pierde la ventaja: iguales
   else P[winner]++;
@@ -2120,16 +2122,18 @@ function endPoint(winner, reason) {
     S.games[winner]++; S.pts = [0, 0]; S.tb = false;
     const g = S.games;
     if (conSets) {
-      // set: 6 juegos con 2 de diferencia, 7-5, o 7-6 tras el tie-break a 6-6
-      if ((g[winner] >= 6 && g[winner] - g[L] >= 2) || g[winner] === 7) set = true;
+      // set: 6 juegos con 2 de diferencia, 7-5, o 7-6 tras el tie-break a 6-6;
+      // partido a 4 juegos: gana el primero que llega a 4 y, a 3-3, tie-break (4-3)
+      if (CFG.match === '4j') { if (g[winner] >= 4) set = true; else if (g[0] === 3 && g[1] === 3) S.tb = true; }
+      else if ((g[winner] >= 6 && g[winner] - g[L] >= 2) || g[winner] === 7) set = true;
       else if (g[0] === 6 && g[1] === 6) S.tb = true;
       if (set) {
         S.sets.push([g[0], g[1]]); S.games = [0, 0];
-        fin = S.sets.filter(s => s[winner] > s[L]).length >= (CFG.match === '1' ? 1 : 2);
+        fin = S.sets.filter(s => s[winner] > s[L]).length >= (CFG.match === '4j' ? 1 : 2);
       }
     }
   }
-  if (CFG.match === '5p' && S.score[winner] >= 5) fin = true;   // partido a 5 puntos: el primero que llega
+  if (CFG.match === '6p' && S.score[winner] >= 6 && S.score[winner] - S.score[L] >= 2) fin = true;   // partido a 6 puntos con 2 de diferencia
   updateHud();
   bounceRing.visible = targetRing.visible = false;
   // experiencia (para las dos parejas): punto 3, juego 5, set 15 y 15 por jugar el partido;
@@ -2143,7 +2147,7 @@ function endPoint(winner, reason) {
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     S.trainTxt = trainTick();   // los entrenamientos cuentan un partido más
-    showBanner(winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '5p' ? S.score.join('-') : setsText()) + subida, winner === US ? 'gana' : 'riv', 1.4);
+    showBanner(winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + subida, winner === US ? 'gana' : 'riv', 1.4);
     fillBigScore(winner, juego); S.bigAt = S.timer - 1.4;
     return;
   }
@@ -3729,10 +3733,10 @@ function paintPlay() {
   const res = document.getElementById('result');
   res.style.display = S.over ? 'block' : 'none';
   if (S.over) {
-    const ganado = CFG.match === '5p' ? S.score[0] > S.score[1] : S.sets.filter(s => s[0] > s[1]).length > S.sets.filter(s => s[1] > s[0]).length;
+    const ganado = CFG.match === '6p' ? S.score[0] > S.score[1] : S.sets.filter(s => s[0] > s[1]).length > S.sets.filter(s => s[1] > s[0]).length;
     res.className = ganado ? '' : 'lost';
     const pend = CFG.us.filter(id => byId(id).propio && progOf(id).pts > 0).map(id => byId(id).n.split(' ')[0]);
-    res.innerHTML = (ganado ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO') + '<small>' + (CFG.match === '5p' ? S.score.join('-') : S.sets.map(s => s.join('-')).join('  ')) + '</small>'
+    res.innerHTML = (ganado ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO') + '<small>' + (CFG.match === '6p' ? S.score.join('-') : S.sets.map(s => s.join('-')).join('  ')) + '</small>'
       + (compite() ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(' y ') + ' +' + (S.xpRivMatch || 0) + '</small>'
                    : '<small>Partido de entrenamiento: no da experiencia</small>')
       + (S.subeTxt ? '<small class="mej">' + S.subeTxt + '</small>' : '')
@@ -3830,17 +3834,17 @@ menuEl.addEventListener('click', e => {
   const k = b.closest('.opts').dataset.k;
   CFG[k] = b.dataset.v;
   // los sets van con el marcador de pádel: elegir sets pone pádel; elegir puntos quita los sets
-  // los sets van con el marcador de pádel y el partido a 5 puntos, con puntos seguidos
-  if (k === 'match') CFG.scoring = CFG.match === '5p' ? 'simple' : CFG.match === '3' ? 'padel' : CFG.scoring;
-  if (k === 'scoring' && CFG.scoring === 'simple' && CFG.match === '3') CFG.match = 'libre';
-  if (k === 'scoring' && CFG.scoring === 'padel' && CFG.match === '5p') CFG.match = 'libre';
+  // el de 4 juegos va con el marcador de pádel y el de 6 puntos, con puntos seguidos
+  if (k === 'match') CFG.scoring = CFG.match === '6p' ? 'simple' : CFG.match === '4j' ? 'padel' : CFG.scoring;
+  if (k === 'scoring' && CFG.scoring === 'simple' && CFG.match === '4j') CFG.match = 'libre';
+  if (k === 'scoring' && CFG.scoring === 'padel' && CFG.match === '6p') CFG.match = 'libre';
   if (k === 'tipo') {
     if (CFG.tipo === 'rapido') pickEvenRivals();
     if (CFG.tipo === 'escalera') escSanitize();
     applyLineup();
   }
-  // la escalera se juega a partido con final (si estaba «Sin final», a 5 puntos)
-  if (CFG.tipo === 'escalera' && CFG.match === 'libre') { CFG.match = '5p'; CFG.scoring = 'simple'; }
+  // la escalera se juega a partido con final (si estaba «Sin final», a 6 puntos)
+  if (CFG.tipo === 'escalera' && CFG.match === 'libre') { CFG.match = '6p'; CFG.scoring = 'simple'; }
   if (k === 'view') resize();
   saveCfg(); paintMenu(); paintPlay();
   applyLook(); updateHud(); renderer.render(scene, camera);   // se ve el cambio detrás del menú
