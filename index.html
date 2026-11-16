@@ -79,8 +79,7 @@
   #menu .opts button.sel{background:#fff;color:#000;border-color:#fff}
   #menu .camWrap{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.8)}
   #menu.tpv .camWrap{display:none}
-  #menu .solo3p{display:none}
-  #menu.tp1 .solo3p{display:flex}   /* el control con joystick solo se elige en tercera persona */   /* en tercera persona la cámara va con vuestro jugador: las barras no se usan */
+  /* en tercera persona la cámara va con vuestro jugador: las barras no se usan */
   #menu .camWrap input{flex:1;accent-color:#fff;height:28px}
   /* mientras se arrastra la barra de la vista se ve la pista detrás del menú */
   #menu.peek{background:rgba(0,0,0,.15)}
@@ -258,10 +257,6 @@
         <button data-v="tpx">3ª alterna (2P)</button>
       </div>
       <div class="tipoTxt" id="vistaTxt"></div>
-      <div class="opts row solo3p" data-k="ctrl3" style="margin:6px 0 8px">
-        <button data-v="joy">Joystick</button>
-        <button data-v="sitio">Tocar el sitio</button>
-      </div>
       <div class="camWrap"><span>Baja</span><div class="camBar"><input type="range" id="camAng" min="25" max="85" step="1" aria-label="Ángulo de la cámara"><div class="marks" data-for="camAng"></div></div><span>Alta</span></div>
       <div class="camWrap"><span>Cerca</span><div class="camBar"><input type="range" id="camZoom" min="0" max="100" step="1" aria-label="Distancia de la cámara"><div class="marks" data-for="camZoom"></div></div><span>Lejos</span></div>
       <div class="camWrap"><span>Giro ⟲</span><div class="camBar"><input type="range" id="camYaw" min="-60" max="60" step="1" aria-label="Giro de la pista"><div class="marks" data-for="camYaw"></div></div><span>⟳</span></div>
@@ -342,7 +337,7 @@ const DRIVE_NET = 1.35;           // altura a la que el golpe normal pasa por la
 const E_FLOOR = 0.72, F_FLOOR = 0.85, E_WALL = 0.7;
 const US = 0, RIVAL = 1;
 // Ajustes elegidos en el menú (se recuerdan en este navegador)
-const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', match: '3', tipo: 'rapido', us: ['dani', 'sara'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', ctrl3: 'joy' };
+const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', match: '3', tipo: 'rapido', us: ['dani', 'sara'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
 if (CFG.match === '1') CFG.match = '5p';   // el antiguo «1 set» es ahora el partido a 5 puntos
@@ -2849,7 +2844,7 @@ panel.addEventListener('contextmenu', e => e.preventDefault());
 // Joystick (solo en tercera persona): el dedo se pone en cualquier sitio del panel y se arrastra; el jugador corre en
 // esa dirección (arriba = hacia la red), más rápido cuanto más lejos del centro, y al soltar frena y se queda ahí
 let joy = null;
-const joyOn = () => unoSolo() && CFG.ctrl3 !== 'sitio';   // (opción del menú: joystick o tocar el sitio; en alterna, como la vista normal)
+const joyOn = () => false;   // quitado (v110): siempre se toca el sitio
 const joyR = () => Math.max(34, Math.min(PW, PH) * 0.16);   // radio del joystick (px)
 function joyMove() {
   if (!joy || !joyOn()) return;
