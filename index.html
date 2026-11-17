@@ -598,6 +598,124 @@ function turfTex(base) {
   return t;
 }
 const TURF = { azul: turfTex('#2563b8'), verde: turfTex('#3f8f3a') };
+// ================= Entorno del club (solo en el modo detallado; sin público) =================
+// Suelo de baldosas alrededor de las pistas y césped más allá, dos pistas vecinas, setos, árboles, el edificio
+// del club al fondo, bancos con bolsas junto a la red y un cielo de anochecer con niebla a lo lejos.
+const entorno = new THREE.Group(); scene.add(entorno);
+const lienzo = (w, h, pinta) => { const c = document.createElement('canvas'); c.width = w; c.height = h; pinta(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+const ruido = (g, w, h, n, a) => { for (let i = 0; i < n; i++) { const l = Math.random() < 0.5 ? 255 : 0; g.fillStyle = `rgba(${l},${l},${l},${a * Math.random()})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } };
+const GRASS_TEX = lienzo(128, 128, (g, w, h) => { g.fillStyle = '#2d5a2a'; g.fillRect(0, 0, w, h); ruido(g, w, h, 3000, 0.16); });
+GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(60, 60);
+{
+  // baldosas: 1 m, juntas oscuras y algo de variación de tono
+  const APRON_W = 2 * (3 * HW + 7), APRON_L = 2 * (HL + 4.5);
+  const tiles = lienzo(256, 256, (g, w, h) => {
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const v = 128 + Math.floor(Math.random() * 18); g.fillStyle = `rgb(${v},${v + 2},${v + 6})`; g.fillRect(x * 64, y * 64, 64, 64); }
+    ruido(g, w, h, 2500, 0.12);
+    g.strokeStyle = 'rgba(40,42,48,.7)'; g.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
+  });
+  tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping; tiles.repeat.set(APRON_W / 4, APRON_L / 4);
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(APRON_W, APRON_L), new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.9 }));
+  apron.rotation.x = -Math.PI / 2; apron.position.y = -0.006; apron.receiveShadow = true; entorno.add(apron);
+  // bordillo alrededor de las baldosas
+  const curbMat = new THREE.MeshStandardMaterial({ color: 0x9a9ca3, roughness: 0.8 });
+  for (const s of [-1, 1]) {
+    const a = new THREE.Mesh(new THREE.BoxGeometry(APRON_W + 0.3, 0.12, 0.15), curbMat); a.position.set(0, 0.05, s * (APRON_L / 2 + 0.07)); entorno.add(a);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, APRON_L), curbMat); b.position.set(s * (APRON_W / 2 + 0.07), 0.05, 0); entorno.add(b);
+  }
+  // pistas vecinas, a los dos lados: suelo con líneas, cristales al fondo y estructura (postes y barandillas)
+  const vecinaTex = color => lienzo(256, 512, (g, w, h) => {
+    g.fillStyle = color; g.fillRect(0, 0, w, h); ruido(g, w, h, 4000, 0.1);
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3;
+    const sv = (10 - 6.95) / 20 * h;
+    g.beginPath(); g.moveTo(0, sv); g.lineTo(w, sv); g.moveTo(0, h - sv); g.lineTo(w, h - sv); g.moveTo(w / 2, sv); g.lineTo(w / 2, h - sv); g.stroke();
+    g.fillStyle = 'rgba(10,10,14,.85)'; g.fillRect(0, h / 2 - 3, w, 6);   // red
+  });
+  const postGeo = new THREE.BoxGeometry(0.08, 1, 0.08), postMat = new THREE.MeshStandardMaterial({ color: 0x14181e, roughness: 0.6, metalness: 0.4 });
+  const posts = [];
+  for (const [sx, col] of [[-1, '#2a5fae'], [1, '#2d7d3a']]) {
+    const cx = sx * (2 * HW + 3);
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW, 2 * HL), new THREE.MeshStandardMaterial({ map: vecinaTex(col), roughness: 0.95 }));
+    f.rotation.x = -Math.PI / 2; f.position.set(cx, -0.002, 0); f.receiveShadow = true; entorno.add(f);
+    for (const sz of [-1, 1]) {   // cristales del fondo
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW, 3), glassMat); gl.position.set(cx, 1.5, sz * HL); entorno.add(gl);
+    }
+    for (let z = -HL; z <= HL + 0.01; z += 2) for (const ex of [-HW, HW]) posts.push([cx + ex, z, Math.abs(z) >= HL - 2 ? 4 : 3]);
+    for (const x of [-2.5, 0, 2.5]) for (const sz of [-1, 1]) posts.push([cx + x, sz * HL, 4]);
+    for (const y of [3, 4]) for (const ex of [-HW, HW]) {   // barandillas de arriba
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, y === 3 ? 2 * HL : 4), postMat);
+      if (y === 3) { r.position.set(cx + ex, 3, 0); entorno.add(r); }
+      else for (const sz of [-1, 1]) { const r2 = r.clone(); r2.position.set(cx + ex, 4, sz * (HL - 2)); entorno.add(r2); }
+    }
+    for (const sz of [-1, 1]) { const r = new THREE.Mesh(new THREE.BoxGeometry(2 * HW, 0.06, 0.06), postMat); r.position.set(cx, 4, sz * HL); entorno.add(r); }
+  }
+  const postIM = new THREE.InstancedMesh(postGeo, postMat, posts.length), m4 = new THREE.Matrix4();
+  posts.forEach(([x, z, h], i) => postIM.setMatrixAt(i, m4.compose(new V3(x, h / 2, z), new THREE.Quaternion(), new V3(1, h, 1))));
+  entorno.add(postIM);
+  // setos alrededor de las baldosas (bolas aplastadas, en una sola malla)
+  const setos = [], hedgeR = 0.62;
+  for (let x = -APRON_W / 2 - 0.9; x <= APRON_W / 2 + 0.9; x += 1.0) for (const s of [-1, 1]) setos.push([x, s * (APRON_L / 2 + 0.9)]);
+  for (let z = -APRON_L / 2; z <= APRON_L / 2; z += 1.0) for (const s of [-1, 1]) setos.push([s * (APRON_W / 2 + 0.9), z]);
+  const hedgeIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(hedgeR, 1), new THREE.MeshStandardMaterial({ color: 0x24502a, roughness: 1, flatShading: true }), setos.length);
+  setos.forEach(([x, z], i) => { const k = 0.85 + Math.random() * 0.35; hedgeIM.setMatrixAt(i, m4.compose(new V3(x, 0.45 * k, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.random() * 6, 0)), new V3(k, 0.85 * k, k))); });
+  entorno.add(hedgeIM);
+  // árboles: lejos de la pista y nunca entre la cámara (detrás de vuestro fondo, en alto) y el juego
+  const arboles = [];
+  for (let i = 0; arboles.length < 46 && i < 400; i++) {
+    const x = (Math.random() - 0.5) * 110, z = (Math.random() - 0.5) * 110;
+    if (Math.abs(x) < APRON_W / 2 + 4 && Math.abs(z) < APRON_L / 2 + 4) continue;   // ni sobre las baldosas
+    if (z > 0 && Math.abs(x) < 26) continue;                                           // ni por delante de la cámara
+    arboles.push([x, z, 0.8 + Math.random() * 0.6]);
+  }
+  const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.24, 1, 7), new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 }), arboles.length);
+  const crownIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0x2b5a30, roughness: 1, flatShading: true }), arboles.length * 2);
+  arboles.forEach(([x, z, k], i) => {
+    trunkIM.setMatrixAt(i, m4.compose(new V3(x, 1.6 * k, z), new THREE.Quaternion(), new V3(k, 3.2 * k, k)));
+    crownIM.setMatrixAt(2 * i, m4.compose(new V3(x, 4.2 * k, z), new THREE.Quaternion(), new V3(2.1 * k, 2.3 * k, 2.1 * k)));
+    crownIM.setMatrixAt(2 * i + 1, m4.compose(new V3(x + 0.6 * k, 5.4 * k, z - 0.3 * k), new THREE.Quaternion(), new V3(1.4 * k, 1.5 * k, 1.4 * k)));
+  });
+  for (let i = 0; i < arboles.length * 2; i++) crownIM.setColorAt(i, new THREE.Color().setHSL(0.3 + Math.random() * 0.05, 0.38, 0.2 + Math.random() * 0.08));
+  entorno.add(trunkIM, crownIM);
+  // edificio del club al fondo, con las ventanas encendidas
+  const ventanas = lienzo(512, 128, (g, w, h) => {
+    g.fillStyle = '#cfc6b8'; g.fillRect(0, 0, w, h);
+    for (let x = 16; x < w - 30; x += 46) { const on = Math.random() < 0.75; g.fillStyle = on ? '#ffd98a' : '#3a3f4a'; g.fillRect(x, 34, 30, 52); }
+    g.fillStyle = '#8f8678'; g.fillRect(0, h - 10, w, 10);
+  });
+  const club = new THREE.Mesh(new THREE.BoxGeometry(26, 5, 7), [new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0x5a3d33, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0x777777 }),
+    new THREE.MeshStandardMaterial({ map: ventanas, emissive: 0xffffff, emissiveMap: ventanas, emissiveIntensity: 0.35, roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0xcfc6b8 })]);
+  club.position.set(0, 2.5, -APRON_L / 2 - 17); entorno.add(club);   // (lejos: con la cámara baja deja ver árboles y cielo)
+  const tejado = new THREE.Mesh(new THREE.BoxGeometry(27.5, 0.35, 8.4), new THREE.MeshStandardMaterial({ color: 0x5a3d33, roughness: 0.8 }));
+  tejado.position.set(0, 5.15, club.position.z); entorno.add(tejado);
+  // bancos junto a la red, a los dos lados de la pista, con una bolsa de pádel y botellas de agua
+  const madera = new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.8 }), hierro = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.5, metalness: 0.5 });
+  for (const sx of [-1, 1]) {
+    const b = new THREE.Group(); b.position.set(sx * (HW + 1.35), 0, sx * 2.2); b.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+    const asiento = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.42), madera); asiento.position.y = 0.45;
+    const respaldo = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.32, 0.05), madera); respaldo.position.set(0, 0.68, -0.2); respaldo.rotation.x = -0.15;
+    b.add(asiento, respaldo);
+    for (const px of [-0.8, 0.8]) { const pata = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.4), hierro); pata.position.set(px, 0.22, 0); b.add(pata); }
+    const bolsa = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.6, 4, 10), new THREE.MeshStandardMaterial({ color: sx > 0 ? 0xd8343e : 0x1e3a8a, roughness: 0.7 }));
+    bolsa.rotation.z = Math.PI / 2; bolsa.position.set(-0.35, 0.63, 0.02); b.add(bolsa);
+    for (const bx of [0.35, 0.5]) {
+      const bot = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.75, roughness: 0.2 }));
+      bot.position.set(bx, 0.59, 0.05); b.add(bot);
+    }
+    entorno.add(b);
+  }
+}
+// cielo de anochecer (degradado) y niebla a lo lejos, del mismo color que el horizonte
+const HORIZONTE = new THREE.Color(0x3a4a66);
+const cielo = new THREE.Mesh(new THREE.SphereGeometry(105, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { arriba: { value: new THREE.Color(0x0a1224) }, abajo: { value: HORIZONTE } },
+  vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform vec3 arriba; uniform vec3 abajo; varying float h; void main(){ gl_FragColor = vec4(mix(abajo, arriba, smoothstep(0.0, 0.45, h)), 1.0); }',
+}));
+entorno.add(cielo);
+const NIEBLA = new THREE.Fog(HORIZONTE, 45, 120);
 const SKINS = [0xe8b896, 0xc68c64, 0xf1c7a5, 0x9c6644].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
 const std = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65 });
 const LOOK_MATS = {
@@ -1820,20 +1938,20 @@ function applyLook() {
   const det = CFG.look !== 'sencillo';
   if (det) {
     floor.material.map = TURF[CFG.look]; floor.material.color.set(0xffffff);
-    outer.material.color.set(0x55595f);
-    scene.background.set(0x10161f);
+    outer.material.color.set(0xffffff); outer.material.map = GRASS_TEX;   // césped alrededor del club
+    scene.background.copy(HORIZONTE); scene.fog = NIEBLA;
     frameMat.color.set(CFG.look === 'verde' ? 0x14361f : 0x111111);
     for (const m of meshMats) m.color.set(0x000000);   // malla oscura
     glassMat.opacity = 0.13; net.material.color.set(0x000000);
   } else {
     floor.material.map = null; floor.material.color.set(0x15151d);
-    outer.material.color.set(0x050508);
-    scene.background.set(0x000000);
+    outer.material.color.set(0x050508); outer.material.map = null;
+    scene.background.set(0x000000); scene.fog = null;
     for (const m of meshMats) m.color.set(0xffffff);
     glassMat.opacity = 0.07; net.material.color.set(0xffffff);
   }
-  floor.material.needsUpdate = true;
-  courtFrame.visible = det; edges.visible = !det;
+  floor.material.needsUpdate = true; outer.material.needsUpdate = true;
+  courtFrame.visible = det; edges.visible = !det; entorno.visible = det;
   players.forEach(p => p.setLook(det));
 }
 const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20),
