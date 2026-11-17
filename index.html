@@ -4053,10 +4053,20 @@ function camTp(me, e) {   // posición y punto de mira de la tercera persona, co
   const fondo = clamp((me.pos.z - 6) / 3.5, 0, 1);
   const pos = new V3(me.pos.x * 0.8 * (1 - 0.4 * e), 4.8 + 1.6 * fondo + 3.2 * e, Math.min(me.pos.z + 4.6 + 0.8 * fondo + 6 * e, 14.8 + 4.5 * e));
   const front = new V3(me.pos.x * 0.5, 0.3 + 0.5 * e, me.pos.z - 4.2 - 3.0 * fondo + 2.5 * e);   // (mirando algo hacia abajo, el jugador se ve entero)
-  const enJuego = S.phase === 'play' || S.phase === 'pause' || S.phase === 'serve';
-  const look = enJuego && ball.p.z < me.pos.z ? front.clone().lerp(ball.p, 0.3 * (1 - e)) : front;
+  // mira algo hacia la bola cuando viene (el peso tpBolaW entra y sale poco a poco, no de golpe)
+  const look = tpBolaW > 0.001 ? front.clone().lerp(tpBolaS || ball.p, 0.3 * tpBolaW * (1 - e)) : front;
   return [pos, look];
 }
+// Seguimiento amortiguado (como el SmoothDamp de Unity): va hacia el objetivo sin tirones, frenando al llegar y sin
+// pasarse; tiempo = lo que tarda más o menos en alcanzarlo. vel guarda la velocidad entre fotogramas.
+function amortigua(cur, vel, target, tiempo, dt) {
+  const w = 2 / tiempo, x = w * dt, ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const ch = cur.clone().sub(target), tmp = vel.clone().addScaledVector(ch, w).multiplyScalar(dt);
+  vel.sub(tmp.clone().multiplyScalar(w)).multiplyScalar(ex);
+  cur.copy(target).add(ch.add(tmp).multiplyScalar(ex));
+}
+let tpBolaW = 0, tpBolaS = null;
+const tpVelPos = new V3(), tpVelLook = new V3(), tpVelBola = new V3();
 function bolaEnToma(pos, look) {   // ¿se ve la bola con la cámara en pos mirando a look? (con margen en los bordes)
   camTest.fov = camera.fov; camTest.aspect = camera.aspect; camTest.updateProjectionMatrix();
   camTest.position.copy(pos); camTest.lookAt(look); camTest.updateMatrixWorld();
@@ -4075,7 +4085,7 @@ function anclaAlterna(dt) {
   const ancho = b.pos.x - a.pos.x;
   const want = ancho > 0.6 ? clamp((ball.p.x - a.pos.x) / ancho, 0, 1) : 0.5;
   if (tpMezcla === null || dt === 0) tpMezcla = want;
-  else tpMezcla += (want - tpMezcla) * Math.min(1, dt * 2.5);
+  else tpMezcla += (want - tpMezcla) * Math.min(1, dt * 1.6);
   return { pos: a.pos.clone().lerp(b.pos, tpMezcla) };
 }
 function updateCam(dt) {
@@ -4091,11 +4101,20 @@ function updateCam(dt) {
     for (let e = 0; e <= 1.001; e += 0.125) { const [p, l] = camTp(me, e), f = bolaEnToma(p, l); if (f < mejor - 0.02) { mejor = f; eWant = e; } if (f === 0) break; }
   }
   if (dt === 0) tpAtras = eWant;
-  else tpAtras += (eWant - tpAtras) * Math.min(1, dt * (eWant > tpAtras ? 14 : 1.5));   // se aleja rápido, vuelve despacio
+  else tpAtras += (eWant - tpAtras) * Math.min(1, dt * (eWant > tpAtras ? 6 : 1.2));   // se aleja bastante rápido, vuelve despacio
+  // la bola a la que se mira, suavizada (va muy deprisa: seguirla tal cual hace temblar la imagen), y su peso
+  const enJuego = S.phase === 'play' || S.phase === 'pause' || S.phase === 'serve';
+  const bW = enJuego && ball.p.z < me.pos.z ? 1 : 0;
+  if (!tpBolaS || dt === 0) { tpBolaS = ball.p.clone(); tpVelBola.set(0, 0, 0); tpBolaW = bW; }
+  else { amortigua(tpBolaS, tpVelBola, ball.p, 0.25, dt); tpBolaW += (bW - tpBolaW) * Math.min(1, dt * 2.5); }
   const [wantPos, wantLook] = camTp(me, tpAtras);
-  const k = dt > 0 ? Math.min(1, dt * (tpAtras > 0.05 ? 10 : 4)) : 1;
-  if (!tpPos || dt === 0) { tpPos = wantPos.clone(); tpLook = wantLook.clone(); }
-  else { tpPos.lerp(wantPos, k); tpLook.lerp(wantLook, k); }
+  if (!tpPos || dt === 0) { tpPos = wantPos.clone(); tpLook = wantLook.clone(); tpVelPos.set(0, 0, 0); tpVelLook.set(0, 0, 0); }
+  else {
+    // la posición, más tranquila; la mirada, algo más ágil (alejándose por un globo, las dos más deprisa)
+    const prisa = tpAtras > 0.05 ? 0.55 : 1;
+    amortigua(tpPos, tpVelPos, wantPos, 0.42 * prisa, dt);
+    amortigua(tpLook, tpVelLook, wantLook, 0.3 * prisa, dt);
+  }
   camera.position.copy(tpPos); camera.lookAt(tpLook);
 }
 new ResizeObserver(resize).observe(document.getElementById('app'));
@@ -4900,7 +4919,7 @@ window.PADEL = {
   S, ball, players, tapPause, renderer, scene, applyLook, visor, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
-  endPoint, resetMatch,
+  endPoint, resetMatch, updateCam,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
