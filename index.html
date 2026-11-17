@@ -189,6 +189,7 @@
   .tor .tbs{display:flex;gap:6px;margin-top:6px}
   .tor.conimg{display:flex;gap:10px;align-items:center}
   .tor .timg{flex:0 0 46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .tor .timg.z{flex-basis:58px}
   .tor .tinfo{flex:1;min-width:0}
   .tor .tb{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   .tor .tb.compra{background:#2f7bff;border-color:#2f7bff;font-weight:800}
@@ -810,6 +811,35 @@ const ZAPAS = [
   { id: 'zPro',   n: 'Pro Clay',   pr: 520,  b: { vel: 7, ref: 5, res: 4 } },
   { id: 'zElite', n: 'Élite Aero', pr: 1400, b: { vel: 10, ref: 8, res: 7 } },
 ];
+// aspecto de las zapatillas: [empeine, adorno, mediasuela, suela]; dibujo de la suela (espiga o lisa)
+const ZAPA_LOOK = {
+  zIni:   { c: ['#e5e7eb', '#3b82f6', '#f8fafc', '#9ca3af'] },
+  zClub:  { c: ['#1f2937', '#22c55e', '#f8fafc', '#4b5563'], espiga: 1 },
+  zPro:   { c: ['#f8fafc', '#f97316', '#e2e8f0', '#f97316'], espiga: 1 },
+  zElite: { c: ['#111111', '#fde047', '#262626', '#fde047'], espiga: 1, malla: 1 },
+};
+function zapaSVG(it) {
+  const L = ZAPA_LOOK[it.id]; if (!L) return '';
+  const [emp, ador, media, suela] = L.c, u = 'zp' + it.id;
+  const alto = 'M9 44L10 25Q11 15 21 16L33 20Q43 22 51 26L72 32Q91 36 94 44Z';
+  let dib = '';
+  if (L.espiga) for (let x = 10; x < 92; x += 5) dib += `<path d="M${x} 50L${x + 2.5} 53L${x + 5} 50" stroke="#06080d" stroke-opacity=".45" stroke-width="1" fill="none"/>`;
+  return `<svg class="timg z" viewBox="0 0 100 60" width="58" height="35" aria-hidden="true">
+    <defs><clipPath id="${u}c"><path d="${alto}"/></clipPath>
+      ${L.malla ? `<pattern id="${u}m" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="3" fill="${emp}"/><circle cx="1.5" cy="1.5" r=".7" fill="#333"/></pattern>` : ''}</defs>
+    <path d="M6 45Q4 54 13 54H87Q97 54 96 46L94 43H8Z" fill="${suela}"/>
+    <path d="M7 43Q6 49 13 49H88Q96 49 95 44L94 42H8Z" fill="${media}"/>
+    ${dib}
+    <g clip-path="url(#${u}c)">
+      <path d="${alto}" fill="${L.malla ? `url(#${u}m)` : emp}"/>
+      <path d="M8 38Q30 30 50 36T96 40V46H8Z" fill="${ador}"/>
+      <path d="M4 24Q14 26 18 46H2Z" fill="${ador}" opacity=".7"/>
+    </g>
+    <path d="${alto}" fill="none" stroke="#06080d" stroke-opacity=".5" stroke-width="1"/>
+    <path d="M11 20Q21 13 33 20" stroke="#06080d" stroke-width="3" fill="none" stroke-linecap="round"/>
+    ${[0, 1, 2, 3].map(k => `<path d="M${37 + k * 6} ${21 + k * 1.6}l3 -3.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`).join('')}
+  </svg>`;
+}
 const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' }))];
 const itemDe = id => ITEMS.find(x => x.id === id);
 const BOLSA_KEY = 'padel.bolsa';
@@ -3757,7 +3787,7 @@ function paintTienda() {
       if (tiene) return `<button class="tb" data-a="llevar" data-p="${p.id}" data-i="${it.id}">Que la lleve ${nom}</button>`;
       return `<button class="tb compra" data-a="comprar" data-p="${p.id}" data-i="${it.id}"${BOLSA.dinero < it.pr ? ' disabled' : ''}>Comprar para ${nom}</button>`;
     }).join('');
-    const img = tipo === 'pala' ? palaSVG(it) : '';
+    const img = tipo === 'pala' ? palaSVG(it) : zapaSVG(it);
     return `<div class="tor${img ? ' conimg' : ''}">${img}<div class="tinfo"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div></div>`;
   }).join('');
   document.getElementById('tdList').innerHTML = bloque('PALAS (mejoran los golpes)', PALAS, 'pala') + bloque('ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap');
