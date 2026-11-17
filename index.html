@@ -69,6 +69,12 @@
   #menu.open{display:flex}
   #menu .box{width:100%;max-width:340px;margin:auto 0}
   #menu h1{margin:0 0 10px;text-align:center;font-size:26px;letter-spacing:6px;font-weight:900}
+  #mtabs{display:flex;gap:4px;margin:0 0 4px;padding:3px;border-radius:12px;background:rgba(255,255,255,.07)}
+  #mtabs button{flex:1;padding:9px 4px;border:0;border-radius:9px;background:transparent;color:rgba(255,255,255,.7);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+  #mtabs button.on{background:#2f7bff;color:#fff}
+  #menu .mtab{display:none}
+  #menu .mtab.on{display:block}
+  #menu #play{position:sticky;bottom:10px;z-index:2;box-shadow:0 6px 18px rgba(0,0,0,.65)}
   #menu h2{margin:12px 0 6px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.6);font-weight:700}
   #menu .opts{display:flex;flex-direction:column;gap:8px}
   #menu .opts.row{flex-direction:row}
@@ -245,13 +251,13 @@ padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
     <div class="box">
       <h1>PÁDEL</h1>
       <div id="result"></div>
-      <h2>Modo de juego</h2>
-      <div class="opts" data-k="mode">
-        <button data-v="manual"><b>1 · Tiempo real</b><span>El juego no se para: mueves a los jugadores y golpean solos. Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo (ratón: botón derecho)</span></button>
-        <button data-v="partido"><b>2 · Con pausa</b><span>El juego se para en cada golpe vuestro para que elijas a dónde va la bola</span></button>
+      <div id="mtabs">
+        <button data-t="jugar">Jugadores</button>
+        <button data-t="partido">Partido</button>
+        <button data-t="pantalla">Pantalla</button>
       </div>
-      <div class="tipoTxt" id="teclasTxt" style="display:none">En ordenador: con el ratón llevas a TÚ (botón derecho: a dónde va la bola) y con W A S D o las flechas, a COMPI.</div>
-      <h2>Jugadores</h2>
+      <div class="mtab" data-tab="jugar">
+      <h2>Competición</h2>
       <div class="opts row" data-k="tipo">
         <button data-v="rapido">Rápido</button>
         <button data-v="escalera">Escalera</button>
@@ -266,6 +272,32 @@ padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
         <div id="rivNav"><button id="rivPrev">◀ Más fáciles</button><button id="rivNext">Más difíciles ▶</button></div></div>
       <div id="ladder"></div>
       <button id="tiendaBtn">TIENDA</button>
+      </div>
+      <div class="mtab" data-tab="partido">
+      <h2>Modo de juego</h2>
+      <div class="opts" data-k="mode">
+        <button data-v="manual"><b>1 · Tiempo real</b><span>El juego no se para: mueves a los jugadores y golpean solos. Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo (ratón: botón derecho)</span></button>
+        <button data-v="partido"><b>2 · Con pausa</b><span>El juego se para en cada golpe vuestro para que elijas a dónde va la bola</span></button>
+      </div>
+      <div class="tipoTxt" id="teclasTxt" style="display:none">En ordenador: con el ratón llevas a TÚ (botón derecho: a dónde va la bola) y con W A S D o las flechas, a COMPI.</div>
+      <h2>Partido</h2>
+      <div class="opts row" data-k="match">
+        <button data-v="libre">Sin final</button>
+        <button data-v="6p">6 puntos</button>
+        <button data-v="4j">4 juegos</button>
+      </div>
+      <h2>Marcador</h2>
+      <div class="opts row" data-k="scoring">
+        <button data-v="simple">Puntos</button>
+        <button data-v="padel">Pádel (15-30-40)</button>
+      </div>
+      <h2>Sonido</h2>
+      <div class="opts row" data-k="sound">
+        <button data-v="si">Sí</button>
+        <button data-v="no">No</button>
+      </div>
+      </div>
+      <div class="mtab" data-tab="pantalla">
       <h2>Trayectoria</h2>
       <div class="opts row" data-k="trail">
         <button data-v="completa">Completa</button>
@@ -295,21 +327,6 @@ padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}
         <button type="button" id="palaBtn">Conectar el móvil como pala</button>
         <div class="tipoTxt" id="palaTxt">Golpeas con el móvil: TÚ se mueve solo hasta la bola y el juego espera a que hagas el golpe. Usa lo aprendido en el entrenamiento (pala.html).</div>
       </div>
-      <h2>Sonido</h2>
-      <div class="opts row" data-k="sound">
-        <button data-v="si">Sí</button>
-        <button data-v="no">No</button>
-      </div>
-      <h2>Marcador</h2>
-      <div class="opts row" data-k="scoring">
-        <button data-v="simple">Puntos</button>
-        <button data-v="padel">Pádel (15-30-40)</button>
-      </div>
-      <h2>Partido</h2>
-      <div class="opts row" data-k="match">
-        <button data-v="libre">Sin final</button>
-        <button data-v="6p">6 puntos</button>
-        <button data-v="4j">4 juegos</button>
       </div>
       <button id="play">JUGAR</button>
       <button id="restart">Reiniciar partido</button>
@@ -4105,6 +4122,15 @@ function closeMenu() {
   last = performance.now();
 }
 if (ORDENADOR) document.getElementById('teclasTxt').style.display = '';
+// Menú en tres pestañas (Jugadores / Partido / Pantalla); se recuerda la última abierta en este navegador
+function ponPestana(t) {
+  if (!document.querySelector(`#menu .mtab[data-tab="${t}"]`)) t = 'jugar';
+  for (const b of document.querySelectorAll('#mtabs button')) b.classList.toggle('on', b.dataset.t === t);
+  for (const d of document.querySelectorAll('#menu .mtab')) d.classList.toggle('on', d.dataset.tab === t);
+  try { localStorage.setItem('padel.pestana', t); } catch (_) {}
+}
+document.getElementById('mtabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) ponPestana(b.dataset.t); });
+{ let t = 'jugar'; try { t = localStorage.getItem('padel.pestana') || t; } catch (_) {} ponPestana(t); }
 // barra de la vista: cambia la cámara al momento y, mientras se arrastra, deja ver la pista detrás del menú
 // marcas: 1 = la vista de siempre; 2 = cámara baja, lejos y con zoom (la que el usuario ve como la del Red Bull Padel)
 const CAM_MARKS = { camAng: [[38, '1'], [30, '2']], camZoom: [[0, '1'], [95, '2']], camYaw: [[0, 'recta']], camScale: [[0, 'entera']] };
