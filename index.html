@@ -1579,7 +1579,10 @@ class Player {
     const finishing = this.finishT >= 0, holding = finishing && this.finishT < FINISH_HOLD;
     const swinging = this.swingT >= 0 || holding;
     const st = swinging ? this.swingStroke : this.stroke;
-    const s = this.swingT >= 0 ? 1 - Math.pow(1 - this.swingT, 2) : holding ? 1 : 0;
+    // el golpe empieza a ir hacia la bola un poco antes del impacto (no salta de la preparación al impacto):
+    // en las últimas 0,18 s antes de que llegue la bola ya va avanzando (hasta s = 0,6)
+    const preS = !swinging && this.contact && this.contact.t >= 0 && this.stroke !== 'over' ? clamp(1 - this.contact.t / 0.18, 0, 1) * 0.6 * this.ready : 0;
+    const s = this.swingT >= 0 ? 1 - Math.pow(1 - this.swingT, 2) : holding ? 1 : preS;
     // la pala va de abajo arriba: por debajo de la bola al prepararse, a su altura al golpear (s = 0,64) y
     // arriba al terminar (globo, muy arriba; volea, casi a la misma altura)
     const kindS = this.swingKind || 'drive';
@@ -1587,6 +1590,16 @@ class Player {
     const hy = !swinging ? y : s <= 0.64 ? y - 0.22 * (0.64 - s) / 0.64 : y + (finY - y) * (s - 0.64) / 0.36;
     // volea: golpe corto, sin echar la pala atrás (también al prepararla, si la bola le llega sin botar en la red)
     const corto = swinging ? kindS === 'volea' : !!this.contact && this.contact.first === -1 && Math.abs(this.pos.z) < 6;
+    // giro del tronco sobre la cadera (las piernas no giran): en la derecha, a la derecha al preparar, de frente en el
+    // impacto y a la izquierda al terminar; en el revés, al contrario. Parte del barrido de la pala lo pone el tronco
+    // (por eso los arcos del brazo son más cortos). En voleas y golpes altos, la mitad; en el saque y el remate, nada.
+    let twT = 0;
+    if ((st === 'fore' || st === 'back') && kindS !== 'saque' && !(S.phase === 'serve' && this === S.server)) {
+      const [a, c] = st === 'fore' ? [-40, 38] : [30, -20], k = corto || y > ALTO_Y ? 0.5 : 1;
+      twT = (swinging ? arco(a, 0, c, s) : arco(a, 0, c, s) * this.ready) * k * DEG;
+    }
+    this.twist = (this.twist ?? 0) + (twT - (this.twist ?? 0)) * (dt === 0 ? 1 : Math.min(1, dt * (swinging ? 18 : finishing ? 5 : 10)));
+    this.upper.rotation.y = this.twist;
     let R, L, hR, hL;
     if (st === 'over') {        // brazo izquierdo arriba señalando la bola, pala detrás de la cabeza
       // Posición de trofeo: brazo izquierdo estirado arriba señalando la bola; el de la pala flexionado,
@@ -1622,7 +1635,7 @@ class Player {
       // la mano de la pala va siempre por delante del pecho (el "atrás" lo da el giro del cuerpo):
       // de junto a la cadera izquierda, por delante, hasta acabar a la derecha
       // (el impacto, s = 0,64, delante de la cadera izquierda: a 25° de la línea del pecho; 15° en la volea)
-      const th = (corto ? arco(70, 15, -15, s) : arco(112, 25, -60, s)) * DEG;
+      const th = (corto ? arco(55, 15, -5, s) : arco(80, 25, -40, s)) * DEG;
       R = new V3(0.48 * Math.sin(th), hy, 0.44 + 0.3 * Math.cos(th));
       // la mano libre acompaña a la pala al prepararlo y, en el golpe, se suelta y se abre hacia atrás, estirada (equilibrio)
       L = swinging ? new V3(0.34, 1.2, 0.24).lerp(new V3(0.62, 1.0, -0.28), s) : R.clone().add(new V3(0.05, 0.08, 0.1));
@@ -1632,7 +1645,7 @@ class Player {
       // (el codo, abajo y algo adelante: nunca por detrás de la espalda)
       const prepL = new V3(0.26, 1.3, 0.56);
       // (el impacto, s = 0,64, delante de la cadera derecha: a 25° de la línea del pecho; 15° en la volea)
-      R = flat(corto ? arco(-50, -15, 35, s) : arco(-110, -25, 75, s), hy);
+      R = flat(corto ? arco(-38, -15, 22, s) : arco(-75, -25, 40, s), hy);
       L = swinging ? prepL.lerp(new V3(-0.06, 1.18, 0.36), s) : prepL;
       hR = new V3(-1, -1, -0.4); hL = new V3(0.7, -1, 0.4);
     }
