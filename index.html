@@ -264,8 +264,7 @@
         <button data-v="rapido" data-ico="rayo">Rápido</button>
         <button data-v="escalera" data-ico="escalera">Escalera</button>
         <button data-v="torneo" data-ico="copa">Torneos</button>
-        <button data-v="entreno" data-ico="diana">Entreno</button>
-      </div>
+     </div>
       <div class="tipoTxt" id="tipoTxt"></div>
       <div class="pareja"><div class="ptit"><i data-ico="pareja"></i>VOSOTROS <b id="medUs"></b></div>
         <div class="slots"><button class="slot" data-s="0"></button><button class="slot" data-s="1"></button></div></div>
@@ -3597,6 +3596,7 @@ function pickEvenRivals() {
 }
 // flechas: la siguiente pareja al menos 2 puntos más floja o más fuerte (la más equilibrada de esa franja)
 function stepRivals(dir) {
+  CFG.rivLibre = false;
   const m = pairMed(CFG.riv), L = rivalPairs().filter(p => dir > 0 ? pairMed(p) >= m + 2 : pairMed(p) <= m - 2);
   if (!L.length) return;
   const target = dir > 0 ? Math.min(...L.map(pairMed)) : Math.max(...L.map(pairMed));
@@ -3871,12 +3871,13 @@ document.getElementById('tdList').addEventListener('click', e => {
 });
 function sanitizeLineup() {
   const ok = id => ROSTER.some(p => p.id === id);
-  if (!['entreno', 'escalera', 'torneo'].includes(CFG.tipo)) CFG.tipo = 'rapido';
+  if (CFG.tipo === 'entreno') { CFG.tipo = 'rapido'; CFG.rivLibre = true; }   // (Entreno ya no existe: es el Rápido con rivales a mano)
+  if (!['escalera', 'torneo'].includes(CFG.tipo)) CFG.tipo = 'rapido';
   if (!Array.isArray(CFG.us) || CFG.us.length !== 2 || !CFG.us.every(ok) || CFG.us[0] === CFG.us[1]) CFG.us = ['p1', 'p2'];
   // rivales: los guardados si valen; si no (o la primera vez), una pareja igualada
   const r = CFG.riv;
   if (!Array.isArray(r) || r.length !== 2 || !r.every(ok) || new Set([...CFG.us, ...r]).size !== 4) pickEvenRivals();
-  else if (CFG.tipo === 'rapido' && gapOf(r) > 14) pickEvenRivals();   // en partido rápido, pareja equilibrada
+  else if (CFG.tipo === 'rapido' && !CFG.rivLibre && gapOf(r) > 14) pickEvenRivals();   // en partido rápido, pareja equilibrada (salvo rivales elegidos a mano)
   if (CFG.tipo === 'escalera') escSanitize();
   if (CFG.tipo === 'torneo') { CFG.us = idsPropios(); torPrepara(); }
 }
@@ -3898,10 +3899,10 @@ function paintLineup() {
   const rap = CFG.tipo === 'rapido', esc = CFG.tipo === 'escalera';
   document.getElementById('rivNav').style.display = rap ? 'flex' : 'none';
   document.getElementById('tipoTxt').textContent = rap
-    ? 'Elige tu pareja; los rivales se ajustan a vuestro nivel (con las flechas, más fáciles o más difíciles).'
+    ? (CFG.rivLibre ? 'Rivales elegidos a mano. Con las flechas vuelven a ajustarse a vuestro nivel.' : 'Toca cualquier ficha para elegir jugador, también los rivales. Si no, los rivales se ajustan a vuestro nivel (con las flechas, más fáciles o más difíciles).')
     : esc ? 'Escalera: jugáis con vuestros dos jugadores. Retad a una de las 2 parejas de justo encima; si ganáis, os quedáis su puesto. Todos ganan experiencia (el que pierde, la mitad) y cada ' + NUEVOS_CADA + ' partidos ganados aparece una pareja nueva.'
     : CFG.tipo === 'torneo' ? (TOR ? 'Torneo: jugáis con vuestros dos jugadores. Si perdéis, quedáis eliminados; los tres primeros se llevan premio.' : 'Torneos: apuntaos a uno de vuestro nivel. Eliminatoria de 8 parejas; campeón, finalista y tercero ganan dinero para la tienda.')
-    : 'Entrenamiento: toca cualquier jugador para cambiarlo, también los rivales, aunque sean de menos nivel.';
+    : '';
   document.querySelector('#mtabs [data-t="tienda"] .lbl').textContent = 'Tienda · ' + euros(BOLSA.dinero);
   paintLadder();
   if (rap) {
@@ -4010,14 +4011,14 @@ let pickSlot = -1;
 function openPicker(slot) {
   pickSlot = slot;
   const rival = slot >= 2, lineup = [...CFG.us, ...CFG.riv], cur = lineup[slot];
-  const soloVer = rival && CFG.tipo !== 'entreno';
+  const soloVer = rival && CFG.tipo !== 'rapido';
   const esc = CFG.tipo === 'escalera';
   document.getElementById('pkTitle').textContent = soloVer ? 'RIVAL' : ['TÚ', 'TU COMPI', 'RIVAL', 'RIVAL'][slot];
   document.getElementById('pkHint').textContent = soloVer
     ? (esc ? 'En la escalera los rivales son la pareja a la que retáis (se elige en la lista de la escalera).'
-           : 'En partido rápido los rivales se cambian con las flechas, según vuestro nivel. En Entrenamiento puedes poner a cualquiera.')
+           : 'En los torneos los rivales son los que os tocan en el cuadro.')
     : esc || CFG.tipo === 'torneo' ? 'En la escalera y en los torneos jugáis siempre con vuestros dos jugadores. Toca su ficha para ponerles nombre, cuerpo y aspecto.'
-    : 'Toca un jugador para ver sus barras. Los que ya juegan en otro sitio no salen.';
+    : (rival ? 'Elige a cualquier rival, del nivel que quieras. ' : '') + 'Toca un jugador para ver sus barras. Los que ya juegan en otro sitio no salen.';
   const list = soloVer ? [byId(cur)] : ROSTER.filter(p => (p.id === cur || !lineup.includes(p.id)) && (!(esc || CFG.tipo === 'torneo') || p.propio))
     .sort((a, b) => (b.id === cur) - (a.id === cur) || media(b) - media(a));
   document.getElementById('pkList').innerHTML = list.map(p => cardHtml(p, !soloVer, p.id === cur)).join('');
@@ -4066,7 +4067,8 @@ document.getElementById('pkList').addEventListener('click', e => {
   if (e.target.closest('.elegir')) {
     const id = card.dataset.id;
     if (pickSlot < 2) CFG.us[pickSlot] = id; else CFG.riv[pickSlot - 2] = id;
-    if (pickSlot < 2 && CFG.tipo === 'rapido') pickEvenRivals();   // cambia vuestra pareja: rivales a vuestra medida
+    if (pickSlot >= 2) CFG.rivLibre = true;                                       // rival elegido a mano: se respeta
+    else if (CFG.tipo === 'rapido' && !CFG.rivLibre) pickEvenRivals();   // cambia vuestra pareja: rivales a vuestra medida
     saveCfg(); applyLineup(); picker.classList.remove('open');
     return;
   }
@@ -4230,7 +4232,7 @@ menuEl.addEventListener('click', e => {
   if (k === 'scoring' && CFG.scoring === 'simple' && CFG.match === '4j') CFG.match = 'libre';
   if (k === 'scoring' && CFG.scoring === 'padel' && CFG.match === '6p') CFG.match = 'libre';
   if (k === 'tipo') {
-    if (CFG.tipo === 'rapido') pickEvenRivals();
+    if (CFG.tipo === 'rapido') { CFG.rivLibre = false; pickEvenRivals(); }
     if (CFG.tipo === 'escalera') escSanitize();
     if (CFG.tipo === 'torneo') { CFG.us = idsPropios(); torPrepara(); }
     applyLineup();
