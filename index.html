@@ -601,7 +601,10 @@ const thighGeo = limbGeo([[-0.5, 0], [-0.49, 0.09], [-0.25, 0.095], [0.2, 0.078]
 const legBoneGeo = limbGeo([[-0.5, 0], [-0.49, 0.055], [-0.3, 0.067], [0, 0.058], [0.4, 0.04], [0.49, 0.036], [0.5, 0]]);   // espinilla con gemelo
 // articulaciones (rodilla, codo, tobillo) y manos: tapan el corte entre dos huesos
 const kneeGeo = new THREE.SphereGeometry(0.057, 12, 10), elbowGeo = new THREE.SphereGeometry(0.038, 10, 8);
-const ankleGeo = new THREE.SphereGeometry(0.037, 10, 8), handGeo = new THREE.SphereGeometry(0.042, 12, 10).scale(0.8, 1.05, 0.7);
+// mano de la pala: puño cerrado (bola); la otra, abierta (bola aplastada, como la palma)
+const ankleGeo = new THREE.SphereGeometry(0.037, 10, 8), handGeo = new THREE.SphereGeometry(0.05, 12, 10).scale(0.85, 1.05, 0.8);
+const palmGeo = new THREE.SphereGeometry(0.055, 12, 10).scale(0.95, 1.2, 0.36);
+const ALTO_Y = 1.45;   // golpe alto (sobre el hombro) por encima de esta altura, hasta la del remate
 // tronco con forma: cadera, cintura, pecho, hombros y arranque del cuello (centro en y = 1,13)
 const torsoGeo = new THREE.LatheGeometry([[0, -0.4], [0.15, -0.395], [0.172, -0.36], [0.168, -0.3], [0.17, -0.22], [0.152, -0.09], [0.163, 0.04],
   [0.18, 0.15], [0.176, 0.24], [0.152, 0.3], [0.1, 0.335], [0.062, 0.35], [0, 0.358]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
@@ -667,10 +670,12 @@ const glassesGeo = new THREE.BoxGeometry(0.17, 0.034, 0.025);
 const beardGeo = new THREE.SphereGeometry(0.124, 16, 8, Math.PI / 2 - 1.15, 2.3, Math.PI * 0.52, Math.PI * 0.3);
 const wristGeo = new THREE.CylinderGeometry(0.045, 0.045, 1, 10);
 // falda de pádel, con vuelo y tablas: abajo el borde va en zigzag (pliegues)
+const _basePala = new THREE.Matrix4(), _qPala = new THREE.Quaternion();
+// falda: a la cintura, con poco vuelo y tablas (debajo lleva pantalón corto, así las piernas no la atraviesan a la vista)
 const skirtGeo = (() => {
-  const SEG = 48, g = new THREE.CylinderGeometry(0.19, 0.29, 0.27, SEG, 3, true), p = g.attributes.position;
+  const SEG = 48, g = new THREE.CylinderGeometry(0.2, 0.245, 0.24, SEG, 3, true), p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
-    const t = (0.135 - p.getY(i)) / 0.27, k = 1 + 0.07 * t * (i % (SEG + 1) % 2);   // 0 arriba .. 1 abajo (tablas hacia fuera)
+    const t = (0.12 - p.getY(i)) / 0.24, k = 1 + 0.06 * t * (i % (SEG + 1) % 2);   // 0 arriba .. 1 abajo (tablas hacia fuera)
     p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k);
   }
   g.computeVertexNormals();
@@ -1146,7 +1151,7 @@ class Player {
     this.knees = [0, 1].map(() => add(kneeGeo, 0, 0, 0, this.g));
     this.ankles = [0, 1].map(() => add(ankleGeo, 0, 0, 0, this.g));
     this.elbows = [0, 1].map(() => add(elbowGeo, 0, 0, 0));
-    this.hands = [0, 1].map(() => add(handGeo, 0, 0, 0));
+    this.hands = [add(handGeo, 0, 0, 0), add(palmGeo, 0, 0, 0)];   // la de la pala (puño) y la libre (abierta)
     // cara y cuello de la camiseta (solo en el modo detallado)
     this.eyes = [-1, 1].map(s => add(eyeGeo, s * 0.041, 0.018, 0.106, this.head));
     this.brows = [-1, 1].map(s => { const m = add(browGeo, s * 0.042, 0.048, 0.106, this.head); m.rotation.z = -s * 0.12; m.rotation.x = -0.25; return m; });
@@ -1235,8 +1240,9 @@ class Player {
     this.yoke.material = shirt;
     for (const s of this.sleeves) { s.visible = p.man; s.material = shirt; }
     // jugadoras con falda; jugadores con pantalón corto
+    // (las jugadoras llevan además el pantalón corto debajo de la falda, del mismo color)
     if (p.s === 'm') { this.skirt.visible = true; this.skirt.material = pants; }
-    else { this.shorts.visible = true; this.shorts.material = pants; for (const m of this.shortLegs) { m.visible = true; m.material = pants; } }
+    this.shorts.visible = true; this.shorts.material = pants; for (const m of this.shortLegs) { m.visible = true; m.material = pants; }
     const zl = zap && ZAPA_LOOK[zap.id];
     for (const s of this.shoes) { s.visible = true; s.material = zl ? zapaMats(zap) : matOf(p.zap); }
     for (const s of this.soles) s.material = zl ? matOf(zl.c[3], false, 0.8) : matOf(0xeeeeee, false, 0.8);   // suela de color o blanca
@@ -1489,7 +1495,7 @@ class Player {
     // colocar el grupo del tronco para que la cadera quede fija en su sitio al inclinarse
     const hipY = HIP_Y - this.crouchS;
     tmpV2.set(0, HIP_Y, 0).applyEuler(this.upper.rotation);
-    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.13;
+    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.06;
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
       const hip = new V3(side * 0.1, hipY, 0), foot = this.feet[i].clone();
@@ -1499,7 +1505,7 @@ class Player {
       setBone(this.shortLegs[i], hip.clone().addScaledVector(knee.clone().sub(hip), -0.12), hip.clone().lerp(knee, 0.5));
       this.knees[i].position.copy(knee); this.ankles[i].position.copy(foot);
       const shoe = this.shoes[i];
-      shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.05);
+      shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.072);   // (el talón sobresale poco del tobillo)
     }
   }
   updateArms(dt) {
@@ -1549,6 +1555,19 @@ class Player {
         hR = new V3(-1, 0.9, 0.3).lerp(new V3(-1, 0.4, -0.2), wind);   // codo hacia fuera y arriba
       }
       hL = new V3(1, 0, 0.3);
+    } else if (y > ALTO_Y) {    // bola alta (por encima del hombro, sin llegar a remate): de arriba atrás, adelante y abajo
+      // revés alto por la izquierda, derecha alta por la derecha: la pala se prepara por encima del hombro y algo
+      // detrás, el impacto es delante y arriba con el brazo estirado, y termina abajo cruzando por delante
+      const lado = st === 'back' ? 1 : -1;
+      const prep = new V3(lado * 0.34, Math.min(2.05, y + 0.18), -0.1), imp = new V3(lado * 0.28, y, 0.52), fin = new V3(-lado * 0.24, y - 0.55, 0.4);
+      R = !swinging ? prep : s <= 0.64 ? prep.clone().lerp(imp, s / 0.64) : imp.clone().lerp(fin, (s - 0.64) / 0.36);
+      if (st === 'back') {       // la mano libre acompaña a la pala al prepararlo y se suelta en el golpe
+        L = swinging ? new V3(0.3, 1.22, 0.1).lerp(new V3(0.36, 1.12, -0.2), s) : prep.clone().add(new V3(0.06, -0.14, 0.12));
+        hR = new V3(0.7, 0.2, 0.5); hL = new V3(1, -1, 0);
+      } else {                   // derecha alta: el brazo libre por delante, para equilibrar
+        L = new V3(0.3, 1.32, 0.36);
+        hR = new V3(-1, 0.25, -0.2); hL = new V3(1, -1, -0.4);
+      }
     } else if (st === 'back') { // revés: pala atrás a la izquierda, mano izquierda acompañando
       // la mano de la pala va siempre por delante del pecho (el "atrás" lo da el giro del cuerpo):
       // de junto a la cadera izquierda, por delante, hasta acabar a la derecha
@@ -1595,7 +1614,20 @@ class Player {
     const upW = swinging ? (this.swingKind === 'volea' ? 1.6 : 0.6) : 0.6 + 2.2 * (1 - this.ready);   // en la volea, cabeza de la pala arriba
     tmpV2.subVectors(hand, elbowR).normalize().add(new V3(0, upW, 0)).normalize();
     this.paddle.position.copy(hand);
-    this.paddle.quaternion.setFromUnitVectors(UP, tmpV2);
+    // giro de la pala sobre el mango: en espera, de canto (la cara mira a los lados, como se coge de verdad);
+    // al prepararse, la cara hacia delante; en el golpe, hacia donde sale la bola (y, cerca del impacto, el mango
+    // se pone de través a esa dirección para que la cara le dé de lleno: en el globo, abierta hacia arriba)
+    let nCara = new V3(1, 0, 0).lerp(new V3(0, 0, 1), swinging ? 1 : this.ready);
+    if (swinging && this.swingDir) {
+      const dL = this.swingDir.clone().applyQuaternion(this.upper.getWorldQuaternion(_qPala).invert());
+      const w = clamp(1 - Math.abs(s - (st === 'over' ? 0.19 : 0.64)) / 0.3, 0, 1);   // (impacto: s = 0,19 en el remate, 0,64 en los demás)
+      tmpV2.addScaledVector(dL, -w * tmpV2.dot(dL)).normalize();
+      nCara = dL;
+    }
+    nCara.addScaledVector(tmpV2, -nCara.dot(tmpV2));
+    if (nCara.lengthSq() < 1e-4) nCara.set(0, 0, 1).addScaledVector(tmpV2, -tmpV2.z);
+    nCara.normalize();
+    this.paddle.quaternion.setFromRotationMatrix(_basePala.makeBasis(new V3().crossVectors(tmpV2, nCara), tmpV2, nCara));
     const elbowL = ik(sL, handL, 0.34, 0.34, hL);
     setBone(this.arms[2], sL, elbowL); setBone(this.arms[3], elbowL, handL);
     this.elbows[1].position.copy(elbowL);
@@ -2344,6 +2376,7 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
   pl.pickStroke(ball.p, 0.3); pl.swingStroke = pl.stroke;   // solo cambia si la bola está claramente al otro lado
   // el golpe se ve desde el impacto: en el remate el impacto es arriba (cerca del principio del arco)
   pl.swingT = pl.swingStroke === 'over' ? 0.1 : 0.4; pl.ready = 0; pl.hitY = clamp(ball.p.y - pl.pos.y, 0.7, 2.1);
+  pl.swingDir = ball.v.clone().normalize();   // hacia donde sale la bola: la cara de la pala mira ahí en el golpe
   // animación: volea corta en la red, globo de abajo arriba y acabando alto, golpe de fondo completo
   pl.swingKind = kind === 'saque' ? 'saque' : type === 'lob' ? 'globo' : kind === 'volea' && Math.abs(pl.pos.z) < 6 ? 'volea' : 'drive'; pl.finishT = -1;
   pl.swingPow = smash ? 1 : 0.35;   // remate fuerte (mate) o controlado (bandeja): cuánto se echa el cuerpo adelante
@@ -4531,7 +4564,7 @@ requestAnimationFrame(frame);
 
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
-  S, ball, players, tapPause, renderer, scene, applyLook, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
+  S, ball, players, tapPause, renderer, scene, applyLook, visor, clampAim, CFG, ballPath, contactFor, hit: doHit, autoHit, openMenu, closeMenu, get trailN() { return trailN; }, trail, CAM_POS, CAM_LOOK, resize, camera, V3,
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
