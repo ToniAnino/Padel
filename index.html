@@ -621,8 +621,12 @@ const ankleGeo = new THREE.SphereGeometry(0.037, 10, 8), handGeo = new THREE.Sph
 const palmGeo = new THREE.SphereGeometry(0.055, 12, 10).scale(0.95, 1.2, 0.36);
 const ALTO_Y = 1.45;   // golpe alto (sobre el hombro) por encima de esta altura, hasta la del remate
 // tronco con forma: cadera, cintura, pecho, hombros y arranque del cuello (centro en y = 1,13)
-const torsoGeo = new THREE.LatheGeometry([[0, -0.4], [0.15, -0.395], [0.172, -0.36], [0.168, -0.3], [0.17, -0.22], [0.152, -0.09], [0.163, 0.04],
+// (acaba en la cintura, a la altura de la cadera: lo de abajo es la pelvis, que no se inclina con el tronco)
+const torsoGeo = new THREE.LatheGeometry([[0, -0.255], [0.14, -0.25], [0.156, -0.21], [0.152, -0.09], [0.163, 0.04],
   [0.18, 0.15], [0.176, 0.24], [0.152, 0.3], [0.1, 0.335], [0.062, 0.35], [0, 0.358]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
+// pelvis: cadera redondeada, más estrecha de delante a detrás (se escala en z) para que no sobresalga por detrás
+const pelvisGeo = new THREE.LatheGeometry([[0, -0.115], [0.115, -0.11], [0.16, -0.065], [0.17, 0], [0.162, 0.055], [0.15, 0.095], [0, 0.105]]
+  .map(([r, y]) => new THREE.Vector2(r, y)), 20);
 const neckGeo = new THREE.CylinderGeometry(0.047, 0.055, 0.16, 12);
 const collarGeo = new THREE.TorusGeometry(0.063, 0.012, 6, 20);
 // cara: ojos, cejas, nariz, boca y orejas (pegados a la cabeza, que mira hacia +z)
@@ -1178,7 +1182,7 @@ class Player {
     for (const m of [...this.eyes, ...this.brows, this.nose, this.mouth, ...this.ears, this.collar]) m.castShadow = false;
     // piezas del modo detallado: pantalón corto, zapatillas y pelo
     // pantalón corto: cintura/cadera más dos perneras que siguen a cada muslo (antes era un cilindro y parecía falda)
-    this.shorts = add(new THREE.CylinderGeometry(0.185, 0.2, 0.2, 14), 0, 0.84, 0);
+    this.pelvis = add(pelvisGeo, 0, HIP_Y, 0, this.g);   // pelvis: va con las piernas, no con el tronco (con el color del pantalón)
     this.shortLegs = [0, 1].map(() => add(shortLegGeo, 0, 0, 0, this.g));
     this.shoes = [add(shoeGeo, -0.11, 0.04, 0.05, this.g), add(shoeGeo, 0.11, 0.04, 0.05, this.g)];
     this.soles = this.shoes.map(s => add(soleGeo, 0, -0.04, 0.012, s));   // suela (va con la zapatilla)
@@ -1231,14 +1235,16 @@ class Player {
     for (const sh of this.shoulders) sh.scale.setScalar(k * (fem ? 0.92 : 1));
     for (const j of [...this.knees, ...this.ankles, ...this.elbows, ...this.hands]) j.scale.setScalar(k);
     this.neck.scale.set(k * (fem ? 0.88 : 1), 1, k * (fem ? 0.88 : 1));
+    this.pelvis.scale.set(k * (fem ? 1.04 : 1), 1, 0.74 * (0.5 + 0.5 * k));
+    this.skirt.scale.set(k, 1, 0.8 * (0.5 + 0.5 * k));   // falda algo ovalada: no se abre tanto por detrás
   }
   // aspecto: sencillo (una pieza de color) o detallado (piel, ropa, pelo y accesorios del jugador)
   setLook(detailed) {
     const p = this.prof;
-    const extras = [this.shorts, ...this.shortLegs, this.skirt, ...this.shoes, this.hair, this.hairExtra, this.headband,
+    const extras = [...this.shortLegs, this.skirt, ...this.shoes, this.hair, this.hairExtra, this.headband,
       ...this.sleeves, this.cap, this.brim, this.glasses, this.beard, ...this.wrists,
       ...this.eyes, ...this.brows, this.nose, this.mouth, ...this.ears, this.collar];
-    const cuerpo = [this.neck, ...this.knees, ...this.ankles, ...this.elbows, ...this.hands];
+    const cuerpo = [this.neck, this.pelvis, ...this.knees, ...this.ankles, ...this.elbows, ...this.hands];
     for (const m of [...this.legs, this.torso, this.head, ...this.arms, ...this.shoulders, this.yoke, ...cuerpo]) m.material = this.simpleMat;
     for (const m of extras) m.visible = false;
     // pala: la que lleva (en modo detallado); sin pala comprada, o en modo sencillo, la de color del equipo
@@ -1258,7 +1264,7 @@ class Player {
     // jugadoras con falda; jugadores con pantalón corto
     // (las jugadoras llevan además el pantalón corto debajo de la falda, del mismo color)
     if (p.s === 'm') { this.skirt.visible = true; this.skirt.material = pants; }
-    this.shorts.visible = true; this.shorts.material = pants; for (const m of this.shortLegs) { m.visible = true; m.material = pants; }
+    this.pelvis.material = pants; for (const m of this.shortLegs) { m.visible = true; m.material = pants; }
     const zl = zap && ZAPA_LOOK[zap.id];
     for (const s of this.shoes) { s.visible = true; s.material = zl ? zapaMats(zap) : matOf(p.zap); }
     for (const s of this.soles) s.material = zl ? matOf(zl.c[3], false, 0.8) : matOf(0xeeeeee, false, 0.8);   // suela de color o blanca
@@ -1511,7 +1517,7 @@ class Player {
     // colocar el grupo del tronco para que la cadera quede fija en su sitio al inclinarse
     const hipY = HIP_Y - this.crouchS;
     tmpV2.set(0, HIP_Y, 0).applyEuler(this.upper.rotation);
-    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.06;
+    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.06; this.pelvis.position.y = hipY;
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
       const hip = new V3(side * 0.1, hipY, 0), foot = this.feet[i].clone();
