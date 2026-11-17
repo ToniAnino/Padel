@@ -426,9 +426,14 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 0.9));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(3, 14, 7);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(2048, 2048);   // sombras más finas (con 1024 salían a escalones)
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 14, bottom: -14, near: 1, far: 40 });
 scene.add(sun);
+// luz de contorno: desde el fondo de la pista, a contraluz, recorta a los jugadores del fondo
+const rimLight = new THREE.DirectionalLight(0xbcd4ff, 0.75);
+rimLight.position.set(-4, 7, -16);
+scene.add(rimLight);
 
 // Suelo
 const outer = new THREE.Mesh(new THREE.PlaneGeometry(160, 160),   // grande: con la cámara baja se ve lejos
@@ -588,11 +593,37 @@ const LOOK_MATS = {
 
 // ================= Jugadores =================
 // huesos: el cilindro va de la articulación de arriba (abajo del cilindro) a la de abajo (arriba del cilindro)
-const upperArmGeo = new THREE.CylinderGeometry(0.042, 0.055, 1, 10);   // brazo: más grueso junto al hombro
-const boneGeo = new THREE.CylinderGeometry(0.03, 0.038, 1, 8);         // antebrazo
-const thighGeo = new THREE.CylinderGeometry(0.068, 0.092, 1, 12);      // muslo: más grueso junto a la cadera
-const legBoneGeo = new THREE.CylinderGeometry(0.045, 0.062, 1, 10);    // espinilla (gemelo arriba)
-const shortLegGeo = new THREE.CylinderGeometry(0.1, 0.112, 1, 12);     // pernera del pantalón (sobre el muslo)
+// extremidades con forma (perfil de músculo, cerradas por los dos lados): [y, radio], y de -0,5 (arriba) a 0,5 (abajo)
+const limbGeo = (perfil, seg = 12) => new THREE.LatheGeometry(perfil.map(([y, r]) => new THREE.Vector2(r, y)), seg);
+const upperArmGeo = limbGeo([[-0.5, 0], [-0.49, 0.05], [-0.3, 0.057], [0, 0.05], [0.35, 0.04], [0.49, 0.036], [0.5, 0]], 10);   // brazo (bíceps)
+const boneGeo = limbGeo([[-0.5, 0], [-0.49, 0.036], [-0.25, 0.043], [0.2, 0.034], [0.49, 0.027], [0.5, 0]], 10);              // antebrazo
+const thighGeo = limbGeo([[-0.5, 0], [-0.49, 0.09], [-0.25, 0.095], [0.2, 0.078], [0.49, 0.057], [0.5, 0]]);                // muslo
+const legBoneGeo = limbGeo([[-0.5, 0], [-0.49, 0.055], [-0.3, 0.067], [0, 0.058], [0.4, 0.04], [0.49, 0.036], [0.5, 0]]);   // espinilla con gemelo
+// articulaciones (rodilla, codo, tobillo) y manos: tapan el corte entre dos huesos
+const kneeGeo = new THREE.SphereGeometry(0.057, 12, 10), elbowGeo = new THREE.SphereGeometry(0.038, 10, 8);
+const ankleGeo = new THREE.SphereGeometry(0.037, 10, 8), handGeo = new THREE.SphereGeometry(0.042, 12, 10).scale(0.8, 1.05, 0.7);
+// tronco con forma: cadera, cintura, pecho, hombros y arranque del cuello (centro en y = 1,13)
+const torsoGeo = new THREE.LatheGeometry([[0, -0.4], [0.15, -0.395], [0.172, -0.36], [0.168, -0.3], [0.17, -0.22], [0.152, -0.09], [0.163, 0.04],
+  [0.18, 0.15], [0.176, 0.24], [0.152, 0.3], [0.1, 0.335], [0.062, 0.35], [0, 0.358]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
+const neckGeo = new THREE.CylinderGeometry(0.047, 0.055, 0.16, 12);
+const collarGeo = new THREE.TorusGeometry(0.063, 0.012, 6, 20);
+// cara: ojos, cejas, nariz, boca y orejas (pegados a la cabeza, que mira hacia +z)
+const eyeGeo = new THREE.SphereGeometry(0.015, 8, 6).scale(1, 1.15, 0.5), browGeo = new THREE.BoxGeometry(0.042, 0.009, 0.012);
+const noseGeo = new THREE.SphereGeometry(0.02, 8, 6).scale(0.7, 1, 1), mouthGeo = new THREE.BoxGeometry(0.036, 0.007, 0.008);
+const earGeo = new THREE.SphereGeometry(0.03, 8, 6).scale(0.38, 1, 0.7);
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.25 }), mouthMat = new THREE.MeshStandardMaterial({ color: 0x8a4136, roughness: 0.6 });
+// zapatilla con forma (perfil de lado extruido, cantos redondeados) y suela aparte
+const shoeGeo = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(-0.118, 0); s.lineTo(0.118, 0); s.quadraticCurveTo(0.15, 0.002, 0.146, 0.034);
+  s.quadraticCurveTo(0.14, 0.058, 0.095, 0.064); s.lineTo(0.02, 0.078); s.lineTo(-0.055, 0.096);
+  s.quadraticCurveTo(-0.1, 0.1, -0.122, 0.088); s.quadraticCurveTo(-0.138, 0.04, -0.118, 0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.086, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 2, curveSegments: 6 });
+  g.translate(0, -0.04, -0.043); g.rotateY(-Math.PI / 2);   // (largo hacia +z, ancho en x, centrada como la caja de antes)
+  return g;
+})();
+const soleGeo = new THREE.BoxGeometry(0.124, 0.022, 0.292);
+const shortLegGeo = new THREE.CylinderGeometry(0.118, 0.106, 1, 14);   // pernera del pantalón (sobre el muslo), algo abierta abajo
 const sleeveGeo = new THREE.CylinderGeometry(0.06, 0.066, 1, 12, 1, true);   // manga corta (sobre el brazo)
 const shoulderGeo = new THREE.SphereGeometry(0.066, 14, 10).scale(1, 0.78, 0.92);   // hombro: aplanado para que no parezca hombrera
 const yokeGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 12).scale(1, 1, 0.8);
@@ -629,13 +660,22 @@ const HAIR_EXTRA = {
   mono: new THREE.SphereGeometry(0.06, 12, 8),
   melena: (() => { const g = hairGeo(0.12, Math.PI * 0.75, 0.05, 3); g.scale(1.08, 1.4, 0.72); return g; })(),
 };
-const headbandGeo = new THREE.TorusGeometry(0.133, 0.017, 6, 28);
+const headbandGeo = new THREE.TorusGeometry(0.122, 0.016, 8, 32).scale(0.96, 1, 1);   // ajustada a la cabeza (con pelo)
 const capGeo = new THREE.SphereGeometry(0.14, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
 const brimGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.012, 16, 1, false, -Math.PI / 2, Math.PI);   // visera: medio disco
 const glassesGeo = new THREE.BoxGeometry(0.17, 0.034, 0.025);
 const beardGeo = new THREE.SphereGeometry(0.124, 16, 8, Math.PI / 2 - 1.15, 2.3, Math.PI * 0.52, Math.PI * 0.3);
 const wristGeo = new THREE.CylinderGeometry(0.045, 0.045, 1, 10);
-const skirtGeo = new THREE.CylinderGeometry(0.19, 0.27, 0.27, 18, 1, true);   // falda de pádel, con vuelo
+// falda de pádel, con vuelo y tablas: abajo el borde va en zigzag (pliegues)
+const skirtGeo = (() => {
+  const SEG = 48, g = new THREE.CylinderGeometry(0.19, 0.29, 0.27, SEG, 3, true), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const t = (0.135 - p.getY(i)) / 0.27, k = 1 + 0.07 * t * (i % (SEG + 1) % 2);   // 0 arriba .. 1 abajo (tablas hacia fuera)
+    p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  return g;
+})();
 const glassesMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.5 });
 // largo de muslo y espinilla, altura de la cadera: de la cadera al tobillo (pie a 6 cm) hay ~0,83 m,
 // así que de pie la pierna queda casi recta (antes medía 0,88 y la rodilla siempre iba doblada)
@@ -965,11 +1005,13 @@ function zapaMats(it) {
   const g = cv.getContext('2d');
   g.fillStyle = emp; g.fillRect(0, 0, 128, 40);
   g.fillStyle = ador; g.beginPath(); g.moveTo(0, 24); g.bezierCurveTo(40, 12, 80, 30, 128, 16); g.lineTo(128, 26); g.bezierCurveTo(80, 38, 40, 22, 0, 32); g.fill();
-  g.fillStyle = media; g.fillRect(0, 30, 128, 5);
-  g.fillStyle = suela; g.fillRect(0, 35, 128, 5);
+  g.fillStyle = media; g.fillRect(0, 32, 128, 8);
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  // los lados de la zapatilla (tapas de la extrusión) llevan como UV las medidas del perfil (largo -0,135..0,16 m,
+  // alto -0,012..0,108 m): se pasan a 0..1 (la suela va aparte)
+  tex.repeat.set(1 / 0.295, 1 / 0.12); tex.offset.set(0.135 / 0.295, 0.012 / 0.12);
   const lado = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }), m = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
-  return GEAR_MATS[it.id] = [lado, lado, m(emp), m(suela), m(emp), m(ador)];   // (+x, -x, arriba, suela, punta, talón)
+  return GEAR_MATS[it.id] = [lado, m(emp)];   // (lados, resto: empeine, puntera y talón)
 }
 const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' })),
   ...GRIPS.map(x => ({ ...x, tipo: 'grip' })), ...MUNES.map(x => ({ ...x, tipo: 'mun' })), ...CINTAS.map(x => ({ ...x, tipo: 'cin' }))];
@@ -1096,21 +1138,35 @@ class Player {
     this.legs = [0, 1, 2, 3].map(i => add(i % 2 === 0 ? thighGeo : legBoneGeo, 0, 0, 0, this.g));   // muslo, espinilla, muslo, espinilla
     this.feet = [new V3(-0.15, 0.06, 0), new V3(0.15, 0.06, 0)];   // derecho, izquierdo (local)
     this.gait = 0; this.lastPos = new V3(x, 0, z);
-    this.torso = add(new THREE.CapsuleGeometry(0.17, 0.42, 4, 12), 0, 1.13, 0);
-    this.head = add(new THREE.SphereGeometry(0.12, 16, 12), 0, 1.6, 0);
+    this.torso = add(torsoGeo, 0, 1.13, 0);
+    this.neck = add(neckGeo, 0, 1.5, 0);
+    this.head = add(new THREE.SphereGeometry(0.12, 20, 16).scale(0.94, 1.04, 1), 0, 1.635, 0);
     this.arms = [0, 1, 2, 3].map(i => add(i % 2 === 0 ? upperArmGeo : boneGeo, 0, 0, 0));   // brazo, antebrazo, brazo, antebrazo
+    // articulaciones y manos (se colocan con los huesos en cada fotograma)
+    this.knees = [0, 1].map(() => add(kneeGeo, 0, 0, 0, this.g));
+    this.ankles = [0, 1].map(() => add(ankleGeo, 0, 0, 0, this.g));
+    this.elbows = [0, 1].map(() => add(elbowGeo, 0, 0, 0));
+    this.hands = [0, 1].map(() => add(handGeo, 0, 0, 0));
+    // cara y cuello de la camiseta (solo en el modo detallado)
+    this.eyes = [-1, 1].map(s => add(eyeGeo, s * 0.041, 0.018, 0.106, this.head));
+    this.brows = [-1, 1].map(s => { const m = add(browGeo, s * 0.042, 0.048, 0.106, this.head); m.rotation.z = -s * 0.12; m.rotation.x = -0.25; return m; });
+    this.nose = add(noseGeo, 0, -0.01, 0.118, this.head);
+    this.mouth = add(mouthGeo, 0, -0.052, 0.104, this.head); this.mouth.rotation.x = -0.35;
+    this.ears = [-1, 1].map(s => add(earGeo, s * 0.112, 0.002, -0.004, this.head));
+    this.collar = add(collarGeo, 0, 1.468, 0); this.collar.rotation.x = Math.PI / 2;
+    for (const m of [...this.eyes, ...this.brows, this.nose, this.mouth, ...this.ears, this.collar]) m.castShadow = false;
     // piezas del modo detallado: pantalón corto, zapatillas y pelo
     // pantalón corto: cintura/cadera más dos perneras que siguen a cada muslo (antes era un cilindro y parecía falda)
     this.shorts = add(new THREE.CylinderGeometry(0.185, 0.2, 0.2, 14), 0, 0.84, 0);
     this.shortLegs = [0, 1].map(() => add(shortLegGeo, 0, 0, 0, this.g));
-    const shoeGeo = new THREE.BoxGeometry(0.11, 0.08, 0.26);
     this.shoes = [add(shoeGeo, -0.11, 0.04, 0.05, this.g), add(shoeGeo, 0.11, 0.04, 0.05, this.g)];
+    this.soles = this.shoes.map(s => add(soleGeo, 0, -0.04, 0.012, s));   // suela (va con la zapatilla)
     // el pelo va dentro de la cabeza para que gire con ella cuando mira la bola
     this.hair = add(HAIR.corto.geo, 0, 0.012, -0.012, this.head);
     this.hairExtra = add(HAIR_EXTRA.coleta, 0, 0, 0, this.head);
-    this.headband = add(headbandGeo, 0, 0.04, -0.01, this.head);
+    this.headband = add(headbandGeo, 0, 0.042, -0.008, this.head);
     this.hair.geometry = HAIR.corto.geo;
-    this.headband.rotation.x = Math.PI / 2 - 0.3;   // más alta delante (frente) que detrás
+    this.headband.rotation.x = Math.PI / 2 - 0.12;   // algo más alta delante (frente) que detrás, ajustada a la cabeza
     // hombros: esferas en la articulación, con el color de la camiseta; mangas cortas sobre el brazo
     this.shoulders = [0, 1].map(() => add(shoulderGeo, 0, 0, 0));
     this.yoke = add(yokeGeo, 0, 0, 0);   // línea de hombros (une los dos por detrás del cuello)
@@ -1152,13 +1208,17 @@ class Player {
     const fem = p.s === 'm';
     this.torso.scale.set(1.08 * k * (fem ? 0.93 : 1), 1, 0.88 * (0.5 + 0.5 * k));
     for (const sh of this.shoulders) sh.scale.setScalar(k * (fem ? 0.92 : 1));
+    for (const j of [...this.knees, ...this.ankles, ...this.elbows, ...this.hands]) j.scale.setScalar(k);
+    this.neck.scale.set(k * (fem ? 0.88 : 1), 1, k * (fem ? 0.88 : 1));
   }
   // aspecto: sencillo (una pieza de color) o detallado (piel, ropa, pelo y accesorios del jugador)
   setLook(detailed) {
     const p = this.prof;
     const extras = [this.shorts, ...this.shortLegs, this.skirt, ...this.shoes, this.hair, this.hairExtra, this.headband,
-      ...this.sleeves, this.cap, this.brim, this.glasses, this.beard, ...this.wrists];
-    for (const m of [...this.legs, this.torso, this.head, ...this.arms, ...this.shoulders, this.yoke]) m.material = this.simpleMat;
+      ...this.sleeves, this.cap, this.brim, this.glasses, this.beard, ...this.wrists,
+      ...this.eyes, ...this.brows, this.nose, this.mouth, ...this.ears, this.collar];
+    const cuerpo = [this.neck, ...this.knees, ...this.ankles, ...this.elbows, ...this.hands];
+    for (const m of [...this.legs, this.torso, this.head, ...this.arms, ...this.shoulders, this.yoke, ...cuerpo]) m.material = this.simpleMat;
     for (const m of extras) m.visible = false;
     // pala: la que lleva (en modo detallado); sin pala comprada, o en modo sencillo, la de color del equipo
     const gear = detailed && p ? materialDe(p) : [], pala = gear.find(x => x.tipo === 'pala'), zap = gear.find(x => x.tipo === 'zap');
@@ -1166,17 +1226,23 @@ class Player {
     else { this.pFace.material = this.pMat; this.pHandle.material = this.pMat; this.pFace.scale.set(1, 1, 1.3); }
     if (!detailed || !p) return;
     const skin = matOf(SKIN_TONES[p.piel], false, 0.7), shirt = matOf(p.cam), pants = matOf(p.pan, p.s === 'm');
-    for (const m of [...this.legs, this.head, ...this.arms]) m.material = skin;
-    this.torso.material = shirt;
+    for (const m of [...this.legs, this.head, ...this.arms, ...cuerpo, this.nose, ...this.ears]) m.material = skin;
+    for (const m of [this.nose, ...this.ears]) m.visible = true;
+    for (const m of this.eyes) { m.visible = true; m.material = eyeMat; }
+    this.mouth.visible = true; this.mouth.material = mouthMat;
+    this.torso.material = shirt; this.collar.visible = true; this.collar.material = shirt;
     for (const m of [...this.shoulders, this.yoke]) m.material = p.man ? shirt : skin;   // sin mangas, el hombro es piel
     this.yoke.material = shirt;
     for (const s of this.sleeves) { s.visible = p.man; s.material = shirt; }
     // jugadoras con falda; jugadores con pantalón corto
     if (p.s === 'm') { this.skirt.visible = true; this.skirt.material = pants; }
     else { this.shorts.visible = true; this.shorts.material = pants; for (const m of this.shortLegs) { m.visible = true; m.material = pants; } }
-    for (const s of this.shoes) { s.visible = true; s.material = zap && ZAPA_LOOK[zap.id] ? zapaMats(zap) : matOf(p.zap); }
-    // pelo
+    const zl = zap && ZAPA_LOOK[zap.id];
+    for (const s of this.shoes) { s.visible = true; s.material = zl ? zapaMats(zap) : matOf(p.zap); }
+    for (const s of this.soles) s.material = zl ? matOf(zl.c[3], false, 0.8) : matOf(0xeeeeee, false, 0.8);   // suela de color o blanca
+    // pelo (las cejas, del mismo color)
     const H = HAIR[p.pelo], hm = matOf(p.pc, false, 0.95);
+    for (const m of this.brows) { m.visible = true; m.material = hm; }
     if (H.geo) { this.hair.visible = true; this.hair.geometry = H.geo; this.hair.rotation.x = H.tilt; this.hair.material = hm; }
     const ex = this.hairExtra; ex.material = hm; ex.visible = !!H.extra; ex.rotation.set(0, 0, 0);
     if (H.extra === 'coleta') { ex.geometry = HAIR_EXTRA.coleta; ex.position.set(0, -0.01, -0.16); ex.rotation.x = 0.55; }
@@ -1431,6 +1497,7 @@ class Player {
       setBone(this.legs[i * 2], hip, knee); setBone(this.legs[i * 2 + 1], knee, foot);
       // pernera: desde un poco por encima de la cadera hasta media pierna del muslo
       setBone(this.shortLegs[i], hip.clone().addScaledVector(knee.clone().sub(hip), -0.12), hip.clone().lerp(knee, 0.5));
+      this.knees[i].position.copy(knee); this.ankles[i].position.copy(foot);
       const shoe = this.shoes[i];
       shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.05);
     }
@@ -1519,6 +1586,10 @@ class Player {
     sR.x += 0.07 * this.crossS; sR.z += 0.15 * this.crossS; sR.y -= 0.02 * this.crossS;
     const elbowR = ik(sR, hand, 0.34, 0.34, hR);
     setBone(this.arms[0], sR, elbowR); setBone(this.arms[1], elbowR, hand);
+    this.elbows[0].position.copy(elbowR);
+    // mano: un poco más allá de la muñeca, siguiendo el antebrazo
+    this.hands[0].position.copy(hand).addScaledVector(tmpV2.subVectors(hand, elbowR).normalize(), 0.025);
+    this.hands[0].quaternion.setFromUnitVectors(UP, tmpV2);
     // pala: sigue al antebrazo, algo inclinada hacia arriba
     // (en espera, pala vertical delante del pecho)
     const upW = swinging ? (this.swingKind === 'volea' ? 1.6 : 0.6) : 0.6 + 2.2 * (1 - this.ready);   // en la volea, cabeza de la pala arriba
@@ -1527,6 +1598,9 @@ class Player {
     this.paddle.quaternion.setFromUnitVectors(UP, tmpV2);
     const elbowL = ik(sL, handL, 0.34, 0.34, hL);
     setBone(this.arms[2], sL, elbowL); setBone(this.arms[3], elbowL, handL);
+    this.elbows[1].position.copy(elbowL);
+    this.hands[1].position.copy(handL).addScaledVector(tmpV2.subVectors(handL, elbowL).normalize(), 0.025);
+    this.hands[1].quaternion.setFromUnitVectors(UP, tmpV2);
     // hombros en la articulación (un poco hacia dentro y arriba) y manga hasta ~40 % del brazo
     this.shoulders[0].position.set(sR.x * 0.9, sR.y - 0.005, sR.z * 0.9);
     this.shoulders[1].position.set(sL.x * 0.9, sL.y - 0.005, sL.z);
@@ -4201,12 +4275,16 @@ function abrirVisor(p) {
   if (!V.r) {
     V.r = new THREE.WebGLRenderer({ canvas: V.cv, antialias: true, alpha: true });
     V.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    V.r.shadowMap.enabled = true; V.r.shadowMap.type = THREE.PCFSoftShadowMap;
     V.sc = new THREE.Scene();
-    V.sc.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.1));
-    const luz = new THREE.DirectionalLight(0xffffff, 1.7); luz.position.set(1.5, 3, 3); V.sc.add(luz);
-    const luz2 = new THREE.DirectionalLight(0x9fbfff, 0.6); luz2.position.set(-2, 2, -3); V.sc.add(luz2);   // contraluz
+    V.sc.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.0));
+    const luz = new THREE.DirectionalLight(0xffffff, 1.8); luz.position.set(1.5, 4, 3); luz.castShadow = true;
+    luz.shadow.mapSize.set(1024, 1024); luz.shadow.normalBias = 0.02;
+    Object.assign(luz.shadow.camera, { left: -1.2, right: 1.2, top: 2.2, bottom: -0.4, near: 0.5, far: 10 });
+    V.sc.add(luz);
+    const luz2 = new THREE.DirectionalLight(0xbcd4ff, 1.0); luz2.position.set(-2, 2.5, -3); V.sc.add(luz2);   // contraluz (contorno)
     const suelo = new THREE.Mesh(new THREE.CircleGeometry(0.85, 48), new THREE.MeshStandardMaterial({ color: 0x1f4fa0, roughness: 0.9 }));
-    suelo.rotation.x = -Math.PI / 2; V.sc.add(suelo);
+    suelo.rotation.x = -Math.PI / 2; suelo.receiveShadow = true; V.sc.add(suelo);
     V.cam = new THREE.PerspectiveCamera(30, 1, 0.1, 30);
     V.cam.position.set(0, 1.05, 4.1); V.cam.lookAt(0, 0.92, 0);
     V.pl = new Player(US, '', 0, 0); scene.remove(V.pl.g); V.sc.add(V.pl.g);
