@@ -1256,7 +1256,7 @@ class Player {
     for (const m of [...this.legs, ...this.arms, ...this.shortLegs, ...this.sleeves, this.yoke]) m.userData.k = k;
     const fem = p.s === 'm';
     this.torso.scale.set(1.08 * k * (fem ? 0.93 : 1), 1, 0.88 * (0.5 + 0.5 * k));
-    for (const sh of this.shoulders) sh.scale.setScalar(k * (fem ? 0.92 : 1));
+    for (const sh of this.shoulders) sh.scale.setScalar(k * (fem ? 1.07 : 1.18));   // (los hombres, hombros más anchos)
     for (const j of [...this.knees, ...this.ankles, ...this.elbows, ...this.hands]) j.scale.setScalar(k);
     this.neck.scale.set(k * (fem ? 0.88 : 1), 1, k * (fem ? 0.88 : 1));
     this.pelvis.scale.set(k * (fem ? 1.12 : 1.08), 1, 0.78 * (0.5 + 0.5 * k));   // (tapa el arranque de los muslos)
@@ -1760,9 +1760,9 @@ class Player {
       setBone(this.wrists[1], elbowL.clone().lerp(handL, 0.8), elbowL.clone().lerp(handL, 0.94));
     }
     if (this.sleeves[0].visible) {
-      // (empieza en el centro de la bola del hombro: no asoma por encima)
-      setBone(this.sleeves[0], this.shoulders[0].position, sR.clone().lerp(elbowR, 0.38));
-      setBone(this.sleeves[1], this.shoulders[1].position, sL.clone().lerp(elbowL, 0.38));
+      // (empieza ya bajando por el brazo, dentro de la bola del hombro: no asoma por encima)
+      setBone(this.sleeves[0], sR.clone().lerp(elbowR, 0.045), sR.clone().lerp(elbowR, 0.4));
+      setBone(this.sleeves[1], sL.clone().lerp(elbowL, 0.045), sL.clone().lerp(elbowL, 0.4));
     }
   }
 }
