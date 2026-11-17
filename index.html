@@ -1401,8 +1401,10 @@ class Player {
     const yaw = clamp(Math.atan2(l.x, l.z), -1.1, 1.1);
     const pitch = clamp(Math.atan2(l.y, Math.hypot(l.x, l.z)), -0.6, 0.9);
     const k = dt > 0 ? Math.min(1, dt * 10) : 1;
-    this.head.rotation.y += (yaw - this.head.rotation.y) * k;
-    this.head.rotation.x += (-pitch - this.head.rotation.x) * k;
+    // en los gestos tras el punto: mirando al suelo (lamento) o al cielo (celebración), de frente
+    const ge = this.gesto, gp = ge ? { puño: -0.25, brazos: -0.35, cabeza: 0.35, jarras: 0.5 }[ge.k] : undefined;
+    this.head.rotation.y += ((gp !== undefined ? 0 : yaw) - this.head.rotation.y) * k;
+    this.head.rotation.x += ((gp !== undefined ? gp : -pitch) - this.head.rotation.x) * k;
   }
   // Piernas: paso al correr, piernas abiertas y flexionadas en la espera, pie adelantado al golpear
   // y rodillas recogidas en el salto. Todo en coordenadas locales (+z adelante, -x derecha).
@@ -1458,7 +1460,13 @@ class Player {
     this.stanceS = (this.stanceS ?? pose.stance) + (pose.stance - (this.stanceS ?? pose.stance)) * kp;
     const stance = this.stanceS;
     // pie adelantado: derecha -> izquierdo delante; revés -> derecho delante; remate -> izquierdo delante
-    const step = st === 'back' ? [0.22, -0.12] : st === 'over' ? [-0.18, 0.12] : [-0.12, 0.22];
+    const step = st === 'back' ? [0.3, -0.17] : st === 'over' ? [-0.24, 0.15] : [-0.17, 0.3];
+    // traspaso del peso: en el golpe el cuerpo pasa al pie de delante y el de atrás levanta el talón y gira la punta
+    // hacia delante (pivota); al acabar la terminación vuelve poco a poco
+    const swS = this.swingT >= 0 ? 1 - Math.pow(1 - this.swingT, 2) : this.finishT >= 0 && this.finishT < FINISH_HOLD ? 1 : 0;
+    const trT = (this.swingT >= 0 || this.finishT >= 0) && !jumping ? clamp((swS - 0.5) / 0.45, 0, 1) * (1 - run) : 0;
+    this.transfer = (this.transfer ?? 0) + (trT - (this.transfer ?? 0)) * (dt > 0 ? Math.min(1, dt * (trT > (this.transfer ?? 0) ? 14 : 4)) : 1);
+    const atras = st === 'back' ? 1 : 0;   // pie de atrás: el derecho (0) en la derecha y el remate; el izquierdo (1) en el revés
     const T = [0, 1].map(i => {
       const side = i === 0 ? -1 : 1;                            // 0 = derecho (-x), 1 = izquierdo (+x)
       const ph = this.gait + i * Math.PI;
@@ -1511,6 +1519,8 @@ class Player {
       for (let i = 0; i < 2; i++) { this.feet[i].lerp(T[i], k); this.footW[i].copy(this.g.localToWorld(this.feet[i].clone())); }
       this.stepI = -1;
     }
+    // talón de atrás levantado en el traspaso (el tobillo sube un poco; la zapatilla se inclina y gira, más abajo)
+    if (!inAir && this.transfer > 0.01) this.feet[atras].y += 0.05 * this.transfer;
     // la cadera baja un poco para flexionar las rodillas (más al preparar el golpe);
     // al saltar: mucha flexión para impulsarse y al caer, ninguna en el aire
     // paso de ajuste (split step) cuando golpea el contrario: pequeño rebote sobre las puntas
@@ -1544,10 +1554,12 @@ class Player {
     // colocar el grupo del tronco para que la cadera quede fija en su sitio al inclinarse
     const hipY = HIP_Y - this.crouchS;
     tmpV2.set(0, HIP_Y, 0).applyEuler(this.upper.rotation);
-    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.1; this.pelvis.position.y = hipY;   // (la falda empieza justo bajo la camiseta)
+    // (con el traspaso del peso, la cadera se va hacia el pie de delante)
+    const hipZ = 0.1 * this.transfer;
+    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z + hipZ); this.skirt.position.set(0, hipY - 0.1, hipZ); this.pelvis.position.set(0, hipY, hipZ);   // (la falda empieza justo bajo la camiseta)
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
-      const hip = new V3(side * 0.1, hipY, 0), foot = this.feet[i].clone();
+      const hip = new V3(side * 0.1, hipY, hipZ), foot = this.feet[i].clone();
       const knee = ik(hip, foot, THIGH, SHIN, new V3(side * 0.15, 0, 1));   // rodilla hacia delante
       setBone(this.legs[i * 2], hip, knee); setBone(this.legs[i * 2 + 1], knee, foot);
       // pernera: desde un poco por encima de la cadera hasta media pierna del muslo
@@ -1556,6 +1568,10 @@ class Player {
       this.knees[i].position.copy(knee); this.ankles[i].position.copy(foot);
       const shoe = this.shoes[i];
       shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.072);   // (el talón sobresale poco del tobillo)
+      // pie de atrás en el traspaso: talón arriba (apoyado en la punta) y la punta girada hacia delante
+      const tr = i === atras ? this.transfer : 0;
+      shoe.rotation.set(0.55 * tr, (atras ? -0.6 : 0.6) * tr, 0, 'YXZ');
+      if (tr > 0) shoe.position.z += 0.03 * tr;   // (gira sobre la punta, que sigue en el suelo)
     }
   }
   updateArms(dt) {
@@ -1662,6 +1678,21 @@ class Player {
     if (this.serveHold) {       // saque: la mano izquierda sujeta la bola
       this.g.updateMatrixWorld();
       L = this.upper.worldToLocal(ball.p.clone()); hL = new V3(1, -1, 0);
+    }
+    // gesto tras el punto (de vez en cuando): celebración o lamento; el suavizado de abajo hace la transición
+    const ge = this.gesto;
+    if (ge) {
+      ge.t += dt;
+      if (ge.t > ge.dur || swinging || S.phase === 'play' || S.phase === 'serve') this.gesto = null;
+      else if (ge.k === 'puño') {      // puño arriba, con un par de sacudidas
+        R = new V3(-0.24, 1.98 + 0.07 * Math.sin(Math.min(ge.t, 0.9) * 14), 0.14); hR = new V3(-1, -0.2, -0.3);
+      } else if (ge.k === 'brazos') {  // los dos brazos arriba
+        R = new V3(-0.34, 2.02, 0.12); L = new V3(0.34, 2.02, 0.12); hR = new V3(-1, 0, -0.2); hL = new V3(1, 0, -0.2);
+      } else if (ge.k === 'cabeza') {  // manos a la cabeza
+        R = new V3(-0.1, 1.76, 0.06); L = new V3(0.1, 1.76, 0.06); hR = new V3(-1, 0.4, 0.3); hL = new V3(1, 0.4, 0.3);
+      } else if (ge.k === 'jarras') {  // en jarras, mirando al suelo
+        R = new V3(-0.21, 0.98, -0.02); L = new V3(0.21, 0.98, -0.02); hR = new V3(-1, 0, -0.6); hL = new V3(1, 0, -0.6);
+      }
     }
     // suavizado para que no haya saltos al cambiar de postura (en el golpe va directo)
     if (swinging || dt === 0 || !this.hR) { this.hR = R; this.hL = L; }
@@ -2703,6 +2734,12 @@ function endPoint(winner, reason) {
   S.xpRaw[winner] += 3 + (conSets && juego ? 5 : 0) + (set ? 15 : 0);
   if (fin) { S.xpRaw[winner] += 15; S.xpRaw[L] += 15; }   // (lo de jugar el partido, igual para los dos)
   const subida = '';
+  // gestos (de vez en cuando): uno de la pareja que gana el punto lo celebra (siempre al ganar el juego o el partido,
+  // con los brazos arriba) y uno de la que lo pierde se lamenta
+  const elige1 = t => { const ps = players.filter(p => p.team === t); return ps[Math.floor(Math.random() * ps.length)]; };
+  const grande = (conSets && juego) || fin;   // (contando por puntos no hay juegos de verdad)
+  if (grande || Math.random() < 0.3) elige1(winner).gesto = { k: grande || Math.random() < 0.3 ? 'brazos' : 'puño', t: 0, dur: 1.6 };
+  if (Math.random() < (grande ? 0.5 : 0.22)) elige1(L).gesto = { k: Math.random() < 0.5 ? 'cabeza' : 'jarras', t: 0, dur: 1.6 };
   // de vez en cuando, entre puntos, un consejo de juego (no más de uno cada 25 s)
   if (!fin && (S.score[0] + S.score[1]) % 3 === 0) enseñaTip(() => eligeTip([...TIPS.juego, ...TIPS.manejo]));
   if (fin) {            // fin del partido: se enseña el resultado y luego el menú
