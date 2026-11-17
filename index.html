@@ -2193,7 +2193,7 @@ const lobFactor = () => S.peak > LOB_PEAK ? (S.bounces === 0 ? 1.35 : 0.7) : 1;
 // radio de dispersión del golpe (m): 0,15 los muy precisos .. 2,1 los muy imprecisos, por lo difícil y el globo
 function aimSpread(pl) {
   const k = ball.p.y > SMASH_Y ? 'rem' : 'pre';
-  return (0.3 + 0.9 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor() * calidadGolpe(pl);
+  return (0.3 + 0.6 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor() * calidadGolpe(pl);
 }
 const isBackWall = p => Math.abs(p.z) > HL - 0.1;
 // ¿el mate bota en el campo rival y llega a su pared del fondo antes del segundo bote?
@@ -2475,7 +2475,7 @@ const aiReaction = r => Math.max(0.1, 0.25 + 0.4 * below(r, 'ref') - 0.13 * abov
 // Por debajo de 50 no se tira tanta bola a la red o al fondo como para que no haya partido: los flojos llegan a
 // menos bolas y las mandan más flojas y al centro, pero las que alcanzan suelen pasar (antes, a nivel 30, un tercio
 // de los puntos se acababa al primer o segundo golpe)
-const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.12 * below(r, k) - 0.07 * above(r, k));   // 20 % .. 8 % .. 1 % .. 0,5 %
+const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.05 * below(r, k) - 0.07 * above(r, k));   // 13 % .. 8 % .. 1 % .. 0,5 %
 // Calidad del golpe según cómo le llega la bola (los dos equipos): tras el bote y con tiempo (bota, pasan 0,3 s o más
 // y se golpea a buena altura) se falla y se desvía menos; a bote pronto (recién botada o a los pies), más; de volea
 // o de remate, según el juego aéreo. Multiplica los fallos y la dispersión (1 = normal).
