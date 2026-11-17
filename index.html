@@ -187,6 +187,9 @@
   .tor .apuntar{display:block;width:100%;margin-top:6px;padding:8px;border:0;border-radius:8px;background:#fde047;color:#000;font:inherit;font-size:12px;font-weight:900;cursor:pointer}
   .tor .apuntar:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.6);cursor:default;font-weight:600}
   .tor .tbs{display:flex;gap:6px;margin-top:6px}
+  .tor.conimg{display:flex;gap:10px;align-items:center}
+  .tor .timg{flex:0 0 46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .tor .tinfo{flex:1;min-width:0}
   .tor .tb{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   .tor .tb.compra{background:#2f7bff;border-color:#2f7bff;font-weight:800}
   .tor .tb.on{background:#22c55e33;border-color:#22c55e}
@@ -763,6 +766,44 @@ const PALAS = [
   { id: 'pProD',  n: 'Pro Diamante',    pr: 650,  b: { pot: 7, rem: 6, aer: 3, pre: 2 } },
   { id: 'pElite', n: 'Élite Carbono',   pr: 1600, b: { pre: 10, pot: 9, rem: 8, aer: 8 } },
 ];
+// aspecto de cada pala en la tienda: forma (redonda = control, lágrima = mixta, diamante = potencia) y colores
+// [cara, adorno, marco, puño]
+const PALA_LOOK = {
+  pIni:   { f: 'r', c: ['#e5e7eb', '#22c55e', '#6b7280', '#f8fafc'] },
+  pClubC: { f: 'r', c: ['#1e3a8a', '#38bdf8', '#0f172a', '#e2e8f0'] },
+  pClubP: { f: 'l', c: ['#7f1d1d', '#f97316', '#1c1917', '#fafaf9'] },
+  pProR:  { f: 'r', c: ['#f8fafc', '#2563eb', '#1e293b', '#1e293b'] },
+  pProD:  { f: 'd', c: ['#111827', '#ef4444', '#000000', '#ef4444'] },
+  pElite: { f: 'l', c: ['#26292e', '#fde047', '#0a0a0a', '#111111'], carbono: 1 },
+};
+const PALA_CABEZA = {
+  r: 'M30 4C49 4 56 18 56 37C56 57 44 70 30 72C16 70 4 57 4 37C4 18 11 4 30 4Z',
+  l: 'M30 4C47 4 56 14 56 31C56 52 43 67 30 72C17 67 4 52 4 31C4 14 13 4 30 4Z',
+  d: 'M30 3C44 3 56 9 56 21C56 39 43 61 30 72C17 61 4 39 4 21C4 9 16 3 30 3Z',
+};
+function palaSVG(it) {
+  const L = PALA_LOOK[it.id]; if (!L) return '';
+  const [cara, ador, marco, puno] = L.c, cab = PALA_CABEZA[L.f], u = 'pl' + it.id;
+  let agujeros = '';
+  for (let y = 16, f = 0; y <= 60; y += 7, f++)
+    for (let x = f % 2 ? 12.5 : 9; x <= 51; x += 7) agujeros += `<circle cx="${x}" cy="${y}" r="1.3"/>`;
+  return `<svg class="timg" viewBox="0 0 60 120" width="46" height="92" aria-hidden="true">
+    <defs><clipPath id="${u}c"><path d="${cab}"/></clipPath>
+      ${L.carbono ? `<pattern id="${u}k" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="${cara}"/><rect width="2" height="2" fill="#3a3f46"/><rect x="2" y="2" width="2" height="2" fill="#3a3f46"/></pattern>` : ''}
+      <linearGradient id="${u}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+    <path d="M17 60L26 95H34L43 60Z" fill="${marco}"/><path d="M25 69L30 85L35 69Z" fill="#06080d"/>
+    <rect x="25" y="93" width="10" height="24" rx="2.5" fill="${puno}"/>
+    ${[97, 101, 105, 109, 113].map(y => `<path d="M25 ${y + 2}L35 ${y - 1}" stroke="${marco}" stroke-opacity=".35" stroke-width="1"/>`).join('')}
+    <rect x="24" y="115" width="12" height="4" rx="1.5" fill="${marco}"/>
+    <g clip-path="url(#${u}c)">
+      <path d="${cab}" fill="${L.carbono ? `url(#${u}k)` : cara}"/>
+      <path d="M-4 52L64 18V30L-4 64Z" fill="${ador}"/><path d="M-4 68L64 34V38L-4 72Z" fill="${ador}" opacity=".6"/>
+      <g fill="#06080d" opacity=".55">${agujeros}</g>
+      <path d="${cab}" fill="url(#${u}g)"/>
+    </g>
+    <path d="${cab}" fill="none" stroke="${marco}" stroke-width="3.2"/>
+  </svg>`;
+}
 const ZAPAS = [
   { id: 'zIni',   n: 'Running',    pr: 60,   b: { vel: 2, ref: 1 } },
   { id: 'zClub',  n: 'Club Grip',  pr: 180,  b: { vel: 4, ref: 3, res: 2 } },
@@ -3716,7 +3757,8 @@ function paintTienda() {
       if (tiene) return `<button class="tb" data-a="llevar" data-p="${p.id}" data-i="${it.id}">Que la lleve ${nom}</button>`;
       return `<button class="tb compra" data-a="comprar" data-p="${p.id}" data-i="${it.id}"${BOLSA.dinero < it.pr ? ' disabled' : ''}>Comprar para ${nom}</button>`;
     }).join('');
-    return `<div class="tor"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div>`;
+    const img = tipo === 'pala' ? palaSVG(it) : '';
+    return `<div class="tor${img ? ' conimg' : ''}">${img}<div class="tinfo"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div></div>`;
   }).join('');
   document.getElementById('tdList').innerHTML = bloque('PALAS (mejoran los golpes)', PALAS, 'pala') + bloque('ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap');
 }
