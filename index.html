@@ -684,6 +684,9 @@ const ICONOS = {
   dinero: '<circle cx="12" cy="12" r="8.5"/><path d="M15 8.5a3.5 3.5 0 1 0 0 7M7.5 11h5.5M7.5 13.5h5.5"/>',
   pala: '<ellipse cx="12" cy="8.5" rx="6" ry="6.5"/><path d="M10 14.5l1 3.5h2l1-3.5M11 18v3.5h2V18"/><circle cx="10" cy="7" r=".4"/><circle cx="14" cy="7" r=".4"/><circle cx="12" cy="10" r=".4"/>',
   zapa: '<path d="M2.5 17.5V8.5l3.5 1 2-2 2.5 3.5c4 .6 8 1.7 9.5 3.4.8.9.8 2 .5 3.1z"/><path d="M2.5 17.5h18M10 10.5l-1.5 2M12.5 11l-1.5 2"/>',
+  grip: '<circle cx="9" cy="11" r="6"/><circle cx="9" cy="11" r="2"/><path d="M9 17h12.5v-4H14.5"/>',
+  muneca: '<path d="M5 8v8.5M19 8v8.5"/><ellipse cx="12" cy="8" rx="7" ry="2.5"/><path d="M5 16.5a7 2.5 0 0 0 14 0M5 12.3a7 2.5 0 0 0 14 0"/>',
+  cinta: '<ellipse cx="12" cy="10" rx="9" ry="4.5"/><path d="M16.5 14l2.5 6M14.5 14.5l1 6"/>',
 };
 const ico = n => ICONOS[n] ? `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[n]}</svg>` : '';
 for (const el of document.querySelectorAll('[data-ico]')) {
@@ -863,6 +866,35 @@ const ZAPAS = [
   { id: 'zPro',   n: 'Pro Clay',   pr: 520,  b: bonos(ZAPA_TOP, 0.65) },
   { id: 'zElite', n: 'Élite Aero', pr: 1400, b: bonos(ZAPA_TOP, 1) },
 ];
+// Complementos, con poco peso: el grip sube un golpe, las muñequeras lo mismo con menos peso y la cinta del pelo,
+// juego aéreo, visión o resistencia. Cada uno lleva el suyo (un grip, unas muñequeras y una cinta).
+const COMP_FOCO = [['Pre', 'Tacto', 'pre', 'aer', '#f8fafc'], ['Pot', 'Agarre', 'pot', 'rem', '#111827'], ['Rem', 'Remate', 'rem', 'pot', '#ef4444'],
+  ['Aer', 'Volea', 'aer', 'pre', '#38bdf8'], ['Saq', 'Saque', 'saq', 'pre', '#a855f7']];
+const TODOS_GOLPES = (v) => ({ pre: v, pot: v, rem: v, aer: v, saq: v });
+const GRIPS = [...COMP_FOCO.map(([id, n, k, k2, col]) => ({ id: 'g' + id, n: 'Grip ' + n, pr: 90, col, b: { [k]: 5, [k2]: 1 } })),
+  { id: 'gPro', n: 'Grip Pro', pr: 320, col: '#fde047', b: TODOS_GOLPES(3) }];
+const MUNES = [...COMP_FOCO.map(([id, n, k, , col]) => ({ id: 'm' + id, n: 'Muñequeras ' + n, pr: 45, col, b: { [k]: 3 } })),
+  { id: 'mPro', n: 'Muñequeras Pro', pr: 180, col: '#fde047', b: TODOS_GOLPES(2) }];
+const CINTAS = [
+  { id: 'cAer', n: 'Cinta Aérea',  pr: 40,  col: '#38bdf8', b: { aer: 3 } },
+  { id: 'cVis', n: 'Cinta Visión', pr: 40,  col: '#22c55e', b: { vis: 3 } },
+  { id: 'cRes', n: 'Cinta Fondo',  pr: 40,  col: '#f97316', b: { res: 3 } },
+  { id: 'cPro', n: 'Cinta Pro',    pr: 150, col: '#fde047', b: { aer: 2, vis: 2, res: 2 } },
+];
+const TIPOS_MAT = ['pala', 'zap', 'grip', 'mun', 'cin'];
+// dibujo de los complementos en la tienda
+function compSVG(it) {
+  const c = it.col, os = '#06080d';
+  const dib = it.tipo === 'grip'
+    ? `<path d="M24 44H54V36H30" fill="${c}" stroke="${os}" stroke-opacity=".35"/><circle cx="24" cy="30" r="15" fill="${c}" stroke="${os}" stroke-opacity=".35"/>
+       <circle cx="24" cy="30" r="10" fill="none" stroke="${os}" stroke-opacity=".2"/><circle cx="24" cy="30" r="5" fill="${os}" opacity=".7"/>`
+    : it.tipo === 'mun'
+    ? `<rect x="12" y="20" width="36" height="22" fill="${c}"/><ellipse cx="30" cy="42" rx="18" ry="6" fill="${c}"/>
+       <path d="M12 31H48" stroke="${os}" stroke-opacity=".25" stroke-width="2"/><ellipse cx="30" cy="20" rx="18" ry="6" fill="${c}" stroke="${os}" stroke-opacity=".3"/>
+       <ellipse cx="30" cy="20" rx="12" ry="3.5" fill="${os}" opacity=".75"/>`
+    : `<ellipse cx="30" cy="26" rx="22" ry="10" fill="none" stroke="${c}" stroke-width="7"/><path d="M44 33L52 50M40 35L44 53" stroke="${c}" stroke-width="4" stroke-linecap="round"/>`;
+  return `<svg class="timg" viewBox="0 0 60 60" width="46" height="46" aria-hidden="true">${dib}</svg>`;
+}
 // aspecto de las zapatillas: [empeine, adorno, mediasuela, suela]; dibujo de la suela (espiga o lisa)
 const ZAPA_LOOK = {
   zIni:   { c: ['#e5e7eb', '#3b82f6', '#f8fafc', '#9ca3af'] },
@@ -928,7 +960,8 @@ function zapaMats(it) {
   const lado = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }), m = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
   return GEAR_MATS[it.id] = [lado, lado, m(emp), m(suela), m(emp), m(ador)];   // (+x, -x, arriba, suela, punta, talón)
 }
-const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' }))];
+const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' })),
+  ...GRIPS.map(x => ({ ...x, tipo: 'grip' })), ...MUNES.map(x => ({ ...x, tipo: 'mun' })), ...CINTAS.map(x => ({ ...x, tipo: 'cin' }))];
 const itemDe = id => ITEMS.find(x => x.id === id);
 const BOLSA_KEY = 'padel.bolsa';
 let BOLSA;
@@ -948,17 +981,23 @@ try {
 } catch (_) {}
 const euros = n => n.toLocaleString('es-ES') + ' €';
 function materialDe(p) {
-  if (p.propio) { const l = BOLSA.lleva[p.id] || {}; return [itemDe(l.pala), itemDe(l.zap)].filter(Boolean); }
+  if (p.propio) { const l = BOLSA.lleva[p.id] || {}; return TIPOS_MAT.map(t => { const it = itemDe(l[t]); return it && it.tipo === t ? it : null; }).filter(Boolean); }
   const b = p.base, nv = b >= 85 ? 3 : b >= 70 ? 2 : b >= 55 ? 1 : b >= 40 ? 0 : -1;
   if (nv < 0) return [];
   const pega = ['pegador', 'rematador', 'voleador'].includes(p.perf);
-  return [itemDe(['pIni', pega ? 'pClubP' : 'pClubC', pega ? 'pProD' : 'pProR', 'pElite'][nv]), ZAPAS[nv]];
+  const m = [itemDe(['pIni', pega ? 'pClubP' : 'pClubC', pega ? 'pProD' : 'pProR', 'pElite'][nv]), ZAPAS[nv]];
+  // complementos de los rivales: grip desde nivel club, muñequeras y cinta desde pro, todo «Pro» los de élite
+  const f = { pegador: 'Pot', rematador: 'Rem', voleador: 'Aer' }[p.perf] || 'Pre';
+  if (nv === 3) m.push(itemDe('gPro'), itemDe('mPro'), itemDe('cPro'));
+  else if (nv >= 1) { m.push(itemDe('g' + f)); if (nv === 2) m.push(itemDe('m' + f), itemDe(p.perf === 'incansable' ? 'cRes' : p.perf === 'estratega' ? 'cVis' : 'cAer')); }
+  return m;
 }
 const bonoMaterial = (p, k) => materialDe(p).reduce((a, it) => a + (it.b[k] || 0), 0);
 const efectoTxt = it => Object.entries(it.b).map(([k, v]) => '+' + v + ' ' + STAT_NAMES[k]).join(' · ');
 const materialTxt = p => {
   const m = materialDe(p), pala = m.find(x => x.tipo === 'pala'), zap = m.find(x => x.tipo === 'zap');
-  return 'Pala: ' + (pala ? pala.n : 'básica') + ' · Zapatillas: ' + (zap ? zap.n : 'básicas');
+  const extra = m.filter(x => !['pala', 'zap'].includes(x.tipo)).map(x => x.n);
+  return 'Pala: ' + (pala ? pala.n : 'básica') + ' · Zapatillas: ' + (zap ? zap.n : 'básicas') + (extra.length ? ' · ' + extra.join(' · ') : '');
 };
 // Vuestros dos jugadores (los «player»): solo a ellos se les pone nombre, cuerpo y aspecto; empiezan con nivel bajo
 // y suben gastando vosotros la experiencia. Se guardan en el navegador.
@@ -1140,6 +1179,11 @@ class Player {
     if (a.gafas) { this.glasses.visible = true; this.glasses.material = glassesMat; }
     if (a.barba) { this.beard.visible = true; this.beard.material = hm; }
     if (a.munequeras) for (const w of this.wrists) { w.visible = true; w.material = matOf(a.munequeras); }
+    // complementos comprados (o los de su nivel): grip en el mango, muñequeras y cinta del pelo
+    const grip = gear.find(x => x.tipo === 'grip'), mun = gear.find(x => x.tipo === 'mun'), cin = gear.find(x => x.tipo === 'cin');
+    if (grip) this.pHandle.material = matOf(grip.col, false, 0.85);
+    if (mun) for (const w of this.wrists) { w.visible = true; w.material = matOf(mun.col, false, 0.9); }
+    if (cin) { this.headband.visible = true; this.headband.material = matOf(cin.col, false, 0.85); }
   }  // saltito: si la bola le va a pasar por encima, salta para llegar
   // Salto en tres fases: flexiona (impulso), vuela con las piernas estiradas y amortigua al caer.
   // Se decide con la bola prevista, para tener tiempo de flexionar y estar arriba al golpear.
@@ -3889,14 +3933,18 @@ function paintTienda() {
   const bloque = (tit, lista, tipo) => `<div class="ltit">${tit}</div>` + lista.map(it => {
     const btns = props.map(p => {
       const tiene = (BOLSA.tiene[p.id] || []).includes(it.id), lleva = (BOLSA.lleva[p.id] || {})[tipo] === it.id, nom = p.n.split(' ')[0];
-      if (lleva) return `<button class="tb on" data-a="quitar" data-p="${p.id}" data-i="${it.id}">${nom} la lleva ✓</button>`;
-      if (tiene) return `<button class="tb" data-a="llevar" data-p="${p.id}" data-i="${it.id}">Que la lleve ${nom}</button>`;
+      const art = { pala: 'la', zap: 'las', grip: 'lo', mun: 'las', cin: 'la' }[tipo];
+      if (lleva) return `<button class="tb on" data-a="quitar" data-p="${p.id}" data-i="${it.id}">${nom} ${art} lleva ✓</button>`;
+      if (tiene) return `<button class="tb" data-a="llevar" data-p="${p.id}" data-i="${it.id}">Que ${art} lleve ${nom}</button>`;
       return `<button class="tb compra" data-a="comprar" data-p="${p.id}" data-i="${it.id}"${BOLSA.dinero < it.pr ? ' disabled' : ''}>Comprar para ${nom}</button>`;
     }).join('');
-    const img = tipo === 'pala' ? palaSVG(it) : zapaSVG(it);
+    const img = tipo === 'pala' ? palaSVG(it) : tipo === 'zap' ? zapaSVG(it) : compSVG(it);
     return `<div class="tor${img ? ' conimg' : ''}">${img}<div class="tinfo"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div></div>`;
   }).join('');
-  document.getElementById('tdList').innerHTML = bloque(ico('pala') + 'PALAS (mejoran los golpes)', PALAS, 'pala') + bloque(ico('zapa') + 'ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap');
+  document.getElementById('tdList').innerHTML = bloque(ico('pala') + 'PALAS (mejoran los golpes)', PALAS, 'pala') + bloque(ico('zapa') + 'ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap') +
+    bloque(ico('grip') + 'GRIPS (un poco en un golpe)', ITEMS.filter(x => x.tipo === 'grip'), 'grip') +
+    bloque(ico('muneca') + 'MUÑEQUERAS (como el grip, con menos peso)', ITEMS.filter(x => x.tipo === 'mun'), 'mun') +
+    bloque(ico('cinta') + 'CINTAS DEL PELO (aéreo, visión o resistencia)', ITEMS.filter(x => x.tipo === 'cin'), 'cin');
 }
 function ponMaterial(pid, id) {
   const it = itemDe(id); if (!it) return;
