@@ -137,6 +137,15 @@
   #menu #rivNav{display:flex;gap:8px;margin-top:8px}
   #menu #rivNav button{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.45);border-radius:10px;background:transparent;color:#fff;font:inherit;font-size:13px;cursor:pointer}
   #menu #rivNav button:disabled{opacity:.3}
+  #visor{position:fixed;inset:0;z-index:13;display:none;flex-direction:column;background:radial-gradient(circle at 50% 42%,#1f2d4a,#06080d 72%)}
+  #visor.open{display:flex}
+  #visor .vhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px 4px;font-weight:900;letter-spacing:1px}
+  #visor .vsub{font-size:12px;font-weight:400;letter-spacing:0;opacity:.7;margin-top:2px}
+  #visor #vsClose{flex:none;width:36px;height:36px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;font-size:18px;cursor:pointer}
+  #vsCanvas{flex:1;min-height:0;width:100%;touch-action:none;cursor:grab}
+  #vsCanvas:active{cursor:grabbing}
+  #visor .vsHint{text-align:center;font-size:12px;opacity:.6;padding:6px 16px 16px}
+  .card .ver3d{display:block;width:100%;margin:6px 0;padding:8px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
   #picker{position:fixed;inset:0;z-index:11;display:none;background:#06080d;overflow-y:auto;padding:12px;box-sizing:border-box}
   #picker.open{display:block}
   #confirm{position:fixed;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);padding:16px;box-sizing:border-box}
@@ -337,6 +346,8 @@
       <div class="phead"><span id="pkTitle"></span><button id="pkClose" aria-label="Cerrar">✕</button></div>
       <div id="pkHint"></div><div id="pkList"></div>
     </div></div>
+    <div id="visor"><div class="vhead"><div><div id="vsNom"></div><div class="vsub" id="vsSub"></div></div><button id="vsClose" aria-label="Cerrar">✕</button></div>
+      <canvas id="vsCanvas"></canvas><div class="vsHint">Arrastra a los lados para girarlo</div></div>
     <div id="confirm"><div class="cbox"><p id="cfTxt"></p><div class="cbtn"><button id="cfNo">Cancelar</button><button id="cfSi">Sí</button></div></div></div>
   </div>
 </div>
@@ -985,7 +996,7 @@ function materialDe(p) {
   const b = p.base, nv = b >= 85 ? 3 : b >= 70 ? 2 : b >= 55 ? 1 : b >= 40 ? 0 : -1;
   if (nv < 0) return [];
   const pega = ['pegador', 'rematador', 'voleador'].includes(p.perf);
-  const m = [itemDe(['pIni', pega ? 'pClubP' : 'pClubC', pega ? 'pProD' : 'pProR', 'pElite'][nv]), ZAPAS[nv]];
+  const m = [itemDe(['pIni', pega ? 'pClubP' : 'pClubC', pega ? 'pProD' : 'pProR', 'pElite'][nv]), itemDe(ZAPAS[nv].id)];
   // complementos de los rivales: grip desde nivel club, muñequeras y cinta desde pro, todo «Pro» los de élite
   const f = { pegador: 'Pot', rematador: 'Rem', voleador: 'Aer' }[p.perf] || 'Pre';
   if (nv === 3) m.push(itemDe('gPro'), itemDe('mPro'), itemDe('cPro'));
@@ -4026,7 +4037,7 @@ function cardHtml(p, elegible, actual) {
     <div class="ch"><img src="${portrait(p)}" alt=""><div class="ci"><div class="cn">${p.n}</div>
       <div class="cs">${p.tag} · ${p.s === 'm' ? 'mujer' : 'hombre'} · ${p.alt.toFixed(2).replace('.', ',')} m · ${p.cx === 'f' ? 'fuerte' : p.cx === 'd' ? 'delgad' + (p.s === 'm' ? 'a' : 'o') : 'normal'}</div></div>
       <div class="cm">${media(p)}${q.pts ? '<em class="pt">+' + q.pts + '</em>' : ''}</div></div>
-    <div class="cd">${prog}<div class="prog">${materialTxt(p)}</div>${p.propio && elegible ? trainHtml(p) : ''}${bars}
+    <div class="cd">${prog}<div class="prog">${materialTxt(p)}</div><button class="ver3d" data-id="${p.id}">${ico('camara')}Ver el jugador en 3D</button>${p.propio && elegible ? trainHtml(p) : ''}${bars}
       <div class="estilo">Estilo: ${est}<i style="--v:${p.st.agr}%"></i><small><span>defensivo</span><span>agresivo</span></small></div>
       ${elegible ? `<button class="elegir">${actual ? 'SIGUE' : 'ELEGIR'}</button>` : ''}
       ${p.propio && elegible ? editorHtml(p) : ''}</div></div>`;
@@ -4131,6 +4142,8 @@ document.getElementById('pkList').addEventListener('change', e => {
 });
 document.getElementById('pkClose').addEventListener('click', () => { picker.classList.remove('open'); paintLineup(); });
 document.getElementById('pkList').addEventListener('click', e => {
+  const v3 = e.target.closest('.ver3d');
+  if (v3) { abrirVisor(byId(v3.dataset.id)); return; }
   const card = e.target.closest('.card'); if (!card) return;
   const ed = e.target.closest('.ed');
   if (ed) {                  // editor de aspecto
@@ -4172,6 +4185,61 @@ document.getElementById('pkList').addEventListener('click', e => {
   card.classList.toggle('open');
 });
 menuEl.addEventListener('click', e => { const s = e.target.closest('.slot'); if (s) openPicker(+s.dataset.s); });
+// ----- Visor 3D: el jugador entero, con su ropa, accesorios y material; se gira arrastrando (y solo, despacio) -----
+// Tiene su propia escena y su propio muñeco (no toca a los de la pista).
+const visor = { el: document.getElementById('visor'), cv: document.getElementById('vsCanvas'), r: null, sc: null, cam: null, pl: null,
+  rot: 0, vel: 0, drag: null, raf: 0, t: 0 };
+function visorTam() {
+  const V = visor, w = V.cv.clientWidth, h = V.cv.clientHeight;
+  if (!V.r || !w || !h) return;
+  V.r.setSize(w, h, false); V.cam.aspect = w / h;
+  V.cam.fov = w / h < 0.75 ? 34 : 28; V.cam.updateProjectionMatrix();
+}
+function abrirVisor(p) {
+  const V = visor;
+  V.el.classList.add('open');
+  if (!V.r) {
+    V.r = new THREE.WebGLRenderer({ canvas: V.cv, antialias: true, alpha: true });
+    V.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    V.sc = new THREE.Scene();
+    V.sc.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.1));
+    const luz = new THREE.DirectionalLight(0xffffff, 1.7); luz.position.set(1.5, 3, 3); V.sc.add(luz);
+    const luz2 = new THREE.DirectionalLight(0x9fbfff, 0.6); luz2.position.set(-2, 2, -3); V.sc.add(luz2);   // contraluz
+    const suelo = new THREE.Mesh(new THREE.CircleGeometry(0.85, 48), new THREE.MeshStandardMaterial({ color: 0x1f4fa0, roughness: 0.9 }));
+    suelo.rotation.x = -Math.PI / 2; V.sc.add(suelo);
+    V.cam = new THREE.PerspectiveCamera(30, 1, 0.1, 30);
+    V.cam.position.set(0, 1.05, 4.1); V.cam.lookAt(0, 0.92, 0);
+    V.pl = new Player(US, '', 0, 0); scene.remove(V.pl.g); V.sc.add(V.pl.g);
+  }
+  const pl = V.pl;
+  pl.setProfile(p); pl.setLook(true);
+  pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null;
+  pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.head.rotation.set(0, 0, 0);
+  pl.updateLegs(0); pl.updateArms(0);
+  document.getElementById('vsNom').textContent = p.n + ' · ' + media(p);
+  document.getElementById('vsSub').textContent = materialTxt(p);
+  V.rot = 0.35; V.vel = 0; V.t = performance.now();
+  visorTam();
+  cancelAnimationFrame(V.raf);
+  const paso = () => {
+    if (!V.el.classList.contains('open')) return;
+    const now = performance.now(), dt = Math.min(0.05, (now - V.t) / 1000); V.t = now;
+    if (!V.drag) { V.rot += V.vel + 0.35 * dt; V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
+    pl.g.rotation.y = V.rot;
+    V.r.render(V.sc, V.cam);
+    V.raf = requestAnimationFrame(paso);
+  };
+  paso();
+}
+visor.cv.addEventListener('pointerdown', e => { visor.drag = { x: e.clientX }; visor.vel = 0; visor.cv.setPointerCapture(e.pointerId); });
+visor.cv.addEventListener('pointermove', e => {
+  if (!visor.drag) return;
+  const d = (e.clientX - visor.drag.x) * 0.012; visor.drag.x = e.clientX;
+  visor.rot += d; visor.vel = d;
+});
+for (const ev of ['pointerup', 'pointercancel']) visor.cv.addEventListener(ev, () => { visor.drag = null; });
+document.getElementById('vsClose').addEventListener('click', () => { visor.el.classList.remove('open'); cancelAnimationFrame(visor.raf); });
+window.addEventListener('resize', visorTam);
 document.getElementById('rivPrev').addEventListener('click', () => stepRivals(-1));
 document.getElementById('rivNext').addEventListener('click', () => stepRivals(1));
 // Partida guardada en el navegador (localStorage): marcador tras cada punto; al abrir se recupera
