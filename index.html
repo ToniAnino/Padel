@@ -625,7 +625,8 @@ const ALTO_Y = 1.45;   // golpe alto (sobre el hombro) por encima de esta altura
 const torsoGeo = new THREE.LatheGeometry([[0, -0.255], [0.14, -0.25], [0.156, -0.21], [0.152, -0.09], [0.163, 0.04],
   [0.18, 0.15], [0.176, 0.24], [0.152, 0.3], [0.1, 0.335], [0.062, 0.35], [0, 0.358]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
 // pelvis: cadera redondeada, más estrecha de delante a detrás (se escala en z) para que no sobresalga por detrás
-const pelvisGeo = new THREE.LatheGeometry([[0, -0.115], [0.115, -0.11], [0.16, -0.065], [0.17, 0], [0.162, 0.055], [0.15, 0.095], [0, 0.105]]
+// (por arriba se estrecha dentro del borde de la camiseta, para que no asome por los lados)
+const pelvisGeo = new THREE.LatheGeometry([[0, -0.115], [0.115, -0.11], [0.16, -0.065], [0.17, -0.01], [0.155, 0.04], [0.128, 0.075], [0, 0.085]]
   .map(([r, y]) => new THREE.Vector2(r, y)), 20);
 const neckGeo = new THREE.CylinderGeometry(0.047, 0.055, 0.16, 12);
 const collarGeo = new THREE.TorusGeometry(0.063, 0.012, 6, 20);
@@ -646,7 +647,7 @@ const shoeGeo = (() => {
 })();
 const soleGeo = new THREE.BoxGeometry(0.124, 0.022, 0.292);
 const shortLegGeo = new THREE.CylinderGeometry(0.118, 0.106, 1, 14);   // pernera del pantalón (sobre el muslo), algo abierta abajo
-const sleeveGeo = new THREE.CylinderGeometry(0.06, 0.066, 1, 12, 1, true);   // manga corta (sobre el brazo)
+const sleeveGeo = new THREE.CylinderGeometry(0.071, 0.076, 1, 14, 1, true);   // manga corta (holgada sobre el bíceps, que no la atraviese)
 const shoulderGeo = new THREE.SphereGeometry(0.066, 14, 10).scale(1, 0.78, 0.92);   // hombro: aplanado para que no parezca hombrera
 const yokeGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 12).scale(1, 1, 0.8);
 // pelo: casquete con relieve irregular (mechones) en vez de media esfera lisa
@@ -1007,9 +1008,10 @@ function palaMats(it) {
   if (GEAR_MATS[it.id]) return GEAR_MATS[it.id];
   const L = PALA_LOOK[it.id], [cara, ador, marco, puno] = L.c, cv = document.createElement('canvas');
   cv.width = cv.height = 256;
-  // la tapa del cilindro solo usa el círculo inscrito: la cabeza (x 4..56, y 3..72) va en el cuadrado de dentro
-  const g = cv.getContext('2d'), cab = new Path2D(PALA_CABEZA[L.f]), sx = 180 / 54, sy = 180 / 71;
-  g.setTransform(sx, 0, 0, sy, 38 - 3 * sx, 38 - 2 * sy);
+  // la cabeza (x 4..56, y 3..72 del dibujo) llena el lienzo; el fondo, del color del marco (por el bisel del canto)
+  const g = cv.getContext('2d'), cab = new Path2D(PALA_CABEZA[L.f]), sx = 256 / 52, sy = 256 / 69;
+  g.fillStyle = marco; g.fillRect(0, 0, 256, 256);
+  g.setTransform(sx, 0, 0, sy, -4 * sx, -3 * sy);
   g.fillStyle = cara; g.fill(cab);
   g.save(); g.clip(cab);
   if (L.carbono) { g.fillStyle = '#3a3f46'; for (let y = 0; y < 76; y += 4) for (let x = (y / 4) % 2 * 2; x < 62; x += 4) g.fillRect(x, y, 2, 2); }
@@ -1019,9 +1021,27 @@ function palaMats(it) {
   for (let y = 16, f = 0; y <= 60; y += 7, f++) for (let x = f % 2 ? 12.5 : 9; x <= 51; x += 7) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
   g.restore(); g.strokeStyle = marco; g.lineWidth = 3.5; g.stroke(cab);
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2;   // (en la tapa, el eje largo de la pala va a lo ancho del lienzo)
-  const cap =new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, roughness: 0.55 });
-  return GEAR_MATS[it.id] = { face: [new THREE.MeshBasicMaterial({ visible: false }), cap, cap], grip: new THREE.MeshStandardMaterial({ color: puno, roughness: 0.8 }) };
+  // las caras de la pieza llevan como UV las medidas en metros: se pasan a 0..1 del lienzo
+  tex.repeat.set(1 / (52 * PALA_ESC), 1 / (69 * PALA_ESC)); tex.offset.set(0.5, -PALA_Y0 / (69 * PALA_ESC));
+  const cap = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 });
+  return GEAR_MATS[it.id] = { geo: palaGeo(L.f), face: [cap, new THREE.MeshStandardMaterial({ color: marco, roughness: 0.4 })],
+    grip: new THREE.MeshStandardMaterial({ color: puno, roughness: 0.8 }) };
+}
+// Cabeza de la pala con grosor (3,4 cm, como las de verdad): la forma del dibujo (redonda, lágrima o diamante)
+// extruida, con el canto redondeado. Eje y a lo largo del mango (la cabeza empieza donde acaba el mango).
+const PALA_ESC = 0.0049, PALA_Y0 = 0.13, PALA_GEO = {};
+function palaGeo(f) {
+  if (PALA_GEO[f]) return PALA_GEO[f];
+  const nums = PALA_CABEZA[f].match(/[MCZ]|-?[\d.]+/g), sh = new THREE.Shape(), P = (x, y) => [(x - 30) * PALA_ESC, (72 - y) * PALA_ESC + PALA_Y0];
+  for (let i = 0; i < nums.length;) {
+    const c = nums[i++];
+    if (c === 'M') { sh.moveTo(...P(+nums[i], +nums[i + 1])); i += 2; }
+    else if (c === 'C') { sh.bezierCurveTo(...P(+nums[i], +nums[i + 1]), ...P(+nums[i + 2], +nums[i + 3]), ...P(+nums[i + 4], +nums[i + 5])); i += 6; }
+    else if (c === 'Z') sh.closePath();
+  }
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.026, bevelEnabled: true, bevelSize: 0.004, bevelThickness: 0.004, bevelSegments: 2, curveSegments: 14 });
+  g.translate(0, 0, -0.013);
+  return PALA_GEO[f] = g;
 }
 function zapaMats(it) {
   if (GEAR_MATS[it.id]) return GEAR_MATS[it.id];
@@ -1213,8 +1233,10 @@ class Player {
     handle.position.y = 0.07;
     const face = this.pFace = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.025, 24), pMat);
     face.rotation.x = Math.PI / 2; face.scale.z = 1.3; face.position.y = 0.31;
-    handle.castShadow = face.castShadow = true;
-    this.paddle.add(handle, face);
+    // cabeza de las palas compradas (o las de su nivel): pieza con grosor y su forma
+    this.pHead = new THREE.Mesh(palaGeo('r'), pMat); this.pHead.visible = false;
+    handle.castShadow = face.castShadow = this.pHead.castShadow = true;
+    this.paddle.add(handle, face, this.pHead);
     this.upper.add(this.paddle);
     scene.add(this.g);
     this.target = null; this.delay = 0;
@@ -1235,7 +1257,7 @@ class Player {
     for (const sh of this.shoulders) sh.scale.setScalar(k * (fem ? 0.92 : 1));
     for (const j of [...this.knees, ...this.ankles, ...this.elbows, ...this.hands]) j.scale.setScalar(k);
     this.neck.scale.set(k * (fem ? 0.88 : 1), 1, k * (fem ? 0.88 : 1));
-    this.pelvis.scale.set(k * (fem ? 1.04 : 1), 1, 0.74 * (0.5 + 0.5 * k));
+    this.pelvis.scale.set(k * (fem ? 1.12 : 1.08), 1, 0.78 * (0.5 + 0.5 * k));   // (tapa el arranque de los muslos)
     this.skirt.scale.set(k, 1, 0.8 * (0.5 + 0.5 * k));   // falda algo ovalada: no se abre tanto por detrás
   }
   // aspecto: sencillo (una pieza de color) o detallado (piel, ropa, pelo y accesorios del jugador)
@@ -1249,8 +1271,10 @@ class Player {
     for (const m of extras) m.visible = false;
     // pala: la que lleva (en modo detallado); sin pala comprada, o en modo sencillo, la de color del equipo
     const gear = detailed && p ? materialDe(p) : [], pala = gear.find(x => x.tipo === 'pala'), zap = gear.find(x => x.tipo === 'zap');
-    if (pala && PALA_LOOK[pala.id]) { const m = palaMats(pala); this.pFace.material = m.face; this.pHandle.material = m.grip; this.pFace.scale.set(1.4, 1, 1.82); }
-    else { this.pFace.material = this.pMat; this.pHandle.material = this.pMat; this.pFace.scale.set(1, 1, 1.3); }
+    const conPala = !!(pala && PALA_LOOK[pala.id]);
+    if (conPala) { const m = palaMats(pala); this.pHead.geometry = m.geo; this.pHead.material = m.face; this.pHandle.material = m.grip; }
+    else { this.pFace.material = this.pMat; this.pHandle.material = this.pMat; }
+    this.pHead.visible = conPala; this.pFace.visible = !conPala;
     if (!detailed || !p) return;
     const skin = matOf(SKIN_TONES[p.piel], false, 0.7), shirt = matOf(p.cam), pants = matOf(p.pan, p.s === 'm');
     for (const m of [...this.legs, this.head, ...this.arms, ...cuerpo, this.nose, ...this.ears]) m.material = skin;
@@ -1289,6 +1313,7 @@ class Player {
     if (grip) this.pHandle.material = matOf(grip.col, false, 0.85);
     if (mun) for (const w of this.wrists) { w.visible = true; w.material = matOf(mun.col, false, 0.9); }
     if (cin) { this.headband.visible = true; this.headband.material = matOf(cin.col, false, 0.85); }
+    this.headband.scale.setScalar(H.geo ? 1.04 : 0.93);   // ajustada: sobre el pelo, algo más ancha; sin pelo, pegada a la cabeza
   }  // saltito: si la bola le va a pasar por encima, salta para llegar
   // Salto en tres fases: flexiona (impulso), vuela con las piernas estiradas y amortigua al caer.
   // Se decide con la bola prevista, para tener tiempo de flexionar y estar arriba al golpear.
@@ -1517,14 +1542,15 @@ class Player {
     // colocar el grupo del tronco para que la cadera quede fija en su sitio al inclinarse
     const hipY = HIP_Y - this.crouchS;
     tmpV2.set(0, HIP_Y, 0).applyEuler(this.upper.rotation);
-    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.06; this.pelvis.position.y = hipY;
+    this.upper.position.set(-tmpV2.x, hipY - tmpV2.y, -tmpV2.z); this.skirt.position.y = hipY - 0.1; this.pelvis.position.y = hipY;   // (la falda empieza justo bajo la camiseta)
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
       const hip = new V3(side * 0.1, hipY, 0), foot = this.feet[i].clone();
       const knee = ik(hip, foot, THIGH, SHIN, new V3(side * 0.15, 0, 1));   // rodilla hacia delante
       setBone(this.legs[i * 2], hip, knee); setBone(this.legs[i * 2 + 1], knee, foot);
       // pernera: desde un poco por encima de la cadera hasta media pierna del muslo
-      setBone(this.shortLegs[i], hip.clone().addScaledVector(knee.clone().sub(hip), -0.12), hip.clone().lerp(knee, 0.5));
+      // (empieza dentro de la pelvis: no asoma por arriba)
+      setBone(this.shortLegs[i], hip, hip.clone().lerp(knee, 0.5));
       this.knees[i].position.copy(knee); this.ankles[i].position.copy(foot);
       const shoe = this.shoes[i];
       shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.072);   // (el talón sobresale poco del tobillo)
@@ -1664,8 +1690,9 @@ class Player {
       setBone(this.wrists[1], elbowL.clone().lerp(handL, 0.8), elbowL.clone().lerp(handL, 0.94));
     }
     if (this.sleeves[0].visible) {
-      setBone(this.sleeves[0], sR.clone().lerp(elbowR, -0.04), sR.clone().lerp(elbowR, 0.38));
-      setBone(this.sleeves[1], sL.clone().lerp(elbowL, -0.04), sL.clone().lerp(elbowL, 0.38));
+      // (empieza en el centro de la bola del hombro: no asoma por encima)
+      setBone(this.sleeves[0], this.shoulders[0].position, sR.clone().lerp(elbowR, 0.38));
+      setBone(this.sleeves[1], this.shoulders[1].position, sL.clone().lerp(elbowL, 0.38));
     }
   }
 }
