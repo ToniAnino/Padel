@@ -2699,7 +2699,7 @@ function repartirXP(ganador) {
   return sube.join(' · ');
 }
 const TB_PTS = () => CFG.match === '4j' ? 3 : 7;   // puntos del tie-break
-const RETRASO_CARTEL = 0.9;   // s tras el punto antes de que salgan el cartel y el marcador
+const RETRASO_CARTEL = 1.5;   // s tras el punto antes de que salgan el cartel y el marcador
 function endPoint(winner, reason) {
   S.phase = 'point'; S.timer = 1.8;
   S.score[winner]++;
