@@ -647,6 +647,7 @@ function makeLabel(text, bg, fg) {
 
 // ================= Plantilla de jugadores =================
 // Barras (1-100; 50 = el nivel medio de antes). El estilo (agr) no es una barra: de defensivo a agresivo.
+const SIN_MATERIAL = 0.8, STAT_MAX = 125;
 const STAT_KEYS = ['vel', 'ref', 'pre', 'pot', 'rem', 'aer', 'par', 'col', 'vis', 'equ', 'saq', 'res'];
 const STAT_NAMES = { vel: 'Velocidad', ref: 'Reflejos', pre: 'Precisión', pot: 'Potencia', rem: 'Remate', aer: 'Juego aéreo', par: 'Defensa de pared',
   col: 'Colocación', vis: 'Visión de juego', equ: 'Juego en equipo', saq: 'Saque', res: 'Resistencia' };
@@ -701,7 +702,8 @@ function buildStats(p) {
   let seed = 0; for (const ch of p.id) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
   STAT_KEYS.forEach((k, i) => {
     const jitter = ((seed * (i + 7)) % 9) - 4;   // un poco de variación propia (siempre la misma)
-    st[k] = Math.round(clamp(p.base + mods.reduce((a, m) => a + (m[k] || 0), 0) + jitter, 5, 99));
+    // (sin material: el 80 %; la pala y las zapatillas de más nivel ponen el otro 20 %)
+    st[k] = Math.round(clamp(p.base + mods.reduce((a, m) => a + (m[k] || 0), 0) + jitter, 5, 99) * SIN_MATERIAL);
   });
   st.agr = pf.agr;
   return st;
@@ -721,15 +723,15 @@ const progOf = id => {
 const MEJORA_MAX = 20, PTS_NIVEL = 3;
 // Entrenamiento: se gasta experiencia para subir una barra durante unos partidos (uno a la vez por jugador)
 const TRAIN_COST = 40, TRAIN_BONUS = 8, TRAIN_MATCHES = 3;
-const statCap = (p, k) => Math.min(99, p.st0[k] + MEJORA_MAX);
+const statCap = (p, k) => p.st0[k] + MEJORA_MAX;
 const xpNeed = lvl => 100 + 25 * (lvl - 1);          // cada nivel cuesta un poco más
 // barras efectivas: se cambian en el mismo objeto (los jugadores en pista lo ven al momento)
 function refreshStats(p) {
   const add = progOf(p.id).add;
-  // (el material suma por encima del tope de mejora, nunca de 99)
-  for (const k of STAT_KEYS) p.st[k] = Math.min(99, Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0)) + bonoMaterial(p, k));
-  const tr = progOf(p.id).train;   // el entrenamiento puede pasar del tope de mejora (es temporal), no de 99
-  if (tr) p.st[tr.k] = Math.min(99, p.st[tr.k] + TRAIN_BONUS);
+  // (el material suma por encima del tope de mejora y puede pasar de 100)
+  for (const k of STAT_KEYS) p.st[k] = Math.min(STAT_MAX, Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0)) + bonoMaterial(p, k));
+  const tr = progOf(p.id).train;   // el entrenamiento puede pasar del tope de mejora (es temporal)
+  if (tr) p.st[tr.k] = Math.min(STAT_MAX, p.st[tr.k] + TRAIN_BONUS);
 }
 // al acabar un partido, a vuestros dos jugadores les queda un partido menos de entrenamiento
 function trainTick() {
@@ -759,13 +761,20 @@ function applyLookOv(p) {
 // ================= Dinero y material (palas y zapatillas) =================
 // Las palas mejoran los golpes y las zapatillas el movimiento. Vuestros dos jugadores llevan lo que compréis en la
 // tienda (cada uno lo suyo); los rivales llevan material según su nivel de partida.
+// Peso del material: la pala y las zapatillas de más nivel juntas suman de media +20 por barra, el 20 % del nivel de
+// un jugador de los mejores (sin material cada jugador tiene el 80 % de su nivel). Las demás, una parte de eso.
+// Pala de control: más precisión, juego aéreo y colocación; de potencia: más potencia y remate.
+const PALA_TOP = { pre: 26, pot: 26, rem: 24, aer: 24, saq: 22, col: 22, par: 14 };
+const ZAPA_TOP = { vel: 28, ref: 24, res: 18, par: 12 };
+const SESGO = { c: { pre: 1.2, aer: 1.15, col: 1.15, pot: 0.8, rem: 0.8 }, p: { pot: 1.2, rem: 1.2, saq: 1.1, pre: 0.8, aer: 0.85, col: 0.85 } };
+const bonos = (top, f, s) => Object.fromEntries(Object.entries(top).map(([k, v]) => [k, Math.max(1, Math.round(v * f * ((SESGO[s] || {})[k] || 1)))]));
 const PALAS = [
-  { id: 'pIni',   n: 'Iniciación Soft', pr: 80,   b: { pre: 2, pot: 1, aer: 1 } },
-  { id: 'pClubC', n: 'Club Control',    pr: 220,  b: { pre: 4, aer: 3, pot: 1 } },
-  { id: 'pClubP', n: 'Club Potencia',   pr: 220,  b: { pot: 4, rem: 3, pre: 1 } },
-  { id: 'pProR',  n: 'Pro Redonda',     pr: 650,  b: { pre: 7, aer: 5, pot: 3, rem: 2 } },
-  { id: 'pProD',  n: 'Pro Diamante',    pr: 650,  b: { pot: 7, rem: 6, aer: 3, pre: 2 } },
-  { id: 'pElite', n: 'Élite Carbono',   pr: 1600, b: { pre: 10, pot: 9, rem: 8, aer: 8 } },
+  { id: 'pIni',   n: 'Iniciación Soft', pr: 80,   b: bonos(PALA_TOP, 0.2) },
+  { id: 'pClubC', n: 'Club Control',    pr: 220,  b: bonos(PALA_TOP, 0.4, 'c') },
+  { id: 'pClubP', n: 'Club Potencia',   pr: 220,  b: bonos(PALA_TOP, 0.4, 'p') },
+  { id: 'pProR',  n: 'Pro Redonda',     pr: 650,  b: bonos(PALA_TOP, 0.65, 'c') },
+  { id: 'pProD',  n: 'Pro Diamante',    pr: 650,  b: bonos(PALA_TOP, 0.65, 'p') },
+  { id: 'pElite', n: 'Élite Carbono',   pr: 1600, b: bonos(PALA_TOP, 1) },
 ];
 // aspecto de cada pala en la tienda: forma (redonda = control, lágrima = mixta, diamante = potencia) y colores
 // [cara, adorno, marco, puño]
@@ -806,10 +815,10 @@ function palaSVG(it) {
   </svg>`;
 }
 const ZAPAS = [
-  { id: 'zIni',   n: 'Running',    pr: 60,   b: { vel: 2, ref: 1 } },
-  { id: 'zClub',  n: 'Club Grip',  pr: 180,  b: { vel: 4, ref: 3, res: 2 } },
-  { id: 'zPro',   n: 'Pro Clay',   pr: 520,  b: { vel: 7, ref: 5, res: 4 } },
-  { id: 'zElite', n: 'Élite Aero', pr: 1400, b: { vel: 10, ref: 8, res: 7 } },
+  { id: 'zIni',   n: 'Running',    pr: 60,   b: bonos(ZAPA_TOP, 0.2) },
+  { id: 'zClub',  n: 'Club Grip',  pr: 180,  b: bonos(ZAPA_TOP, 0.4) },
+  { id: 'zPro',   n: 'Pro Clay',   pr: 520,  b: bonos(ZAPA_TOP, 0.65) },
+  { id: 'zElite', n: 'Élite Aero', pr: 1400, b: bonos(ZAPA_TOP, 1) },
 ];
 // aspecto de las zapatillas: [empeine, adorno, mediasuela, suela]; dibujo de la suela (espiga o lisa)
 const ZAPA_LOOK = {
@@ -2405,7 +2414,7 @@ function scanRivalHit(pegadoAlCristal) {
 }
 // ----- Dificultad (1-100; 50 = como era al principio) -----
 // Ahora cada jugador tiene sus barras (1-100; 50 = como era el nivel 50): lvl(jugador, barra)
-const STAT = (pl, k) => clamp((pl && pl.stats ? pl.stats[k] : CFG.level) ?? 50, 1, 100);
+const STAT = (pl, k) => clamp((pl && pl.stats ? pl.stats[k] : CFG.level) ?? 50, 1, STAT_MAX);   // con material se pasa de 100
 const lvl = (pl, k = 'vis') => STAT(pl, k);
 const above = (pl, k = 'vis') => Math.max(0, (STAT(pl, k) - 50) / 50);   // 0 hasta 50, 1 en 100
 const below = (pl, k = 'vis') => Math.max(0, (50 - STAT(pl, k)) / 50);   // 0 desde 50, 1 en 1
@@ -2413,12 +2422,12 @@ const teamStat = (team, k) => (STAT(team[0], k) + STAT(team[1], k)) / 2;
 // Resistencia: en peloteos largos y según avanza el partido, el que tiene poca se va quedando sin piernas
 function fatigue(pl) {
   const juegos = S.games[0] + S.games[1] + 6 * S.sets.length;
-  return 1 - (1 - STAT(pl, 'res') / 100) * (0.22 * Math.min(1, (S.rallyHits || 0) / 14) + 0.1 * Math.min(1, juegos / 14));
+  return 1 - Math.max(0, 1 - STAT(pl, 'res') / 100) * (0.22 * Math.min(1, (S.rallyHits || 0) / 14) + 0.1 * Math.min(1, juegos / 14));
 }
 const aiSpeed = r => (5.0 - 2.2 * below(r, 'vel') + 1.2 * above(r, 'vel')) * fatigue(r);   // 2,8 .. 5 .. 6,2 m/s
 const ourSpeed = o => (4.9 + 1.9 * STAT(o, 'vel') / 100) * fatigue(o);                    // los vuestros: 5,0 .. 6,8 m/s
-const aiReaction = r => 0.25 + 0.4 * below(r, 'ref') - 0.13 * above(r, 'ref');            // 0,65 .. 0,25 .. 0,12 s
-const aiError = (r, k = 'pre') => 0.08 + 0.37 * below(r, k) - 0.07 * above(r, k);         // 45 % .. 8 % .. 1 %
+const aiReaction = r => Math.max(0.1, 0.25 + 0.4 * below(r, 'ref') - 0.13 * above(r, 'ref'));   // 0,65 .. 0,25 .. 0,12 s (0,1 pasando de 100)
+const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.37 * below(r, k) - 0.07 * above(r, k));   // 45 % .. 8 % .. 1 % .. 0,5 %
 // Calidad del golpe según cómo le llega la bola (los dos equipos): tras el bote y con tiempo (bota, pasan 0,3 s o más
 // y se golpea a buena altura) se falla y se desvía menos; a bote pronto (recién botada o a los pies), más; de volea
 // o de remate, según el juego aéreo. Multiplica los fallos y la dispersión (1 = normal).
@@ -3664,11 +3673,11 @@ document.getElementById('ladder').addEventListener('click', e => {
 // inscripción, nivel máximo (la media de vuestra pareja) y premios en metálico para campeón, finalista y tercero
 // (el que cae en semifinales). Los rivales salen de la plantilla según el nivel del torneo.
 const TORNEOS = [
-  { id: 't1', n: 'Torneo del Barrio',   max: 50, cuota: 0,   premios: [150, 70, 30],     riv: [28, 46] },
-  { id: 't2', n: 'Open Comarcal',       max: 60, cuota: 30,  premios: [350, 160, 70],    riv: [38, 56] },
-  { id: 't3', n: 'Copa Provincial',     max: 72, cuota: 80,  premios: [800, 380, 160],   riv: [48, 68] },
-  { id: 't4', n: 'Campeonato Regional', max: 85, cuota: 160, premios: [1700, 800, 350],  riv: [60, 82] },
-  { id: 't5', n: 'Gran Máster',         max: 0,  cuota: 320, premios: [3800, 1800, 800], riv: [72, 99] },
+  { id: 't1', n: 'Torneo del Barrio',   max: 46, cuota: 0,   premios: [150, 70, 30],     riv: [24, 42] },
+  { id: 't2', n: 'Open Comarcal',       max: 56, cuota: 30,  premios: [350, 160, 70],    riv: [34, 52] },
+  { id: 't3', n: 'Copa Provincial',     max: 70, cuota: 80,  premios: [800, 380, 160],   riv: [46, 66] },
+  { id: 't4', n: 'Campeonato Regional', max: 84, cuota: 160, premios: [1700, 800, 350],  riv: [58, 82] },
+  { id: 't5', n: 'Gran Máster',         max: 0,  cuota: 320, premios: [3800, 1800, 800], riv: [72, 110] },
 ];
 const RONDAS = ['Cuartos de final', 'Semifinal', 'Final'];
 const TOR_KEY = 'padel.torneo';
@@ -3863,7 +3872,7 @@ function cardHtml(p, elegible, actual) {
     // la parte mejorada se ve más clara; con puntos, botón + hasta el tope de esa barra
     const mas = q.pts > 0 && p.propio ? (p.st0[k] + (q.add[k] | 0) < statCap(p, k) ? `<button class="mas" data-k="${k}">+</button>` : '<em class="tope">tope</em>') : '';
     const ent = q.train && q.train.k === k ? ' ⬆' : '';   // barra en entrenamiento
-    return `<div class="bar"><span>${STAT_NAMES[k]}${ent}</span><i style="--v:${v}%;--c:${c};--b:${v > b0 ? b0 : 0}%"></i><b>${v}</b>${mas}</div>`;
+    return `<div class="bar"><span>${STAT_NAMES[k]}${ent}</span><i style="--v:${Math.min(100, v)}%;--c:${c};--b:${v > b0 ? b0 : 0}%"></i><b>${v}</b>${mas}</div>`;
   }).join('');
   const prog = q.lvl > 1 || q.xp > 0 || q.pts > 0
     ? `<div class="prog">Nivel ${q.lvl} · ${q.xp}/${xpNeed(q.lvl)} de experiencia<i style="--v:${Math.round(100 * q.xp / xpNeed(q.lvl))}%"></i>
@@ -3885,7 +3894,7 @@ function trainHtml(p) {
   const puede = q.xp >= TRAIN_COST;
   return `<div class="entreno"><div class="at">ENTRENAMIENTO</div>
     <div class="etx">${puede ? 'Elige una barra' : 'Necesitas ' + TRAIN_COST + ' de experiencia (tienes ' + q.xp + ')'}: +${TRAIN_BONUS} durante ${TRAIN_MATCHES} partidos por ${TRAIN_COST} de experiencia</div>
-    <div class="ebtns">${STAT_KEYS.map(k => `<button class="entr" data-k="${k}"${puede && p.st[k] < 99 ? '' : ' disabled'}>${STAT_NAMES[k]}</button>`).join('')}</div></div>`;
+    <div class="ebtns">${STAT_KEYS.map(k => `<button class="entr" data-k="${k}"${puede && p.st[k] < STAT_MAX ? '' : ' disabled'}>${STAT_NAMES[k]}</button>`).join('')}</div></div>`;
 }
 const hexc = n => '#' + n.toString(16).padStart(6, '0');
 const PAL = [0xf4f4f4, 0x111827, 0xdc2626, 0xf97316, 0xfacc15, 0x22c55e, 0x10b981, 0x0ea5e9, 0x1e3a8a, 0x7c3aed, 0xec4899, 0x475569];
