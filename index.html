@@ -902,6 +902,14 @@ BOLSA.dinero = Math.max(0, Math.round(+BOLSA.dinero || 0));
 if (!BOLSA.tiene || typeof BOLSA.tiene !== 'object') BOLSA.tiene = {};
 if (!BOLSA.lleva || typeof BOLSA.lleva !== 'object') BOLSA.lleva = {};
 const saveBolsa = () => { try { localStorage.setItem(BOLSA_KEY, JSON.stringify(BOLSA)); } catch (_) {} };
+// Para pruebas: abrir el juego con ?dinero=9000 en la dirección pone ese dinero (y se quita de la dirección)
+try {
+  const q = new URLSearchParams(location.search), d = q.get('dinero');
+  if (d !== null && Number.isFinite(+d) && +d >= 0) {
+    BOLSA.dinero = Math.round(+d); saveBolsa();
+    q.delete('dinero'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+  }
+} catch (_) {}
 const euros = n => n.toLocaleString('es-ES') + ' €';
 function materialDe(p) {
   if (p.propio) { const l = BOLSA.lleva[p.id] || {}; return [itemDe(l.pala), itemDe(l.zap)].filter(Boolean); }
