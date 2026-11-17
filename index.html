@@ -1947,7 +1947,9 @@ const ctrlP = () => (CFG.view === 'tpx' && S.ctrl) ? S.ctrl : ours[0];
 // Pala móvil: TÚ golpea con el móvil (se mueve solo) y COMPI lo lleva la máquina
 const pala = { conectado: false, peer: null, conn: null, relay: null, cod: '', cal: false };
 const palaOn = () => pala.conectado;
-const ourAI = o => o.team === US && ((unoSolo() && o !== ctrlP()) || (palaOn() && o !== ours[0]));
+// AUTO.on (solo para pruebas desde la consola: PADEL.AUTO.on = true): vuestros dos jugadores juegan solos
+const AUTO = { on: false };
+const ourAI = o => o.team === US && (AUTO.on || (unoSolo() && o !== ctrlP()) || (palaOn() && o !== ours[0]));
 const sacaSolo = o => ourAI(o) || (palaOn() && o === ours[0]);   // con la pala, TÚ también saca solo
 function setCtrl(o, aviso) {
   if (CFG.view !== 'tpx' || S.ctrl === o) return;
@@ -1968,7 +1970,7 @@ function pickCtrl() {
 // y va a por la bola cuando le llega antes a él
 function ourAIMove(dt) {
   if (S.phase !== 'play') return;
-  if (palaOn()) { moverAuto(ours[1], ours[0], dt); moverAuto(ours[0], ours[1], dt); return; }   // con la pala, los dos solos
+  if (palaOn() || AUTO.on) { moverAuto(ours[1], ours[0], dt); moverAuto(ours[0], ours[1], dt); return; }   // con la pala, los dos solos
   if (!unoSolo()) return;
   const me = ctrlP(); moverAuto(ours.find(o => o !== me), me, dt);
 }
@@ -2192,7 +2194,7 @@ const lobFactor = () => S.peak > LOB_PEAK ? (S.bounces === 0 ? 1.35 : 0.7) : 1;
 // radio de dispersión del golpe (m): 0,15 los muy precisos .. 2,1 los muy imprecisos, por lo difícil y el globo
 function aimSpread(pl) {
   const k = ball.p.y > SMASH_Y ? 'rem' : 'pre';
-  return (0.3 + 1.8 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor() * calidadGolpe(pl);
+  return (0.3 + 0.9 * below(pl, k) - 0.15 * above(pl, k)) * lobFactor() * calidadGolpe(pl);
 }
 const isBackWall = p => Math.abs(p.z) > HL - 0.1;
 // ¿el mate bota en el campo rival y llega a su pared del fondo antes del segundo bote?
@@ -2468,10 +2470,12 @@ function fatigue(pl) {
   const juegos = S.games[0] + S.games[1] + 6 * S.sets.length;
   return 1 - Math.max(0, 1 - STAT(pl, 'res') / 100) * (0.22 * Math.min(1, (S.rallyHits || 0) / 14) + 0.1 * Math.min(1, juegos / 14));
 }
-const aiSpeed = r => (5.0 - 2.2 * below(r, 'vel') + 1.2 * above(r, 'vel')) * fatigue(r);   // 2,8 .. 5 .. 6,2 m/s
+// Por debajo de 50 los jugadores no fallan tanto como para que no haya partido: juegan más lento, más flojo y más al
+// centro, pero la bola sigue en juego (antes, a nivel 30 un tercio de los puntos se acababa al primer o segundo golpe)
+const aiSpeed = r => (5.0 - 1.4 * below(r, 'vel') + 1.2 * above(r, 'vel')) * fatigue(r);   // 3,6 .. 5 .. 6,2 m/s
 const ourSpeed = o => (4.9 + 1.9 * STAT(o, 'vel') / 100) * fatigue(o);                    // los vuestros: 5,0 .. 6,8 m/s
-const aiReaction = r => Math.max(0.1, 0.25 + 0.4 * below(r, 'ref') - 0.13 * above(r, 'ref'));   // 0,65 .. 0,25 .. 0,12 s (0,1 pasando de 100)
-const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.37 * below(r, k) - 0.07 * above(r, k));   // 45 % .. 8 % .. 1 % .. 0,5 %
+const aiReaction = r => Math.max(0.1, 0.25 + 0.25 * below(r, 'ref') - 0.13 * above(r, 'ref'));   // 0,5 .. 0,25 .. 0,12 s (0,1 pasando de 100)
+const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.12 * below(r, k) - 0.07 * above(r, k));   // 20 % .. 8 % .. 1 % .. 0,5 %
 // Calidad del golpe según cómo le llega la bola (los dos equipos): tras el bote y con tiempo (bota, pasan 0,3 s o más
 // y se golpea a buena altura) se falla y se desvía menos; a bote pronto (recién botada o a los pies), más; de volea
 // o de remate, según el juego aéreo. Multiplica los fallos y la dispersión (1 = normal).
@@ -4286,7 +4290,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch,
-  fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
+  AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
 </script>
