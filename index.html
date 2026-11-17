@@ -619,6 +619,8 @@ const kneeGeo = new THREE.SphereGeometry(0.057, 12, 10), elbowGeo = new THREE.Sp
 // mano de la pala: puño cerrado (bola); la otra, abierta (bola aplastada, como la palma)
 const ankleGeo = new THREE.SphereGeometry(0.037, 10, 8), handGeo = new THREE.SphereGeometry(0.05, 12, 10).scale(0.85, 1.05, 0.8);
 const palmGeo = new THREE.SphereGeometry(0.055, 12, 10).scale(0.95, 1.2, 0.36);
+// ángulo del brazo en el golpe: de a (preparación) a b en el impacto (s = 0,64) y de ahí a c (terminación)
+const arco = (a, b, c, s) => s <= 0.64 ? a + (b - a) * s / 0.64 : b + (c - b) * (s - 0.64) / 0.36;
 const ALTO_Y = 1.45;   // golpe alto (sobre el hombro) por encima de esta altura, hasta la del remate
 // tronco con forma: cadera, cintura, pecho, hombros y arranque del cuello (centro en y = 1,13)
 // (acaba en la cintura, a la altura de la cadera: lo de abajo es la pelvis, que no se inclina con el tronco)
@@ -1613,21 +1615,26 @@ class Player {
         L = swinging ? new V3(0.3, 1.22, 0.1).lerp(new V3(0.36, 1.12, -0.2), s) : prep.clone().add(new V3(0.06, -0.14, 0.12));
         hR = new V3(0.7, 0.2, 0.5); hL = new V3(1, -1, 0);
       } else {                   // derecha alta: el brazo libre por delante, para equilibrar
-        L = new V3(0.3, 1.32, 0.36);
-        hR = new V3(-1, 0.25, -0.2); hL = new V3(1, -1, -0.4);
+        L = swinging ? new V3(0.28, 1.36, 0.52).lerp(new V3(-0.04, 1.2, 0.34), s) : new V3(0.28, 1.36, 0.52);
+        hR = new V3(-1, 0.25, -0.2); hL = new V3(0.7, -1, 0.4);
       }
     } else if (st === 'back') { // revés: pala atrás a la izquierda, mano izquierda acompañando
       // la mano de la pala va siempre por delante del pecho (el "atrás" lo da el giro del cuerpo):
       // de junto a la cadera izquierda, por delante, hasta acabar a la derecha
-      const th = (corto ? THREE.MathUtils.lerp(70, -15, s) : THREE.MathUtils.lerp(112, -60, s)) * DEG;
+      // (el impacto, s = 0,64, delante de la cadera izquierda: a 25° de la línea del pecho; 15° en la volea)
+      const th = (corto ? arco(70, 15, -15, s) : arco(112, 25, -60, s)) * DEG;
       R = new V3(0.48 * Math.sin(th), hy, 0.44 + 0.3 * Math.cos(th));
-      L = swinging ? new V3(0.3, 1.2, 0.05).lerp(new V3(0.38, 1.15, -0.25), s) : R.clone().add(new V3(0.05, 0.08, 0.1));
-      hR = new V3(0.2, -0.6, 1); hL = new V3(1, -1, 0);   // codo por delante del pecho
+      // la mano libre acompaña a la pala al prepararlo y, en el golpe, se suelta y se abre hacia atrás, estirada (equilibrio)
+      L = swinging ? new V3(0.34, 1.2, 0.24).lerp(new V3(0.62, 1.0, -0.28), s) : R.clone().add(new V3(0.05, 0.08, 0.1));
+      hR = new V3(0.2, -0.6, 1); hL = new V3(1, -1, 0.2);   // codo por delante del pecho
     } else {                    // derecha: pala atrás a la derecha, mano izquierda delante
-      const prepL = new V3(0.32, 1.25, 0.38);
-      R = flat(corto ? THREE.MathUtils.lerp(-50, 35, s) : THREE.MathUtils.lerp(-110, 75, s), hy);
-      L = swinging ? prepL.lerp(new V3(0.25, 1.1, 0.1), s) : prepL;
-      hR = new V3(-1, -1, -0.4); hL = new V3(1, -1, -0.4);
+      // brazo libre por delante, casi estirado, señalando la bola; en el golpe se recoge por delante del pecho
+      // (el codo, abajo y algo adelante: nunca por detrás de la espalda)
+      const prepL = new V3(0.26, 1.3, 0.56);
+      // (el impacto, s = 0,64, delante de la cadera derecha: a 25° de la línea del pecho; 15° en la volea)
+      R = flat(corto ? arco(-50, -15, 35, s) : arco(-110, -25, 75, s), hy);
+      L = swinging ? prepL.lerp(new V3(-0.06, 1.18, 0.36), s) : prepL;
+      hR = new V3(-1, -1, -0.4); hL = new V3(0.7, -1, 0.4);
     }
     if (!swinging) {            // entre la espera y la preparación según lo cerca que esté la bola
       R = idleR.lerp(R, this.ready); L = idleL.lerp(L, this.ready);
@@ -1676,6 +1683,25 @@ class Player {
     if (nCara.lengthSq() < 1e-4) nCara.set(0, 0, 1).addScaledVector(tmpV2, -tmpV2.z);
     nCara.normalize();
     this.paddle.quaternion.setFromRotationMatrix(_basePala.makeBasis(new V3().crossVectors(tmpV2, nCara), tmpV2, nCara));
+    // en el impacto el brazo va a por la bola: se mueve la mano para que el centro de la pala (a 0,3 m de la mano
+    // por el mango) quede donde estaba la bola al golpearla, hasta donde llegue el brazo; luego vuelve al arco
+    if (swinging && this.hitBall) {
+      const w = clamp(1 - (s - (st === 'over' ? 0.19 : 0.64) - 0.06) / 0.2, 0, 1);
+      if (w > 0) {
+        this.g.updateMatrixWorld();
+        const bl = this.upper.worldToLocal(this.hitBall.clone());
+        // bola lejos: se estira (el hombro se adelanta hacia ella hasta 0,12 m), como al tirarse a por una bola
+        const lejos = sR.distanceTo(bl) - 0.95;
+        if (lejos > 0) sR.addScaledVector(bl.clone().sub(sR).normalize(), Math.min(0.12, lejos) * w);
+        hand.addScaledVector(bl.sub(hand.clone().addScaledVector(tmpV2, 0.32)), w);
+        elbowR.copy(ik(sR, hand, 0.34, 0.34, hR));   // (si no llega, la mano se queda con el brazo estirado)
+        setBone(this.arms[0], sR, elbowR); setBone(this.arms[1], elbowR, hand);
+        this.elbows[0].position.copy(elbowR);
+        const fa = new V3().subVectors(hand, elbowR).normalize();
+        this.hands[0].position.copy(hand).addScaledVector(fa, 0.025); this.hands[0].quaternion.setFromUnitVectors(UP, fa);
+        this.paddle.position.copy(hand);
+      }
+    }
     const elbowL = ik(sL, handL, 0.34, 0.34, hL);
     setBone(this.arms[2], sL, elbowL); setBone(this.arms[3], elbowL, handL);
     this.elbows[1].position.copy(elbowL);
@@ -2491,6 +2517,7 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
   // el golpe se ve desde el impacto: en el remate el impacto es arriba (cerca del principio del arco)
   pl.swingT = pl.swingStroke === 'over' ? 0.1 : 0.4; pl.ready = 0; pl.hitY = clamp(ball.p.y - pl.pos.y, 0.7, 2.1);
   pl.swingDir = ball.v.clone().normalize();   // hacia donde sale la bola: la cara de la pala mira ahí en el golpe
+  pl.hitBall = ball.p.clone();                // dónde estaba la bola: el brazo va a por ella en el impacto
   // animación: volea corta en la red, globo de abajo arriba y acabando alto, golpe de fondo completo
   pl.swingKind = kind === 'saque' ? 'saque' : type === 'lob' ? 'globo' : kind === 'volea' && Math.abs(pl.pos.z) < 6 ? 'volea' : 'drive'; pl.finishT = -1;
   pl.swingPow = smash ? 1 : 0.35;   // remate fuerte (mate) o controlado (bandeja): cuánto se echa el cuerpo adelante
