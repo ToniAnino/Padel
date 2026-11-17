@@ -871,15 +871,15 @@ const ZAPAS = [
 const COMP_FOCO = [['Pre', 'Tacto', 'pre', 'aer', '#f8fafc'], ['Pot', 'Agarre', 'pot', 'rem', '#111827'], ['Rem', 'Remate', 'rem', 'pot', '#ef4444'],
   ['Aer', 'Volea', 'aer', 'pre', '#38bdf8'], ['Saq', 'Saque', 'saq', 'pre', '#a855f7']];
 const TODOS_GOLPES = (v) => ({ pre: v, pot: v, rem: v, aer: v, saq: v });
-const GRIPS = [...COMP_FOCO.map(([id, n, k, k2, col]) => ({ id: 'g' + id, n: 'Grip ' + n, pr: 90, col, b: { [k]: 5, [k2]: 1 } })),
-  { id: 'gPro', n: 'Grip Pro', pr: 320, col: '#fde047', b: TODOS_GOLPES(3) }];
-const MUNES = [...COMP_FOCO.map(([id, n, k, , col]) => ({ id: 'm' + id, n: 'Muñequeras ' + n, pr: 45, col, b: { [k]: 3 } })),
-  { id: 'mPro', n: 'Muñequeras Pro', pr: 180, col: '#fde047', b: TODOS_GOLPES(2) }];
+const GRIPS = [...COMP_FOCO.map(([id, n, k, k2, col]) => ({ id: 'g' + id, n: 'Grip ' + n, pr: 18, col, b: { [k]: 5, [k2]: 1 } })),
+  { id: 'gPro', n: 'Grip Pro', pr: 64, col: '#fde047', b: TODOS_GOLPES(3) }];
+const MUNES = [...COMP_FOCO.map(([id, n, k, , col]) => ({ id: 'm' + id, n: 'Muñequeras ' + n, pr: 9, col, b: { [k]: 3 } })),
+  { id: 'mPro', n: 'Muñequeras Pro', pr: 36, col: '#fde047', b: TODOS_GOLPES(2) }];
 const CINTAS = [
-  { id: 'cAer', n: 'Cinta Aérea',  pr: 40,  col: '#38bdf8', b: { aer: 3 } },
-  { id: 'cVis', n: 'Cinta Visión', pr: 40,  col: '#22c55e', b: { vis: 3 } },
-  { id: 'cRes', n: 'Cinta Fondo',  pr: 40,  col: '#f97316', b: { res: 3 } },
-  { id: 'cPro', n: 'Cinta Pro',    pr: 150, col: '#fde047', b: { aer: 2, vis: 2, res: 2 } },
+  { id: 'cAer', n: 'Cinta Aérea',  pr: 8,  col: '#38bdf8', b: { aer: 3 } },
+  { id: 'cVis', n: 'Cinta Visión', pr: 8,  col: '#22c55e', b: { vis: 3 } },
+  { id: 'cRes', n: 'Cinta Fondo',  pr: 8,  col: '#f97316', b: { res: 3 } },
+  { id: 'cPro', n: 'Cinta Pro',    pr: 30, col: '#fde047', b: { aer: 2, vis: 2, res: 2 } },
 ];
 const TIPOS_MAT = ['pala', 'zap', 'grip', 'mun', 'cin'];
 // dibujo de los complementos en la tienda
