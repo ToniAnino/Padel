@@ -153,6 +153,12 @@
   #vsCanvas{flex:1;min-height:0;width:100%;touch-action:none;cursor:grab}
   #vsCanvas:active{cursor:grabbing}
   #visor .vsHint{text-align:center;font-size:12px;opacity:.6;padding:6px 16px 16px}
+  #visor .vsBtns{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:6px 16px 0}
+  #visor .vsSeg{display:flex;border:1px solid rgba(255,255,255,.45);border-radius:8px;overflow:hidden}
+  #visor .vsBtns button{border:0;background:transparent;color:#fff;font:inherit;font-size:13px;font-weight:800;padding:8px 12px;cursor:pointer}
+  #visor .vsSeg button.on{background:#fff;color:#06080d}
+  #visor #vsGolpes{border:1px solid rgba(255,255,255,.45);border-radius:8px}
+  #visor #vsGolpes.on{background:#fde047;color:#06080d;border-color:#fde047}
   .card .ver3d{display:block;width:100%;margin:6px 0;padding:8px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
   #picker{position:fixed;inset:0;z-index:11;display:none;background:#06080d;overflow-y:auto;padding:12px;box-sizing:border-box}
   #picker.open{display:block}
@@ -245,7 +251,7 @@
   #hud .st{display:inline-block;margin:0 3px;font-size:12px;opacity:.8;letter-spacing:0}
 </style>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
 </head>
 <body>
@@ -362,7 +368,9 @@
       <div id="pkHint"></div><div id="pkList"></div>
     </div></div>
     <div id="visor"><div class="vhead"><div><div id="vsNom"></div><div class="vsub" id="vsSub"></div></div><button id="vsClose" aria-label="Cerrar">✕</button></div>
-      <canvas id="vsCanvas"></canvas><div class="vsHint">Arrastra a los lados para girarlo</div></div>
+      <canvas id="vsCanvas"></canvas>
+      <div class="vsBtns"><div class="vsSeg"><button data-m="0">Piezas</button><button data-m="1">Modelo nuevo (prueba)</button></div><button id="vsGolpes">▶ Ver golpes</button></div>
+      <div class="vsHint" id="vsHint">Arrastra a los lados para girarlo</div></div>
     <div id="confirm"><div class="cbox"><p id="cfTxt"></p><div class="cbtn"><button id="cfNo">Cancelar</button><button id="cfSi">Sí</button></div></div></div>
   </div>
 </div>
@@ -1523,6 +1531,7 @@ class Player {
     const ge = this.gesto, gp = ge ? { puño: -0.25, brazos: -0.35, cabeza: 0.35, jarras: 0.5 }[ge.k] : undefined;
     this.head.rotation.y += ((gp !== undefined ? 0 : yaw) - this.head.rotation.y) * k;
     this.head.rotation.x += ((gp !== undefined ? gp : -pitch) - this.head.rotation.x) * k;
+    if (this.rig) poseModelo(this);
   }
   // Piernas: paso al correr, piernas abiertas y flexionadas en la espera, pie adelantado al golpear
   // y rodillas recogidas en el salto. Todo en coordenadas locales (+z adelante, -x derecha).
@@ -1683,6 +1692,8 @@ class Player {
       // pernera: desde un poco por encima de la cadera hasta media pierna del muslo
       // (empieza dentro de la pelvis: no asoma por arriba)
       setBone(this.shortLegs[i], hip, hip.clone().lerp(knee, 0.5));
+      (this.J ??= {})['l' + i] = [hip.clone(), knee.clone(), foot.clone()];   // (para el modelo con esqueleto)
+      this.J.hipC = new V3(0, hipY, hipZ);
       this.knees[i].position.copy(knee); this.ankles[i].position.copy(foot);
       const shoe = this.shoes[i];
       shoe.position.set(foot.x, foot.y - 0.02, foot.z + 0.072);   // (el talón sobresale poco del tobillo)
@@ -1691,6 +1702,7 @@ class Player {
       shoe.rotation.set(0.55 * tr, (atras ? -0.6 : 0.6) * tr, 0, 'YXZ');
       if (tr > 0) shoe.position.z += 0.03 * tr;   // (gira sobre la punta, que sigue en el suelo)
     }
+    if (this.rig) poseModelo(this);
   }
   updateArms(dt) {
     const sR = new V3(-0.22, 1.42, 0), sL = new V3(0.22, 1.42, 0);
@@ -1882,6 +1894,10 @@ class Player {
       setBone(this.sleeves[0], sR.clone().lerp(elbowR, 0.045), sR.clone().lerp(elbowR, 0.4));
       setBone(this.sleeves[1], sL.clone().lerp(elbowL, 0.045), sL.clone().lerp(elbowL, 0.4));
     }
+    // articulaciones para el modelo con esqueleto (en el sistema del tronco; hR/hL son hacia dónde sale el codo)
+    this.J = Object.assign(this.J || {}, { sR: sR.clone(), eR: elbowR.clone(), hR: hand.clone(), sL: sL.clone(), eL: elbowL.clone(), hL: handL.clone(),
+      cara: nCara.clone(), poloR: hR.clone(), poloL: hL.clone() });
+    if (this.rig) poseModelo(this);
   }
 }
 
@@ -4641,6 +4657,286 @@ document.getElementById('pkList').addEventListener('click', e => {
   card.classList.toggle('open');
 });
 menuEl.addEventListener('click', e => { const s = e.target.closest('.slot'); if (s) openPicker(+s.dataset.s); });
+// ================= Modelo con esqueleto (prueba, de momento solo en el visor) =================
+// Personajes base de Quaternius («Universal Base Characters», licencia CC0): malla con piel y esqueleto de 65 huesos.
+// No usan animaciones propias: se mueven con las mismas cuentas que el muñeco de piezas. updateLegs/updateArms dejan en
+// pl.J las articulaciones (caderas, rodillas, tobillos, hombros, codos, muñecas y la cara de la pala) y poseModelo
+// orienta los huesos para pasar por ellas. La ropa se pinta en la propia malla por zonas (camiseta, pantalón, calcetín y
+// zapatilla) con los colores de cada jugador. El muñeco de piezas sigue igual: se elige uno u otro.
+const MOD = { base: 'modelos/', carga: null, src: {}, tex: {}, pelo: {} };
+const PELO_MOD = { corto: 'Hair_SimpleParted', rizado: 'Hair_SimpleParted', rapado: 'Hair_Buzzed', coleta: 'Hair_BuzzedFemale', mono: 'Hair_Buns', melena: 'Hair_Long' };
+const M_BRAZO = 1.15;   // los brazos del modelo, algo más largos (los trae cortos: 0,49 m del hombro a la muñeca)
+const M_CABEZA = { h: [new V3(0, 1.72, 0.0), 0.86], m: [new V3(0, 1.68, 0.0), 0.84] };   // centro y tamaño de la cabeza (para la cinta, gorra, gafas...)
+const _mB0 = new THREE.Matrix4(), _qB0 = new THREE.Quaternion(), _qB1 = new THREE.Quaternion();
+function cargaModelos() {
+  if (MOD.carga) return MOD.carga;
+  MOD.carga = (async () => {
+    const [{ GLTFLoader }, SU] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/utils/SkeletonUtils.js')]);
+    MOD.SU = SU;
+    const ld = new GLTFLoader(), tl = new THREE.TextureLoader();
+    const tx = (n, srgb) => tl.loadAsync(MOD.base + n).then(t => { t.flipY = false; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
+    const pelos = [...new Set(Object.values(PELO_MOD)), 'Hair_Beard'];
+    const [h, m, ...resto] = await Promise.all([ld.loadAsync(MOD.base + 'hombre.gltf'), ld.loadAsync(MOD.base + 'mujer.gltf'), ...pelos.map(n => ld.loadAsync(MOD.base + n + '.gltf'))]);
+    const nt = ['piel_h', 'piel_m', 'pelo1', 'pelo2', 'ojo', 'piel_h_n', 'piel_m_n', 'pelo1_n', 'pelo2_n'];
+    const ts = await Promise.all(nt.map((n, i) => tx(n + (n === 'ojo' ? '.png' : '.jpg'), i < 5)));
+    nt.forEach((n, i) => { MOD.tex[n] = ts[i]; });
+    MOD.src.h = preparaFuente(h.scene); MOD.src.m = preparaFuente(m.scene);
+    pelos.forEach((n, i) => { MOD.pelo[n] = geoPelo(resto[i].scene); });
+    // color medio de la piel de la textura (para llevarla al tono de cada jugador)
+    const pm = new THREE.Color(0xa87551); MOD.pielInv = new THREE.Color(1 / pm.r, 1 / pm.g, 1 / pm.b);
+  })();
+  MOD.carga.catch(() => { MOD.carga = null; });
+  return MOD.carga;
+}
+// peinado: la malla en su sitio de reposo (en metros), sin esqueleto (va pegada al hueso de la cabeza)
+function geoPelo(sc) {
+  sc.updateMatrixWorld(true);
+  let r = null;
+  sc.traverse(o => {
+    if (!o.isMesh || r) return;
+    const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld);
+    for (const a of ['skinIndex', 'skinWeight']) if (g.attributes[a]) g.deleteAttribute(a);
+    r = { geo: g, t: /2/.test(o.material.name) ? 2 : 1 };
+  });
+  return r;
+}
+// datos de reposo de cada hueso y zonas de ropa de la malla (en la postura en T)
+function preparaFuente(sc) {
+  sc.updateMatrixWorld(true);
+  const F = { sc, rest: {}, dedos: [] }; let cuerpo = null;
+  sc.traverse(o => {
+    if (o.isBone) { const p = new V3(), q = new THREE.Quaternion(); o.getWorldPosition(p); o.getWorldQuaternion(q); F.rest[o.name] = { p, q, lp: o.position.clone(), lq: o.quaternion.clone() }; }
+    if (o.isSkinnedMesh && /Superhero/i.test(o.material.name)) cuerpo = o;
+  });
+  const R = F.rest;
+  // largo de los huesos y dirección en reposo
+  F.dir = n => R[n].p.clone();
+  const g = cuerpo.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const nb = cuerpo.skeleton.bones.map(b => b.name), n = pos.count;
+  const conM = new Float32Array(n * 4), sinM = new Float32Array(n * 4);
+  const muslo = R.thigh_r.p.y, rodilla = R.calf_r.p.y;
+  const cintura = muslo + 0.05, pernera = muslo - 0.42 * (muslo - rodilla), cuello = R.neck_01.p.y;
+  const hx = Math.abs(R.upperarm_r.p.x), ex = Math.abs(R.lowerarm_r.p.x), hy = R.upperarm_r.p.y;
+  const tobillo = R.foot_r.p.y;
+  for (let i = 0; i < n; i++) {
+    let mb = 0, mw = -1;
+    for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > mw) { mw = w; mb = si.getComponent(i, k); } }
+    const b = nb[mb], x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ax = Math.abs(x);
+    const brazo = /arm|hand|index|middle|ring|pinky|thumb/.test(b), cabeza = /neck|Head/.test(b);
+    const t = (ax - hx) / (ex - hx);                                   // por el brazo: 0 hombro .. 1 codo
+    // escote: solo junto al cuello (algo más bajo delante); por los lados la camiseta sube hasta los hombros
+    const cuelloX = 0.11 - Math.max(0, cuello - y) * 0.6;
+    const tronco = !cabeza && y > cintura && !(ax < cuelloX && y > cuello - 0.025 - (z > 0 ? 0.045 : 0));
+    const camM = tronco && (!brazo || t < 0.42) ? 1 : 0;                                  // camiseta con manga corta
+    const camS = tronco && !brazo && !(ax > hx - 0.025 && y > hy - 0.09) && !(ax < cuelloX + 0.01 && y > cuello - 0.035 - (z > 0 ? 0.035 : 0)) ? 1 : 0;   // sin mangas (tirantes)
+    const pan = !brazo && y <= cintura && y > pernera ? 1 : 0;
+    const zap = y < tobillo + 0.035 ? 1 : 0, calc = y < tobillo + 0.085 ? 1 : 0;
+    conM.set([camM, pan, zap, calc], i * 4); sinM.set([camS, pan, zap, calc], i * 4);
+  }
+  g.setAttribute('ropaM', new THREE.BufferAttribute(conM, 4)); g.setAttribute('ropaS', new THREE.BufferAttribute(sinM, 4));
+  // dedos: eje de flexión de cada falange (hacia la palma, que en la postura en T mira abajo)
+  for (const lado of ['r', 'l']) for (const d of ['index', 'middle', 'ring', 'pinky', 'thumb']) for (const k of [1, 2, 3]) {
+    const nm = `${d}_0${k}_${lado}`, hijo = `${d}_0${k + 1}_${lado}` + (k === 3 ? '' : ''), nh = R[`${d}_0${k + 1}_${lado}`] || R[`${d}_04_leaf_${lado}`];
+    if (!R[nm] || !nh) continue;
+    // (el pulgar se cierra hacia la palma y hacia los dedos: rodea el mango por el otro lado)
+    const dir = nh.p.clone().sub(R[nm].p).normalize(), palma = d === 'thumb' ? new V3(lado === 'r' ? -0.5 : 0.5, -1, 0).normalize() : new V3(0, -1, 0);
+    const ax = new V3().crossVectors(dir, palma).normalize().applyQuaternion(R[nm].q.clone().invert());
+    F.dedos.push({ nm, lado, ax, k: d === 'thumb' ? [0, 0.5, 0.8, 0.6][k] : [0, 1, 1.25, 0.9][k] });
+  }
+  // ejes de la mano en reposo: f hacia los dedos, l hacia el pulgar, p normal de la palma (abajo); s, el sentido de f = s·(l × p)
+  F.mano = {};
+  for (const lado of ['r', 'l']) {
+    const f0 = R['middle_01_' + lado].p.clone().sub(R['hand_' + lado].p).normalize();
+    const p0 = new V3(0, -1, 0).addScaledVector(f0, f0.y).normalize();
+    const l0 = R['thumb_01_' + lado].p.clone().sub(R['hand_' + lado].p); l0.addScaledVector(f0, -l0.dot(f0)).addScaledVector(p0, -l0.dot(p0)).normalize();
+    F.mano[lado] = { f0, p0, s: Math.sign(new V3().crossVectors(l0, p0).dot(f0)) || 1 };
+  }
+  return F;
+}
+function matCuerpo(fem) {
+  const u = { uPiel: { value: new THREE.Color() }, uCam: { value: new THREE.Color() }, uPan: { value: new THREE.Color() },
+    uZap: { value: new THREE.Color() }, uCalc: { value: new THREE.Color(0xf2f2f2) }, uMangas: { value: 1 } };
+  const m = new THREE.MeshStandardMaterial({ map: MOD.tex[fem ? 'piel_m' : 'piel_h'], normalMap: MOD.tex[fem ? 'piel_m_n' : 'piel_h_n'], roughness: 0.62, metalness: 0 });
+  m.userData.u = u;
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 ropaM;\nattribute vec4 ropaS;\nuniform float uMangas;\nvarying vec4 vRopa;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRopa = mix(ropaS, ropaM, uMangas);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uPiel, uCam, uPan, uZap, uCalc;\nvarying vec4 vRopa;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          vec3 t = diffuseColor.rgb; float lum = dot(t, vec3(0.299, 0.587, 0.114));
+          float sat = max(t.r, max(t.g, t.b)) - min(t.r, min(t.g, t.b)), gris = smoothstep(0.07, 0.025, sat);
+          vec3 som = vec3(mix(1.0, clamp(lum / mix(0.21, 0.5, gris), 0.6, 1.2), 0.55));   // algo del sombreado de la textura, para la ropa
+          // (la ropa interior gris del modelo: si asoma fuera de la ropa, se pinta de piel)
+          vec3 c = mix(t * uPiel, vec3(0.39, 0.18, 0.083) * uPiel * clamp(lum / 0.5, 0.6, 1.2), gris);
+          c = mix(c, uCam * som, smoothstep(0.35, 0.65, vRopa.x)); c = mix(c, uPan * som, smoothstep(0.35, 0.65, vRopa.y));
+          c = mix(c, uCalc * som, smoothstep(0.35, 0.65, vRopa.w)); c = mix(c, uZap * som, smoothstep(0.35, 0.65, vRopa.z));
+          diffuseColor.rgb = c;
+        }`)
+      .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - 0.7 * clamp(vRopa.x + vRopa.y + vRopa.z, 0.0, 1.0));');   // la ropa, más lisa
+  };
+  m.customProgramCacheKey = () => 'cuerpoModelo';
+  return m;
+}
+const MAT_PELO = {};
+function matPelo(color, t) {
+  const k = color + ':' + t;
+  if (MAT_PELO[k]) return MAT_PELO[k];
+  const c = new THREE.Color(color).multiplyScalar(3.4);   // (la textura del pelo es gris: se tiñe del color del jugador)
+  return MAT_PELO[k] = new THREE.MeshStandardMaterial({ map: MOD.tex['pelo' + t], normalMap: MOD.tex['pelo' + t + '_n'], color: c, roughness: 0.75, side: THREE.DoubleSide });
+}
+// piezas del muñeco que se ocultan con el modelo (la pala y la falda se quedan) y accesorios que pasan a su cabeza
+const piezasMuneco = pl => [...pl.legs, pl.torso, pl.neck, pl.head, ...pl.arms, ...pl.knees, ...pl.ankles, ...pl.elbows, ...pl.hands,
+  pl.pelvis, ...pl.shortLegs, ...pl.shoes, ...pl.shoulders, pl.yoke, ...pl.sleeves, pl.collar, ...pl.wrists];
+const accCabeza = pl => [pl.headband, pl.cap, pl.brim, pl.glasses, pl.hairExtra];
+function quitaModelo(pl) {
+  const R = pl.rig; if (!R) return;
+  pl.g.remove(R.obj);
+  for (const m of accCabeza(pl)) pl.head.add(m);
+  for (const z of pl.shoes) z.scale.set(1, 1, 1);
+  pl.rig = null;
+  if (pl.prof) pl.setProfile(pl.prof);   // (medidas de la falda)
+  pl.setLook(true);
+}
+function ponModelo(pl) {
+  if (pl.rig) quitaModelo(pl);
+  const p = pl.prof; if (!p || !MOD.src.h) return;
+  const fem = p.s === 'm', F = MOD.src[fem ? 'm' : 'h'], rest = F.rest;
+  const obj = MOD.SU.clone(F.sc), H = {};
+  obj.traverse(o => { if (o.isBone) H[o.name] = o; });
+  const mc = matCuerpo(fem), hc = p.pc;
+  obj.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.frustumCulled = false;
+    if (/Superhero/i.test(o.material.name)) o.material = mc;
+    else if (/Eyes/.test(o.material.name)) o.material = MOD.matOjo ??= new THREE.MeshStandardMaterial({ map: MOD.tex.ojo, roughness: 0.25 });
+    else o.material = matPelo(hc, /2/.test(o.material.name) ? 2 : 1);   // cejas
+  });
+  // colores de la ropa y la piel del jugador
+  const u = mc.userData.u, gear = materialDe(p), zap = gear.find(x => x.tipo === 'zap'), zl = zap && ZAPA_LOOK[zap.id];
+  u.uPiel.value.set(SKIN_TONES[p.piel]).multiply(MOD.pielInv);
+  u.uCam.value.set(p.cam); u.uPan.value.set(p.pan); u.uZap.value.set(zl ? zl.c[0] : p.zap); u.uMangas.value = p.man ? 1 : 0;
+  // brazos algo más largos; piernas, a la medida de las del muñeco
+  for (const l of ['r', 'l']) {
+    H['lowerarm_' + l].position.copy(rest['lowerarm_' + l].lp).multiplyScalar(M_BRAZO);
+    H['hand_' + l].position.copy(rest['hand_' + l].lp).multiplyScalar(M_BRAZO);
+    H['calf_' + l].position.copy(rest['calf_' + l].lp).multiplyScalar(THIGH / rest['calf_' + l].p.distanceTo(rest['thigh_' + l].p));
+    H['foot_' + l].position.copy(rest['foot_' + l].lp).multiplyScalar(SHIN / rest['foot_' + l].p.distanceTo(rest['calf_' + l].p));
+  }
+  // la cabeza: un marco con los ejes del cuerpo en reposo pegado al hueso; dentro, el peinado y los accesorios del muñeco
+  const rh = rest.Head, qi = rh.q.clone().invert();
+  const marco = new THREE.Group(); marco.quaternion.copy(qi); marco.position.copy(rh.p).negate().applyQuaternion(qi);
+  H.Head.add(marco);
+  const peinado = MOD.pelo[PELO_MOD[p.pelo]];
+  if (peinado) { const m = new THREE.Mesh(peinado.geo, matPelo(hc, peinado.t)); m.castShadow = true; marco.add(m); }
+  if (p.acc.barba) marco.add(new THREE.Mesh(MOD.pelo.Hair_Beard.geo, matPelo(hc, 1)));
+  const [cc, ce] = M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
+  cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
+  for (const m of accCabeza(pl)) cab.add(m);
+  pl.hair.visible = false;
+  if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
+  for (const m of piezasMuneco(pl)) m.visible = false;
+  for (const z of pl.shoes) { z.visible = true; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
+  pl.skirt.scale.multiply(new V3(0.9, 1, 0.92));   // (las caderas del modelo, algo más estrechas)
+  pl.g.add(obj);
+  const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * M_BRAZO, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * M_BRAZO;
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem };
+  poseModelo(pl);
+}
+// cuaternión que lleva la base (dir0, sec0) a la (dir, sec): x = dirección del hueso, y = eje secundario
+function baseQ(dir, sec, q) {
+  const x = dir.clone().normalize(), y = sec.clone().addScaledVector(x, -sec.dot(x));
+  if (y.lengthSq() < 1e-8) y.set(0, 0, 1).addScaledVector(x, -x.z);
+  y.normalize();
+  return q.setFromRotationMatrix(_mB0.makeBasis(x, y, new V3().crossVectors(x, y)));
+}
+function poseModelo(pl) {
+  const R = pl.rig, J = pl.J;
+  if (!R || !J || !J.l0 || !J.hR) return;
+  const U = pl.upper; U.updateMatrix();
+  const aG = v => v.clone().applyMatrix4(U.matrix);            // del tronco al jugador
+  const rest = R.F.rest, H = R.H, cur = R.cur, Uq = U.quaternion, I = new THREE.Quaternion();
+  cur[H.root.parent.name] = { q: new THREE.Quaternion(), p: new V3() };
+  // coloca el hueso con esa orientación (en el sistema del jugador) y apunta dónde queda
+  const fija = (b, qm) => {
+    const pa = cur[b.parent.name];
+    b.quaternion.copy(pa.q).invert().multiply(qm);
+    cur[b.name] = { q: qm.clone(), p: b.position.clone().applyQuaternion(pa.q).add(pa.p) };
+  };
+  const conGiro = (n, q) => q.clone().multiply(rest[n].q);
+  // apunta el hueso n a la dirección dir con el eje secundario sec (en reposo: dir0 y sec0)
+  const apunta = (n, dir, sec, dir0, sec0) => fija(H[n], baseQ(dir, sec, _qB1).multiply(baseQ(dir0, sec0, _qB0).invert()).multiply(rest[n].q));
+  const rdir = (a, b) => rest[b].p.clone().sub(rest[a].p).normalize();
+  fija(H.root, rest.root.q);
+  // pelvis: el centro de las caderas del modelo, en el de las del muñeco
+  const midT = rest.thigh_r.p.clone().add(rest.thigh_l.p).multiplyScalar(0.5);
+  const pel = J.hipC.clone().add(rest.pelvis.p).sub(midT);
+  H.pelvis.position.copy(pel.sub(cur.root.p).applyQuaternion(cur.root.q.clone().invert()));
+  fija(H.pelvis, rest.pelvis.q);
+  // tronco: el giro del muñeco repartido por la columna; cuello y cabeza, con el giro de la cabeza
+  fija(H.spine_01, conGiro('spine_01', I.clone().slerp(Uq, 0.34)));
+  fija(H.spine_02, conGiro('spine_02', I.clone().slerp(Uq, 0.67)));
+  fija(H.spine_03, conGiro('spine_03', Uq));
+  const Hq = new THREE.Quaternion().setFromEuler(pl.head.rotation);
+  fija(H.neck_01, conGiro('neck_01', Uq.clone().multiply(I.clone().slerp(Hq, 0.4))));
+  fija(H.Head, conGiro('Head', Uq.clone().multiply(Hq)));
+  const delante = new V3(0, 0, 1).applyQuaternion(Uq);
+  // brazos: IK con los largos del modelo hacia la muñeca del muñeco, con el codo hacia el mismo lado
+  for (const [l, s, e, h, polo] of [['r', J.sR, J.eR, J.hR, J.poloR], ['l', J.sL, J.eL, J.hL, J.poloL]]) {
+    fija(H['clavicle_' + l], conGiro('clavicle_' + l, Uq));
+    fija(H['upperarm_' + l], conGiro('upperarm_' + l, Uq));
+    const S = cur['upperarm_' + l].p, S0 = aG(s), E0 = aG(e);
+    let W = aG(h), P0 = null, mf = null, mn = null;
+    if (l === 'r') {
+      // la mano se coloca según la pala: el mango cruza el puño (sale por el lado del pulgar hacia la cabeza de la pala)
+      // y la palma mira como la cara de la pala; la muñeca queda detrás del puño
+      const pq = Uq.clone().multiply(pl.paddle.quaternion), mh = new V3(0, 1, 0).applyQuaternion(pq);
+      mn = new V3(0, 0, 1).applyQuaternion(pq); mf = new V3().crossVectors(mh, mn).multiplyScalar(R.F.mano.r.s);
+      P0 = W.clone();
+      W = P0.clone().addScaledVector(mh, 0.065).addScaledVector(mf, -0.085).addScaledVector(mn, -0.03);
+    }
+    let pv = E0.clone().sub(S0.clone().add(W).multiplyScalar(0.5));
+    if (pv.lengthSq() < 1e-6) pv = polo.clone().applyQuaternion(Uq);
+    const E = ik(S, W.clone(), R.L1, R.L2, pv);
+    const dA = E.clone().sub(S).normalize(), flex = W.clone().sub(E);
+    flex.addScaledVector(dA, -flex.dot(dA));
+    if (flex.lengthSq() < 1e-6) flex.copy(pv).negate();
+    apunta('upperarm_' + l, dA, flex, rdir('upperarm_' + l, 'lowerarm_' + l), delante.set(0, 0, 1));
+    // antebrazo: la palma de la mano de la pala, como la cara de la pala; la otra, hacia dentro y algo abajo
+    const dF = W.clone().sub(E).normalize();
+    const palma = l === 'r' ? mn : new V3(-1, -0.6, 0.2).applyQuaternion(Uq);
+    apunta('lowerarm_' + l, dF, palma, rdir('lowerarm_' + l, 'hand_' + l), new V3(0, -1, 0));
+    if (l === 'r') {
+      const M = R.F.mano.r;
+      fija(H.hand_r, baseQ(mf, mn, _qB1).multiply(baseQ(M.f0, M.p0, _qB0).invert()).multiply(rest.hand_r.q));
+      // la pala, en el puño (si el brazo del modelo no llega a la muñeca del muñeco, se queda donde llegue)
+      P0.add(cur.hand_r.p).sub(W);
+      pl.paddle.position.copy(P0.applyMatrix4(_mB0.copy(U.matrix).invert()));
+    } else fija(H['hand_' + l], cur['lowerarm_' + l].q.clone().multiply(rest['lowerarm_' + l].q.clone().invert()).multiply(rest['hand_' + l].q));
+  }
+  // dedos: la mano de la pala cerrada sobre el mango; la otra, algo flexionada
+  for (const d of R.F.dedos) {
+    const ang = d.k * (d.lado === 'r' ? 1.15 : 0.28);
+    H[d.nm].quaternion.copy(rest[d.nm].lq).multiply(_qB0.setFromAxisAngle(d.ax, ang));
+  }
+  // piernas: IK con los largos del muñeco hasta el tobillo, rodilla hacia donde la lleva el muñeco
+  for (const [i, l] of [[0, 'r'], [1, 'l']]) {
+    const [hip, knee, foot] = J['l' + i];
+    fija(H['thigh_' + l], rest['thigh_' + l].q);
+    const T = cur['thigh_' + l].p;
+    const A = foot.clone().add(new V3(0, rest['foot_' + l].p.y - 0.06, rest['foot_' + l].p.z - rest['thigh_' + l].p.z));
+    const pk = knee.clone().sub(hip.clone().add(foot).multiplyScalar(0.5));
+    if (pk.lengthSq() < 1e-6) pk.set(0, 0, 1);
+    const K = ik(T, A.clone(), THIGH, SHIN, pk);
+    apunta('thigh_' + l, K.clone().sub(T), pk, rdir('thigh_' + l, 'calf_' + l), new V3(0, 0, 1));
+    apunta('calf_' + l, A.clone().sub(K), pk, rdir('calf_' + l, 'foot_' + l), new V3(0, 0, 1));
+    fija(H['foot_' + l], pl.shoes[i].quaternion.clone().multiply(rest['foot_' + l].q));
+    // las zapatillas del muñeco, calzadas en el pie del modelo
+    const zp = pl.shoes[i];
+    zp.position.copy(new V3(0, -0.03, 0.072).applyQuaternion(zp.quaternion).add(cur['foot_' + l].p));
+  }
+}
 // ----- Visor 3D: el jugador entero, con su ropa, accesorios y material; se gira arrastrando (y solo, despacio) -----
 // Tiene su propia escena y su propio muñeco (no toca a los de la pista).
 const visor = { el: document.getElementById('visor'), cv: document.getElementById('vsCanvas'), r: null, sc: null, cam: null, pl: null,
@@ -4672,10 +4968,11 @@ function abrirVisor(p) {
     V.pl = new Player(US, '', 0, 0); scene.remove(V.pl.g); V.sc.add(V.pl.g);
   }
   const pl = V.pl;
+  if (pl.rig) quitaModelo(pl);
   pl.setProfile(p); pl.setLook(true);
-  pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null;
-  pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.head.rotation.set(0, 0, 0);
-  pl.updateLegs(0); pl.updateArms(0);
+  visorQuieto(pl);
+  V.demo = null; document.getElementById('vsGolpes').classList.remove('on');
+  visorModelo();
   document.getElementById('vsNom').textContent = p.n + ' · ' + media(p);
   document.getElementById('vsSub').textContent = materialTxt(p);
   V.rot = 0.35; V.vel = 0; V.t = performance.now();
@@ -4684,8 +4981,9 @@ function abrirVisor(p) {
   const paso = () => {
     if (!V.el.classList.contains('open')) return;
     const now = performance.now(), dt = Math.min(0.05, (now - V.t) / 1000); V.t = now;
-    if (!V.drag) { V.rot += V.vel + 0.35 * dt; V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
+    if (!V.drag) { V.rot += V.vel + (V.demo ? 0.12 : 0.35) * dt; V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
     pl.g.rotation.y = V.rot;
+    if (V.demo) demoGolpes(pl, dt);
     V.r.render(V.sc, V.cam);
     V.raf = requestAnimationFrame(paso);
   };
@@ -4699,6 +4997,59 @@ visor.cv.addEventListener('pointermove', e => {
 });
 for (const ev of ['pointerup', 'pointercancel']) visor.cv.addEventListener(ev, () => { visor.drag = null; });
 document.getElementById('vsClose').addEventListener('click', () => { visor.el.classList.remove('open'); cancelAnimationFrame(visor.raf); });
+// postura de espera, quieto
+function visorQuieto(pl) {
+  pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null; pl.gesto = null;
+  pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.head.rotation.set(0, 0, 0);
+  pl.transfer = 0; pl.twist = 0; pl.footW = null;
+  pl.updateLegs(0); pl.updateArms(0);
+}
+// muñeco de piezas o modelo con esqueleto (se recuerda la elección)
+try { visor.modelo = localStorage.getItem('padel.visorModelo') === '1'; } catch (_) { visor.modelo = false; }
+const vsHint = document.getElementById('vsHint'), HINT_VS = 'Arrastra a los lados para girarlo';
+function visorModelo() {
+  const V = visor, pl = V.pl;
+  document.querySelectorAll('#visor .vsSeg button').forEach(b => b.classList.toggle('on', +b.dataset.m === +V.modelo));
+  if (!V.modelo) { if (pl.rig) { quitaModelo(pl); if (!V.demo) visorQuieto(pl); } vsHint.textContent = HINT_VS; return; }
+  if (pl.rig) return;
+  vsHint.textContent = 'Cargando el modelo…';
+  cargaModelos().then(() => {
+    if (!V.modelo || V.pl !== pl || pl.rig) return;
+    ponModelo(pl); if (!V.demo) visorQuieto(pl);
+    vsHint.textContent = HINT_VS;
+  }).catch(() => { vsHint.textContent = 'No se ha podido cargar el modelo nuevo'; });
+}
+document.querySelector('#visor .vsSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  visor.modelo = b.dataset.m === '1';
+  try { localStorage.setItem('padel.visorModelo', visor.modelo ? '1' : '0'); } catch (_) {}
+  visorModelo();
+});
+// golpes de muestra, uno tras otro: se prepara, golpea y termina (con las mismas cuentas que en el partido)
+const DEMO_GOLPES = [
+  { n: 'Derecha', st: 'fore', k: 'drive', y: 0.95 }, { n: 'Revés', st: 'back', k: 'drive', y: 0.95 },
+  { n: 'Volea de derecha', st: 'fore', k: 'volea', y: 1.25 }, { n: 'Volea de revés', st: 'back', k: 'volea', y: 1.2 },
+  { n: 'Globo', st: 'fore', k: 'globo', y: 0.85 }, { n: 'Remate', st: 'over', k: 'remate', y: 2.3 },
+];
+function demoGolpes(pl, dt) {
+  const d = visor.demo, g = DEMO_GOLPES[d.i % DEMO_GOLPES.length];
+  d.t += dt;
+  if (d.t < 0.6) { pl.stroke = g.st; pl.hitY = g.y; pl.ready = Math.min(1, d.t / 0.45); }
+  else if (!d.golpe) {
+    d.golpe = true; pl.swingStroke = g.st; pl.swingKind = g.k; pl.swingPow = 0.6; pl.swingT = 0;
+    d.dir = new V3(0, g.k === 'globo' ? 0.9 : g.st === 'over' ? -0.25 : 0.1, 1).normalize();
+  }
+  if (d.golpe) { pl.swingDir = d.dir.clone().applyAxisAngle(UP, pl.g.rotation.y); if (pl.swingT < 0) pl.ready = Math.max(0, pl.ready - dt * 2); }
+  if (d.t > 1.9) { d.t = 0; d.i++; d.golpe = false; pl.ready = 0; }
+  vsHint.textContent = g.n;
+  pl.updateLegs(dt); pl.updateArms(dt);
+}
+document.getElementById('vsGolpes').addEventListener('click', e => {
+  const V = visor;
+  V.demo = V.demo ? null : { t: 0, i: 0, golpe: false };
+  e.currentTarget.classList.toggle('on', !!V.demo);
+  if (!V.demo) { visorQuieto(V.pl); vsHint.textContent = HINT_VS; }
+});
 window.addEventListener('resize', visorTam);
 document.getElementById('rivPrev').addEventListener('click', () => stepRivals(-1));
 document.getElementById('rivNext').addEventListener('click', () => stepRivals(1));
@@ -4920,6 +5271,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
+  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };

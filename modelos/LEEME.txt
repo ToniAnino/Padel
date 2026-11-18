@@ -1,0 +1,9 @@
+Modelos de jugador con esqueleto (prueba)
+
+Personajes base y peinados de «Universal Base Characters» (versión gratuita), de Quaternius:
+https://quaternius.com/packs/universalbasecharacters.html
+Licencia CC0 1.0 (dominio público): https://creativecommons.org/publicdomain/zero/1.0/
+
+Cambios hechos aquí:
+- Texturas pasadas de PNG 2048 a JPG 1024 (cuerpo) y 512 (pelo); sin la de rugosidad.
+- Los .gltf ya no enlazan sus texturas (el juego las pone por código) y los .bin del cuerpo se llaman hombre.bin y mujer.bin.
