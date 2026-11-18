@@ -4978,6 +4978,59 @@ function poseModelo(pl) {
     zp.position.copy(new V3(0, -0.03, 0.072).applyQuaternion(zp.quaternion).add(cur['foot_' + l].p));
   }
 }
+// ----- Golpes grabados: sacados de vídeo (Rokoko Vision, esqueleto Mixamo) y pasados al modelo -----
+// Cada fotograma guarda el giro de cada hueso respecto a la postura en T (el modelo también está en T en reposo, así que
+// el mismo giro sirve), la altura de la cadera y la del pie más bajo. Ver modelos/golpes y scratchpad\convierte.js.
+const CLIPS = {};
+const cargaClip = n => CLIPS[n] ??= fetch(MOD.base + 'golpes/' + n + '.json')
+  .then(r => { if (!r.ok) throw new Error(n + '.json: ' + r.status); return r.json(); })
+  .then(c => { c.dur = (c.q.length - 1) / c.fps; return c; });
+const _qC0 = new THREE.Quaternion(), _qC1 = new THREE.Quaternion();
+function poseClip(pl, c, t) {
+  const R = pl.rig; if (!R) return;
+  const rest = R.F.rest, H = R.H, n = c.q.length, U = pl.upper;
+  const x = clamp(t * c.fps, 0, n - 1), i = Math.floor(x), j = Math.min(n - 1, i + 1), a = x - i;
+  const k = rest.pelvis.p.y / c.restCadera;                 // de la medida de la persona del vídeo a la del modelo
+  const cad = [0, 1, 2].map(e => (c.cadera[i][e] * (1 - a) + c.cadera[j][e] * a) * k);
+  const pie = (c.pie[i] * (1 - a) + c.pie[j] * a) * k;
+  const cur = R.cur;
+  cur[H.root.parent.name] = { q: new THREE.Quaternion(), p: new V3() };
+  const fija = (b, qm) => {
+    const pa = cur[b.parent.name];
+    b.quaternion.copy(pa.q).invert().multiply(qm);
+    cur[b.name] = { q: qm.clone(), p: b.position.clone().applyQuaternion(pa.q).add(pa.p) };
+  };
+  let alto = 0;
+  for (let vuelta = 0; vuelta < 2; vuelta++) {   // (la segunda, con la cadera corregida para que el pie quede a su altura)
+    fija(H.root, rest.root.q);
+    const pel = new V3(cad[0], cad[1] + alto, cad[2] + rest.pelvis.p.z);
+    H.pelvis.position.copy(pel.sub(cur.root.p).applyQuaternion(cur.root.q.clone().invert()));
+    c.huesos.forEach((nm, b) => {
+      _qC0.fromArray(c.q[i], b * 4); _qC1.fromArray(c.q[j], b * 4); _qC0.slerp(_qC1, a);
+      fija(H[nm], _qC0.clone().multiply(rest[nm].q));
+    });
+    const bajo = Math.min(cur.foot_l.p.y, cur.foot_r.p.y, cur.ball_l.p.y + 0.04, cur.ball_r.p.y + 0.04);
+    alto += pie - bajo;
+  }
+  // dedos: la mano de la pala cerrada sobre el mango; la otra, algo flexionada
+  for (const d of R.F.dedos) H[d.nm].quaternion.copy(rest[d.nm].lq).multiply(_qB0.setFromAxisAngle(d.ax, d.k * (d.lado === 'r' ? 1.15 : 0.28)));
+  // la pala, en el puño: el mango cruza la mano por el lado del pulgar y la cara mira como la palma
+  U.updateMatrix();
+  const M = R.F.mano.r, dq = cur.hand_r.q.clone().multiply(rest.hand_r.q.clone().invert());
+  const mf = M.f0.clone().applyQuaternion(dq), mn = M.p0.clone().applyQuaternion(dq), mh = new V3().crossVectors(mn, mf).multiplyScalar(M.s).normalize();
+  const qp = new THREE.Quaternion().setFromRotationMatrix(_mB0.makeBasis(new V3().crossVectors(mh, mn), mh, mn));
+  pl.paddle.quaternion.copy(U.quaternion).invert().multiply(qp);
+  const P0 = cur.hand_r.p.clone().addScaledVector(mh, -0.065).addScaledVector(mf, 0.085).addScaledVector(mn, 0.03);
+  pl.paddle.position.copy(P0.applyMatrix4(_mB0.copy(U.matrix).invert()));
+  // zapatillas en los pies y falda en la cadera
+  for (const [z, l] of [[pl.shoes[0], 'r'], [pl.shoes[1], 'l']]) {
+    z.quaternion.copy(cur['foot_' + l].q).multiply(rest['foot_' + l].q.clone().invert());
+    z.position.copy(new V3(0, -0.03, 0.072).applyQuaternion(z.quaternion).add(cur['foot_' + l].p));
+  }
+  const cq = cur.pelvis.q.clone().multiply(rest.pelvis.q.clone().invert());
+  pl.skirt.quaternion.copy(cq);
+  pl.skirt.position.copy(cur.thigh_l.p).add(cur.thigh_r.p).multiplyScalar(0.5).add(new V3(0, -0.1, 0).applyQuaternion(cq));
+}
 // ----- Visor 3D: el jugador entero, con su ropa, accesorios y material; se gira arrastrando (y solo, despacio) -----
 // Tiene su propia escena y su propio muñeco (no toca a los de la pista).
 const visor = { el: document.getElementById('visor'), cv: document.getElementById('vsCanvas'), r: null, sc: null, cam: null, pl: null,
@@ -5068,6 +5121,7 @@ document.querySelector('#visor .vsSeg').addEventListener('click', e => {
 });
 // golpes de muestra, uno tras otro: se prepara, golpea y termina (con las mismas cuentas que en el partido)
 const DEMO_GOLPES = [
+  { n: 'Remate grabado (de vídeo)', clip: 'remate_a' },
   { n: 'Derecha', st: 'fore', k: 'drive', y: 0.95 }, { n: 'Revés', st: 'back', k: 'drive', y: 0.95 },
   { n: 'Volea de derecha', st: 'fore', k: 'volea', y: 1.25 }, { n: 'Volea de revés', st: 'back', k: 'volea', y: 1.2 },
   { n: 'Globo', st: 'fore', k: 'globo', y: 0.85 }, { n: 'Remate', st: 'over', k: 'remate', y: 2.3 },
@@ -5075,6 +5129,15 @@ const DEMO_GOLPES = [
 function demoGolpes(pl, dt) {
   const d = visor.demo, g = DEMO_GOLPES[d.i % DEMO_GOLPES.length];
   d.t += dt;
+  if (g.clip) {   // golpe grabado: solo con el modelo nuevo (con el muñeco de piezas se salta)
+    const c = CLIPS[g.clip];
+    if (!pl.rig) { d.i++; d.t = 0; return; }
+    if (!c || !c.dur) { cargaClip(g.clip).then(x => { CLIPS[g.clip] = x; }).catch(e => { console.error(e); d.i++; }); d.t = 0; vsHint.textContent = g.n + ' (cargando…)'; return; }
+    vsHint.textContent = g.n;
+    poseClip(pl, c, Math.min(d.t, c.dur));
+    if (d.t > c.dur + 0.6) { d.t = 0; d.i++; pl.skirt.quaternion.identity(); pl.ready = 0; pl.swingT = -1; pl.finishT = -1; }
+    return;
+  }
   if (d.t < 0.6) { pl.stroke = g.st; pl.hitY = g.y; pl.ready = Math.min(1, d.t / 0.45); }
   else if (!d.golpe) {
     d.golpe = true; pl.swingStroke = g.st; pl.swingKind = g.k; pl.swingPow = 0.6; pl.swingT = 0;
@@ -5312,7 +5375,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
-  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes,
+  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
