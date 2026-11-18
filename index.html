@@ -145,13 +145,39 @@
   #menu #rivNav{display:flex;gap:8px;margin-top:8px}
   #menu #rivNav button{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.45);border-radius:10px;background:transparent;color:#fff;font:inherit;font-size:13px;cursor:pointer}
   #menu #rivNav button:disabled{opacity:.3}
-  #visor{position:fixed;inset:0;z-index:13;display:none;flex-direction:column;background:radial-gradient(circle at 50% 42%,#1f2d4a,#06080d 72%)}
+  #visor{position:fixed;inset:0;z-index:13;color:#fff;display:none;flex-direction:column;background:radial-gradient(circle at 50% 42%,#1f2d4a,#06080d 72%)}
   #visor.open{display:flex}
   #visor .vhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px 4px;font-weight:900;letter-spacing:1px}
   #visor .vsub{font-size:12px;font-weight:400;letter-spacing:0;opacity:.7;margin-top:2px}
   #visor #vsClose{flex:none;width:36px;height:36px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;font-size:18px;cursor:pointer}
-  #vsCanvas{flex:1;min-height:0;width:100%;touch-action:none;cursor:grab}
+  .vsMain{flex:1;min-height:0;display:flex}
+  #vsCanvas{flex:1 1 0;width:0;min-width:0;height:100%;touch-action:none;cursor:grab}
   #vsCanvas:active{cursor:grabbing}
+  #visor .vsDer{display:flex;gap:8px;align-items:center;flex:none}
+  #visor button{font-family:inherit}
+  #vsGrande{height:36px;padding:0 10px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;font-size:13px;font-weight:800;cursor:pointer}
+  #vsPanel{display:none;flex:none;width:290px;overflow:auto;padding:12px;background:rgba(6,8,13,.72);border-left:1px solid rgba(255,255,255,.18);font-size:13px}
+  #visor.ajusta #vsPanel{display:block}
+  #vsPanel p{margin:8px 0 12px;line-height:1.4;opacity:.85}
+  #vsPanel i{font-style:normal}
+  #vsPanel label{display:block;margin:10px 0;font-weight:700}
+  #vsPanel label span{float:right;font-weight:400}
+  #vsPanel input[type=range]{display:block;width:100%;margin-top:6px}
+  #vsTexto{display:block;box-sizing:border-box;width:100%;margin-top:8px;padding:6px;border:1px solid rgba(255,255,255,.3);border-radius:6px;background:#0b1220;color:#fff;font:11px monospace;resize:vertical}
+  #vsEstado{min-height:18px;margin-top:8px;color:#fde047;line-height:1.35}
+  #vsTira{display:none;padding:6px 12px 0}
+  #visor.estudio #vsTira{display:block}
+  #visor .vsFila{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin-top:6px}
+  #visor .vsFila>button,#vsMarcas button{min-height:34px;padding:6px 10px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:transparent;color:#fff;font-size:13px;font-weight:800;cursor:pointer}
+  #visor .vsFila>button:disabled{opacity:.35;cursor:default}
+  #visor .vsFila>button.on,#vsMarcas button.on{background:#fde047;border-color:#fde047;color:#06080d}
+  #vsSel{min-height:34px;max-width:210px;padding:4px 8px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:#0b1220;color:#fff;font:inherit;font-size:13px;font-weight:800}
+  #visor #vsTira .vsSeg button{min-height:32px;border:0;background:transparent;color:#fff;font-size:13px;font-weight:800;padding:6px 9px;cursor:pointer}
+  #visor #vsTira .vsSeg button.on{background:#fff;color:#06080d}
+  #visor .vsLinea{display:flex;align-items:center;gap:10px;max-width:900px;margin:8px auto 0}
+  #vsT{flex:1;min-width:0}
+  #vsTiempo{flex:none;width:70px;text-align:right;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+  @media (max-width:720px){.vsMain{flex-direction:column}#vsCanvas{flex:1 1 0;width:100%;height:0;min-height:0}#vsPanel{width:auto;max-height:38%;box-sizing:border-box;border-left:0;border-top:1px solid rgba(255,255,255,.18)}}
   #visor .vsHint{text-align:center;font-size:12px;opacity:.6;padding:6px 16px 16px}
   #visor .vsBtns{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:6px 16px 0}
   #visor .vsSeg{display:flex;border:1px solid rgba(255,255,255,.45);border-radius:8px;overflow:hidden}
@@ -372,9 +398,28 @@
       <div class="phead"><span id="pkTitle"></span><button id="pkClose" aria-label="Cerrar">✕</button></div>
       <div id="pkHint"></div><div id="pkList"></div>
     </div></div>
-    <div id="visor"><div class="vhead"><div><div id="vsNom"></div><div class="vsub" id="vsSub"></div></div><button id="vsClose" aria-label="Cerrar">✕</button></div>
-      <canvas id="vsCanvas"></canvas>
-      <div class="vsBtns"><div class="vsSeg"><button data-m="0">Piezas</button><button data-m="1">Modelo nuevo (prueba)</button></div><button id="vsGolpes">▶ Ver golpes</button></div>
+    <div id="visor"><div class="vhead"><div><div id="vsNom"></div><div class="vsub" id="vsSub"></div></div><div class="vsDer"><button id="vsGrande">⛶ Pantalla completa</button><button id="vsClose" aria-label="Cerrar">✕</button></div></div>
+      <div class="vsMain"><canvas id="vsCanvas"></canvas>
+        <aside id="vsPanel">
+          <b id="vsPose"></b>
+          <p>Elige arriba la postura y arrastra los puntos: <i style="color:#fde047">●</i> mano de la pala, <i>●</i> punta de la pala, <i style="color:#38bdf8">●</i> mano libre, <i style="color:#4ade80">●</i> codos.</p>
+          <label>Giro de hombros <span id="vsTwN"></span><input type="range" id="vsTw" min="-90" max="90" step="1"></label>
+          <label>Giro de cadera y pies <span id="vsOfN"></span><input type="range" id="vsOf" min="-90" max="90" step="1"></label>
+          <div class="vsFila"><button id="vsDeshacer">Deshacer</button><button id="vsRestPose">Restaurar postura</button><button id="vsRestGolpe">Restaurar golpe</button></div>
+          <div class="vsFila"><button id="vsCopiar">Copiar ajustes</button><button id="vsPegar">Cargar texto</button></div>
+          <textarea id="vsTexto" rows="3" spellcheck="false" placeholder="Aquí aparecen los ajustes copiados"></textarea>
+          <div id="vsEstado"></div>
+        </aside></div>
+      <div id="vsTira">
+        <div class="vsFila"><select id="vsSel" aria-label="Golpe"></select>
+          <button id="vsAtras" title="Fotograma anterior (←)">⏮</button><button id="vsPlay" title="Pausa (espacio)">⏸</button><button id="vsAdel" title="Fotograma siguiente (→)">⏭</button>
+          <div class="vsSeg" id="vsVel"><button data-v="1">×1</button><button data-v="0.5">×½</button><button data-v="0.25">×¼</button><button data-v="0.1">×⅒</button></div>
+          <div class="vsSeg" id="vsVista"><button data-r="0">Frente</button><button data-r="1.5708">Su derecha</button><button data-r="-1.5708">Su izquierda</button><button data-r="3.1416">Detrás</button></div>
+          <button id="vsAjustar">✎ Ajustar</button></div>
+        <div class="vsLinea"><input type="range" id="vsT" min="0" max="2100" step="1" value="0" aria-label="Momento del golpe"><span id="vsTiempo"></span></div>
+        <div class="vsFila" id="vsMarcas"></div>
+      </div>
+      <div class="vsBtns"><div class="vsSeg" id="vsModelo"><button data-m="0">Piezas</button><button data-m="1">Modelo nuevo (prueba)</button></div><button id="vsGolpes">▶ Ver golpes</button></div>
       <div class="vsHint" id="vsHint">Arrastra a los lados para girarlo</div></div>
     <div id="confirm"><div class="cbox"><p id="cfTxt"></p><div class="cbtn"><button id="cfNo">Cancelar</button><button id="cfSi">Sí</button></div></div></div>
   </div>
@@ -975,8 +1020,8 @@ function mejorCodo(lado, S, dir, a, h, hint, prev) {
     const th = n * Math.PI / 8, c = Math.cos(th), s = Math.sin(th);
     const px = _e1C.x * c + _e2C.x * s, py = _e1C.y * c + _e2C.y * s, pz = _e1C.z * c + _e2C.z * s;
     const Ex = S.x + dir.x * a + px * h, Ey = S.y + dir.y * a + py * h, Ez = S.z + dir.z * a + pz * h;
-    let coste = (1 - c) * 0.4;
-    if (prev) coste += (1 - (px * prev.x + py * prev.y + pz * prev.z)) * 0.6;
+    let coste = (1 - c) * 0.9;
+    if (prev) coste += (1 - (px * prev.x + py * prev.y + pz * prev.z)) * 0.25;
     if (enTroncoXYZ(Ex, Ey, Ez)) coste += 3;
     if (enTroncoXYZ((Ex + S.x) / 2, (Ey + S.y) / 2, (Ez + S.z) / 2)) coste += 1.5;
     if (enTroncoXYZ((Ex + Hx) / 2, (Ey + Hy) / 2, (Ez + Hz) / 2)) coste += 1.5;
@@ -1657,7 +1702,7 @@ class Player {
     let s = this.swingT >= 0 ? 1 - Math.pow(1 - this.swingT, 2) : fin ? 1 : 0;
     const c = this.contact;
     if (!sw && c && c.t >= 0) s = st === 'over' ? clamp(1 - c.t / 0.15, 0, 1) * 0.17 * this.ready : clamp(1 - c.t / 0.18, 0, 1) * 0.6 * this.ready;
-    const y = this.hitY, kind = sw ? this.swingKind || 'drive' : 'drive';
+    const y = this.hitY, kind = sw || this.enDemo ? this.swingKind || 'drive' : 'drive';
     const corto = sw ? kind === 'volea' : !!c && c.first === -1 && Math.abs(this.pos.z) < 6;
     const lado = st === 'back' ? 'B' : 'F';
     const clave = st === 'over' ? 'remate' : kind === 'saque' ? 'saque' : (kind === 'globo' ? 'globo' : corto ? 'volea' : y > ALTO_Y ? 'alto' : 'drive') + lado;
@@ -1871,7 +1916,7 @@ class Player {
     const a = d / 2, h = Math.sqrt(Math.max(0, L * L - a * a));
     const B = this.bendC ??= [null, null], prev = dt > 0 ? B[i] : null;
     const b = mejorCodo(i ? 1 : -1, S, dir, a, h, hint, prev);
-    if (prev) { prev.lerp(b, Math.min(1, dt * 28)).addScaledVector(dir, -prev.dot(dir)); if (prev.lengthSq() < 1e-4) prev.copy(b); prev.normalize(); }
+    if (prev) { prev.lerp(b, Math.min(1, dt * 20)).addScaledVector(dir, -prev.dot(dir)); if (prev.lengthSq() < 1e-4) prev.copy(b); prev.normalize(); }
     else B[i] = b.clone();
     return S.clone().addScaledVector(dir, a).addScaledVector(B[i], h);
   }
@@ -5182,6 +5227,7 @@ function poseClip(pl, c, t) {
 // Tiene su propia escena y su propio muñeco (no toca a los de la pista).
 const visor = { el: document.getElementById('visor'), cv: document.getElementById('vsCanvas'), r: null, sc: null, cam: null, pl: null,
   rot: 0, vel: 0, drag: null, raf: 0, t: 0 };
+document.body.appendChild(visor.el);   // (fuera de #app, que es una columna estrecha: así ocupa toda la ventana)
 function visorTam() {
   const V = visor, w = V.cv.clientWidth, h = V.cv.clientHeight;
   if (!V.r || !w || !h) return;
@@ -5212,7 +5258,7 @@ function abrirVisor(p) {
   if (pl.rig) quitaModelo(pl);
   pl.setProfile(p); pl.setLook(true);
   visorQuieto(pl);
-  V.demo = null; document.getElementById('vsGolpes').classList.remove('on');
+  if (V.demo) saleEstudio();
   visorModelo();
   document.getElementById('vsNom').textContent = p.n + ' · ' + media(p);
   document.getElementById('vsSub').textContent = materialTxt(p);
@@ -5222,22 +5268,23 @@ function abrirVisor(p) {
   const paso = () => {
     if (!V.el.classList.contains('open')) return;
     const now = performance.now(), dt = Math.min(0.05, (now - V.t) / 1000); V.t = now;
-    if (!V.drag) { V.rot += V.vel + (V.demo ? 0.12 : 0.35) * dt; V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
-    pl.g.rotation.y = V.rot;
+    if (!V.drag) { V.rot += V.vel + (V.demo ? 0 : 0.35 * dt); V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
+    if (!V.demo) pl.g.rotation.y = V.rot; else camEstudio();
     if (V.demo) demoGolpes(pl, dt);
     V.r.render(V.sc, V.cam);
     V.raf = requestAnimationFrame(paso);
   };
   paso();
 }
-visor.cv.addEventListener('pointerdown', e => { visor.drag = { x: e.clientX }; visor.vel = 0; visor.cv.setPointerCapture(e.pointerId); });
+visor.cv.addEventListener('pointerdown', e => { visor.cv.setPointerCapture(e.pointerId); if (cogeAsa(e)) return; visor.drag = { x: e.clientX }; visor.vel = 0; });
 visor.cv.addEventListener('pointermove', e => {
+  if (visor.asa) { mueveAsa(e); return; }
   if (!visor.drag) return;
   const d = (e.clientX - visor.drag.x) * 0.012; visor.drag.x = e.clientX;
   visor.rot += d; visor.vel = d;
 });
-for (const ev of ['pointerup', 'pointercancel']) visor.cv.addEventListener(ev, () => { visor.drag = null; });
-document.getElementById('vsClose').addEventListener('click', () => { visor.el.classList.remove('open'); cancelAnimationFrame(visor.raf); });
+for (const ev of ['pointerup', 'pointercancel']) visor.cv.addEventListener(ev, () => { visor.drag = null; if (visor.asa) { visor.asa = null; trasCambio(); } });
+document.getElementById('vsClose').addEventListener('click', () => { if (visor.demo) saleEstudio(); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); visor.el.classList.remove('open'); cancelAnimationFrame(visor.raf); });
 // postura de espera, quieto
 function visorQuieto(pl) {
   pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null; pl.gesto = null;
@@ -5250,7 +5297,7 @@ try { visor.modelo = localStorage.getItem('padel.visorModelo') === '1'; } catch 
 const vsHint = document.getElementById('vsHint'), HINT_VS = 'Arrastra a los lados para girarlo';
 function visorModelo() {
   const V = visor, pl = V.pl;
-  document.querySelectorAll('#visor .vsSeg button').forEach(b => b.classList.toggle('on', +b.dataset.m === +V.modelo));
+  document.querySelectorAll('#vsModelo button').forEach(b => b.classList.toggle('on', +b.dataset.m === +V.modelo));
   if (!V.modelo) { if (pl.rig) { quitaModelo(pl); if (!V.demo) visorQuieto(pl); } vsHint.textContent = HINT_VS; return; }
   if (pl.rig) return;
   vsHint.textContent = 'Cargando el modelo…';
@@ -5260,51 +5307,258 @@ function visorModelo() {
     vsHint.textContent = HINT_VS;
   }).catch(e => { vsHint.textContent = 'No se ha podido cargar el modelo nuevo (' + ((e && e.message) || e) + ')'; console.error(e); });
 }
-document.querySelector('#visor .vsSeg').addEventListener('click', e => {
+document.querySelector('#vsModelo').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   visor.modelo = b.dataset.m === '1';
   try { localStorage.setItem('padel.visorModelo', visor.modelo ? '1' : '0'); } catch (_) {}
   visorModelo();
 });
-// golpes de muestra, uno tras otro: se prepara, golpea y termina (con las mismas cuentas que en el partido)
+// ----- Estudio de golpes: elegir golpe, cámara lenta, pausa, fotograma a fotograma y ajuste de las posturas -----
+// El golpe se simula siempre con el mismo paso (1/240 s), así que cualquier instante se ve igual a cualquier velocidad y se
+// puede ir atrás. El jugador se queda quieto mirando a +z y lo que gira es la cámara.
 const DEMO_GOLPES = [
+  { n: 'Derecha', st: 'fore', k: 'drive', y: 0.95, up: 0.1, clave: 'driveF' }, { n: 'Revés', st: 'back', k: 'drive', y: 0.95, up: 0.1, clave: 'driveB' },
+  { n: 'Derecha baja', st: 'fore', k: 'drive', y: 0.62, up: 0.25, clave: 'driveF' }, { n: 'Revés bajo', st: 'back', k: 'drive', y: 0.62, up: 0.25, clave: 'driveB' },
+  { n: 'Volea de derecha', st: 'fore', k: 'volea', y: 1.25, up: 0, clave: 'voleaF', first: -1 }, { n: 'Volea de revés', st: 'back', k: 'volea', y: 1.2, up: 0, clave: 'voleaB', first: -1 },
+  { n: 'Globo de derecha', st: 'fore', k: 'globo', y: 0.85, up: 0.9, clave: 'globoF' }, { n: 'Globo de revés', st: 'back', k: 'globo', y: 0.85, up: 0.9, clave: 'globoB' },
+  { n: 'Golpe alto de derecha', st: 'fore', k: 'drive', y: 1.65, up: -0.05, clave: 'altoF' }, { n: 'Golpe alto de revés', st: 'back', k: 'drive', y: 1.65, up: -0.05, clave: 'altoB' },
+  { n: 'Saque', st: 'fore', k: 'saque', y: 0.9, up: 0.15, clave: 'saque' },
+  { n: 'Remate', st: 'over', k: 'drive', y: 2.1, up: -0.25, pow: 1, clave: 'remate' }, { n: 'Bandeja', st: 'over', k: 'drive', y: 2.0, up: -0.05, pow: 0.35, clave: 'bandeja' },
   { n: 'Remate grabado (de vídeo)', clip: 'remate_a' }, { n: 'Derecha grabada (de vídeo)', clip: 'derecha_c' },
-  { n: 'Derecha', st: 'fore', k: 'drive', y: 0.95 }, { n: 'Revés', st: 'back', k: 'drive', y: 0.95 },
-  { n: 'Volea de derecha', st: 'fore', k: 'volea', y: 1.25 }, { n: 'Volea de revés', st: 'back', k: 'volea', y: 1.2 },
-  { n: 'Globo', st: 'fore', k: 'globo', y: 0.85 }, { n: 'Remate', st: 'over', k: 'remate', y: 2.1, pow: 1 }, { n: 'Bandeja', st: 'over', k: 'remate', y: 2.0, pow: 0.35 },
 ];
-function demoGolpes(pl, dt) {
-  const d = visor.demo, g = DEMO_GOLPES[d.i % DEMO_GOLPES.length], T0 = 0.75;
-  d.t += dt;
-  if (g.clip) {   // golpe grabado: solo con el modelo nuevo (con el muñeco de piezas se salta)
-    const c = CLIPS[g.clip];
-    if (!pl.rig) { d.i++; d.t = 0; return; }
-    if (!c || !c.dur) { cargaClip(g.clip).then(x => { CLIPS[g.clip] = x; }).catch(e => { console.error(e); d.i++; }); d.t = 0; vsHint.textContent = g.n + ' (cargando…)'; return; }
-    vsHint.textContent = g.n;
-    poseClip(pl, c, Math.min(d.t, c.dur));
-    if (d.t > c.dur + 0.6) { d.t = 0; d.i++; pl.skirt.quaternion.identity(); pl.ready = 0; pl.swingT = -1; pl.finishT = -1; }
-    return;
-  }
-  // con los tiempos del partido: se prepara viendo llegar la bola, golpea y termina
-  pl.enDemo = true; pl.hitBall = null; pl.turnNet = false;
-  d.dir ??= new V3(0, g.k === 'globo' ? 0.9 : g.st === 'over' ? -0.25 : 0.1, 1).normalize();
-  if (d.t < T0) { pl.stroke = g.st; pl.hitY = g.y; pl.swingStroke = g.st; pl.swingPow = g.pow ?? 0.6; pl.contact = { t: T0 - d.t, y: g.y, first: g.k === 'volea' ? -1 : 0 }; pl.ready += (1 - pl.ready) * Math.min(1, dt * 8); }
-  else if (!d.golpe) {
-    d.golpe = true; pl.contact = null; pl.ready = 0; pl.finishT = -1;
-    pl.swingStroke = g.st; pl.swingKind = g.k; pl.swingPow = g.pow ?? 0.6; pl.swingT = g.st === 'over' ? 0.1 : 0.4;
-  }
-  pl.swingDir = d.dir.clone().applyAxisAngle(UP, visor.rot);
-  pl.faceYaw = visor.rot; pl.giroGolpe(dt);
-  if (d.t > 2.1) { d.t = 0; d.i++; d.golpe = false; d.dir = null; pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.contact = null; }
-  vsHint.textContent = g.n;
-  pl.updateLegs(dt); pl.updateArms(dt);
+const T_IMPACTO = 0.75, T_GOLPE = 2.1, H_SIM = 1 / 240, AJ_KEY = 'padel.ajustesGolpes';
+const POSES_ORIG = JSON.parse(JSON.stringify(POSES_GOLPE));
+const $v = id => document.getElementById(id);
+// --- ajustes guardados: se aplican a la tabla de posturas, la misma para los dos equipos y para los partidos ---
+function ajustesActuales() {
+  const o = {};
+  for (const c in POSES_GOLPE) POSES_GOLPE[c].f.forEach((f, i) => {
+    if (f.some((x, n) => Math.abs(x - POSES_ORIG[c].f[i][n]) > 1e-4)) (o[c] ??= {})[i] = f.map(x => Math.round(x * 1000) / 1000);
+  });
+  return o;
 }
-document.getElementById('vsGolpes').addEventListener('click', e => {
+function aplicaAjustes(o) {
+  let n = 0;
+  for (const c in o) for (const i in o[c]) {
+    const dest = POSES_GOLPE[c] && POSES_GOLPE[c].f[i], v = o[c][i];
+    if (dest && Array.isArray(v) && v.length === dest.length && v.every(Number.isFinite)) { v.forEach((x, k) => { dest[k] = x; }); n++; }
+  }
+  return n;
+}
+const guardaAjustes = () => { try { localStorage.setItem(AJ_KEY, JSON.stringify(ajustesActuales())); } catch (_) {} };
+try { aplicaAjustes(JSON.parse(localStorage.getItem(AJ_KEY) || '{}')); } catch (_) {}
+// --- simulación ---
+const golpeAct = E => DEMO_GOLPES[(E.sel >= 0 ? E.sel : E.i) % DEMO_GOLPES.length];
+const durGolpe = g => g.clip ? ((CLIPS[g.clip] && CLIPS[g.clip].dur) || 1) + 0.3 : T_GOLPE;
+function reiniciaSim(pl, E, g) {
+  Object.assign(pl, { ready: 0, swingT: -1, finishT: -1, stroke: g.st, swingStroke: g.st, swingKind: g.k, swingPow: g.pow ?? 0.6, hitY: g.y, hR: null, hL: null, hitBall: null, contact: null, gesto: null,
+    transfer: 0, twist: 0, off: 0, footW: null, runAmt: 0, jumpBend: 0, turnNet: false, serveHold: false, mangoS: null, bendC: null, enDemo: true, faceYaw: 0, leanS: undefined, stanceS: undefined, crouchS: undefined, crossS: undefined });
+  pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.g.rotation.y = 0; pl.head.rotation.set(0, 0, 0); pl.skirt.quaternion.identity();
+  pl.swingDir = new V3(0, g.up, 1).normalize();
+  pl.updateLegs(0); pl.updateArms(0);
+  E.simT = 0; E.golpe = false;
+}
+function pasoSim(pl, E, g) {
+  const t = E.simT;
+  if (t < T_IMPACTO) { pl.contact = { t: T_IMPACTO - t, y: g.y, first: g.first ?? 0 }; pl.ready += (1 - pl.ready) * Math.min(1, H_SIM * 8); }
+  else if (!E.golpe) { E.golpe = true; pl.contact = null; pl.ready = 0; pl.finishT = -1; pl.swingT = g.st === 'over' ? 0.1 : 0.4; }
+  pl.giroGolpe(H_SIM); pl.updateLegs(H_SIM); pl.updateArms(H_SIM);
+  E.simT = t + H_SIM;
+}
+function llevaA(pl, E, g, t) {
+  const auto = pl.rig && pl.rig.auto; if (auto) pl.rig.auto = false;
+  if (!(E.simT <= t + 1e-9)) reiniciaSim(pl, E, g);
+  while (E.simT + H_SIM <= t + 1e-9) pasoSim(pl, E, g);
+  if (pl.rig) { pl.rig.auto = auto; poseModelo(pl); }
+}
+// momento del golpe en que se ve cada postura clave
+function tiempoClave(P, i, over) {
+  const S0 = P.s || S_GOLPE, s = S0[i], imp = over ? 0.19 : 0.64, T0 = over ? 0.1 : 0.4;
+  if (i === 0) return T_IMPACTO - 0.22;
+  if (s < imp) return T_IMPACTO - (over ? 0.15 * (1 - s / 0.17) : 0.18 * (1 - s / 0.6));
+  if (s === imp) return T_IMPACTO + 0.005;
+  return T_IMPACTO + (1 - Math.sqrt(1 - s) - T0) * 0.3 + (s === 1 ? 0.02 : 0);
+}
+// --- interfaz ---
+const NOM_POSES = ['Preparación', 'Recorrido', 'Impacto', 'Acompañar', 'Final'], NOM_POSES_ALTO = ['Trofeo', 'Caída de pala', 'Impacto', 'Bajada', 'Final'];
+function camEstudio() {
+  const V = visor, a = -V.rot, D = V.dist || 5.4;
+  V.cam.position.set(Math.sin(a) * D, 1.28, Math.cos(a) * D); V.cam.lookAt(0, 1.02, 0);
+}
+function pintaMarcas(g) {
+  const E = visor.demo, box = $v('vsMarcas'); box.textContent = '';
+  if (g.clip) return;
+  const over = g.st === 'over', P = POSES_GOLPE[g.clave];
+  (over ? NOM_POSES_ALTO : NOM_POSES).forEach((n, i) => {
+    const b = document.createElement('button'); b.textContent = n; b.dataset.i = i;
+    b.addEventListener('click', () => { E.pausa = true; E.ki = i; E.t = tiempoClave(P, i, over); refrescaEstudio(); });
+    box.appendChild(b);
+  });
+}
+function claveCercana(g, t) {
+  const P = POSES_GOLPE[g.clave], over = g.st === 'over'; let m = 0, d = 1e9;
+  P.f.forEach((_, i) => { const x = Math.abs(tiempoClave(P, i, over) - t); if (x < d) { d = x; m = i; } });
+  return m;
+}
+function refrescaEstudio() {
+  const V = visor, E = V.demo; if (!E) return;
+  const g = golpeAct(E), dur = durGolpe(g);
+  if (E.uiG !== g) { E.uiG = g; pintaMarcas(g); const a = $v('vsAjustar'); a.disabled = !!g.clip; if (g.clip) cierraAjuste(); }
+  $v('vsSel').value = E.sel; $v('vsPlay').textContent = E.pausa ? '▶' : '⏸';
+  const r = $v('vsT'); r.max = Math.round(dur * 1000); if (document.activeElement !== r || !E.arrastraT) r.value = Math.round(E.t * 1000);
+  const d = E.t - T_IMPACTO, fmt = x => Math.abs(x).toFixed(2).replace('.', ',') + ' s';
+  $v('vsTiempo').textContent = g.clip ? fmt(E.t) : Math.abs(d) < 0.008 ? 'Impacto' : (d < 0 ? '−' : '+') + fmt(d);
+  document.querySelectorAll('#vsVel button').forEach(b => b.classList.toggle('on', +b.dataset.v === E.vel));
+  if (!g.clip) {
+    if (E.pausa && !E.fijaK) E.ki = claveCercana(g, E.t);
+    document.querySelectorAll('#vsMarcas button').forEach(b => b.classList.toggle('on', V.el.classList.contains('ajusta') && +b.dataset.i === E.ki));
+    const f = POSES_GOLPE[g.clave].f[E.ki];
+    $v('vsTw').value = f[17]; $v('vsOf').value = f[18]; $v('vsTwN').textContent = Math.round(f[17]) + '°'; $v('vsOfN').textContent = Math.round(f[18]) + '°';
+    $v('vsPose').textContent = g.n + ' · ' + (g.st === 'over' ? NOM_POSES_ALTO : NOM_POSES)[E.ki];
+  }
+  vsHint.textContent = g.n + (E.sel < 0 ? ' · todos seguidos' : '') + (g.clip && !V.pl.rig ? ' · solo con el modelo nuevo' : '');
+}
+function entraEstudio() {
   const V = visor;
-  V.demo = V.demo ? null : { t: 0, i: 0, golpe: false };
-  e.currentTarget.classList.toggle('on', !!V.demo);
-  if (!V.demo) { visorQuieto(V.pl); vsHint.textContent = HINT_VS; }
-});
+  V.demo = { sel: -1, i: 0, t: 0, vel: 1, pausa: false, simT: Infinity, golpe: false, ki: 2 };
+  V.rot = 0.35; V.vel = 0; V.dist = 5.4;
+  V.el.classList.add('estudio'); $v('vsGolpes').classList.add('on'); $v('vsGolpes').textContent = '✕ Salir de golpes';
+  visorTam(); refrescaEstudio();
+}
+function saleEstudio() {
+  const V = visor; cierraAjuste();
+  V.demo = null; V.el.classList.remove('estudio'); $v('vsGolpes').classList.remove('on'); $v('vsGolpes').textContent = '▶ Ver golpes';
+  if (V.cam) { V.cam.position.set(0, 1.05, 4.1); V.cam.lookAt(0, 0.92, 0); }
+  if (V.pl) { V.pl.enDemo = false; V.pl.faceYaw = 0; V.pl.skirt.quaternion.identity(); visorQuieto(V.pl); }
+  visorTam(); vsHint.textContent = HINT_VS;
+}
+function demoGolpes(pl, dt) {
+  const V = visor, E = V.demo, g0 = golpeAct(E);
+  if (!E.pausa) {
+    E.t += dt * E.vel;
+    if (E.t > durGolpe(g0)) { E.t = 0; E.simT = Infinity; if (E.sel < 0) E.i = (E.i + 1) % DEMO_GOLPES.length; }
+  }
+  let g = golpeAct(E);
+  if (g.clip) {
+    if (!pl.rig) { if (E.sel < 0) { E.i = (E.i + 1) % DEMO_GOLPES.length; E.t = 0; E.simT = Infinity; g = golpeAct(E); if (g.clip) return; } else { refrescaEstudio(); return; } }
+    else {
+      const c = CLIPS[g.clip];
+      if (!c || !c.dur) { cargaClip(g.clip).then(x => { CLIPS[g.clip] = x; }).catch(e => console.error(e)); return; }
+      pl.g.rotation.y = 0; poseClip(pl, c, Math.min(E.t, c.dur)); E.simT = Infinity; refrescaEstudio(); return;
+    }
+  }
+  llevaA(pl, E, g, E.t);
+  refrescaEstudio(); ponAsas(pl);
+}
+// --- ajuste de posturas: puntos que se arrastran en 3D ---
+const ASAS = [['mano', 0xfde047], ['punta', 0xffffff], ['izq', 0x38bdf8], ['codoD', 0x4ade80], ['codoI', 0x4ade80]];
+function creaAsas() {
+  const V = visor; if (V.asas) return;
+  V.asas = {}; const geo = new THREE.SphereGeometry(0.04, 16, 12);
+  for (const [n, c] of ASAS) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, opacity: 0.92 })); m.renderOrder = 999; m.visible = false; V.sc.add(m); V.asas[n] = m; }
+}
+function puntosBrazo(pl) {
+  pl.g.updateMatrixWorld(true);
+  const J = pl.J, mundo = v => pl.upper.localToWorld(v.clone()), R = pl.rig, hueso = n => R.H[n].getWorldPosition(new V3());
+  const mano = mundo(pl.paddle.position), eje = new V3(0, 1, 0).applyQuaternion(pl.paddle.quaternion);
+  return { mano, punta: mundo(pl.paddle.position.clone().addScaledVector(eje, 0.46)), izq: R ? hueso('hand_l') : mundo(J.hL), codoD: R ? hueso('lowerarm_r') : mundo(J.eR), codoI: R ? hueso('lowerarm_l') : mundo(J.eL),
+    hD: R ? hueso('upperarm_r') : mundo(J.sR), hI: R ? hueso('upperarm_l') : mundo(J.sL) };
+}
+function ponAsas(pl) {
+  const V = visor, E = V.demo, on = !!E && V.el.classList.contains('ajusta') && E.pausa && !golpeAct(E).clip;
+  if (!V.asas) { if (!on) return; creaAsas(); }
+  const P = on ? puntosBrazo(pl) : null, esc = (V.dist || 5.4) / 5.4;
+  for (const [n] of ASAS) { const m = V.asas[n]; m.visible = on; if (on) { m.position.copy(P[n]); m.scale.setScalar(esc); } }
+}
+function cierraAjuste() { const V = visor; V.el.classList.remove('ajusta'); $v('vsAjustar').classList.remove('on'); if (V.demo) V.demo.fijaK = false; if (V.asas) for (const [n] of ASAS) V.asas[n].visible = false; visorTam(); }
+const _rayV = new THREE.Raycaster(), _planoV = new THREE.Plane();
+function rayoVisor(e) {
+  const r = visor.cv.getBoundingClientRect();
+  _rayV.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), visor.cam);
+}
+function filaActual() { const E = visor.demo, g = golpeAct(E); return { E, g, f: POSES_GOLPE[g.clave].f[E.ki] }; }
+function apuntaDeshacer() { const { E, g, f } = filaActual(); (visor.deshacer ??= []).push({ c: g.clave, i: E.ki, f: f.slice() }); if (visor.deshacer.length > 60) visor.deshacer.shift(); }
+function trasCambio() { const E = visor.demo; E.simT = Infinity; guardaAjustes(); $v('vsEstado').textContent = 'Guardado. Se aplica también en los partidos, a los dos equipos.'; refrescaEstudio(); }
+function cogeAsa(e) {
+  const V = visor, E = V.demo;
+  if (!E || !V.asas || !V.el.classList.contains('ajusta') || !E.pausa) return false;
+  const r = V.cv.getBoundingClientRect(); let mejor = null, dm = 26;
+  for (const [n] of ASAS) {
+    const m = V.asas[n]; if (!m.visible) continue;
+    const p = m.position.clone().project(V.cam), d = Math.hypot((p.x + 1) / 2 * r.width + r.left - e.clientX, (1 - p.y) / 2 * r.height + r.top - e.clientY);
+    if (d < dm) { dm = d; mejor = n; }
+  }
+  if (!mejor) return false;
+  apuntaDeshacer(); E.fijaK = true;
+  const o = V.asas[mejor].position.clone();
+  V.asa = { n: mejor, plano: _planoV.clone().setFromNormalAndCoplanarPoint(V.cam.getWorldDirection(new V3()), o), ult: o };
+  return true;
+}
+function mueveAsa(e) {
+  const V = visor, A = V.asa, pl = V.pl, { E, g, f } = filaActual(), hit = new V3();
+  rayoVisor(e); if (!_rayV.ray.intersectPlane(A.plano, hit)) return;
+  const d = hit.clone().sub(A.ult), P = puntosBrazo(pl); A.ult = hit.clone();
+  const pon = (i, v) => { f[i] = v.x; f[i + 1] = v.y; f[i + 2] = v.z; };
+  if (A.n === 'mano') { f[0] += d.x; f[1] += d.y; f[2] += d.z; }
+  else if (A.n === 'izq') { f[10] += d.x; f[11] += d.y; f[12] += d.z; }
+  else if (A.n === 'punta') pon(4, hit.clone().sub(P.mano).normalize());
+  else if (A.n === 'codoD') pon(7, hit.clone().sub(P.hD.clone().add(P.mano).multiplyScalar(0.5)).normalize());
+  else pon(14, hit.clone().sub(P.hI.clone().add(P.izq).multiplyScalar(0.5)).normalize());
+  E.simT = Infinity;
+}
+// --- controles ---
+{
+  const sel = $v('vsSel'), add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+  add(-1, 'Todos seguidos'); DEMO_GOLPES.forEach((g, i) => add(i, g.n));
+  sel.addEventListener('change', () => { const E = visor.demo; E.sel = +sel.value; E.t = 0; E.simT = Infinity; E.fijaK = false; refrescaEstudio(); sel.blur(); });
+  const pausa = v => { const E = visor.demo; E.pausa = v; E.fijaK = false; refrescaEstudio(); };
+  const paso = s => { const E = visor.demo, g = golpeAct(E); E.pausa = true; E.fijaK = false; E.t = clamp(E.t + s / 60, 0, durGolpe(g)); refrescaEstudio(); };
+  $v('vsPlay').addEventListener('click', () => pausa(!visor.demo.pausa));
+  $v('vsAtras').addEventListener('click', () => paso(-1)); $v('vsAdel').addEventListener('click', () => paso(1));
+  $v('vsVel').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { visor.demo.vel = +b.dataset.v; refrescaEstudio(); } });
+  $v('vsVista').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { visor.rot = +b.dataset.r; visor.vel = 0; } });
+  const r = $v('vsT');
+  r.addEventListener('input', () => { const E = visor.demo; E.pausa = true; E.fijaK = false; E.arrastraT = true; E.t = +r.value / 1000; refrescaEstudio(); });
+  r.addEventListener('change', () => { visor.demo.arrastraT = false; r.blur(); });
+  $v('vsGolpes').addEventListener('click', () => { if (visor.demo) saleEstudio(); else entraEstudio(); });
+  $v('vsAjustar').addEventListener('click', () => {
+    const V = visor, E = V.demo; if (V.el.classList.contains('ajusta')) { cierraAjuste(); return; }
+    if (E.sel < 0) E.sel = E.i;
+    creaAsas(); E.pausa = true; V.el.classList.add('ajusta'); $v('vsAjustar').classList.add('on');
+    const g = golpeAct(E); if (!g.clip) { E.ki = claveCercana(g, E.t); E.t = tiempoClave(POSES_GOLPE[g.clave], E.ki, g.st === 'over'); E.simT = Infinity; }
+    $v('vsEstado').textContent = ''; visorTam(); refrescaEstudio();
+  });
+  for (const [id, col] of [['vsTw', 17], ['vsOf', 18]]) {
+    const s = $v(id);
+    s.addEventListener('pointerdown', () => { apuntaDeshacer(); visor.demo.fijaK = true; });
+    s.addEventListener('input', () => { filaActual().f[col] = +s.value; trasCambio(); });
+  }
+  $v('vsDeshacer').addEventListener('click', () => {
+    const u = visor.deshacer && visor.deshacer.pop(); if (!u) { $v('vsEstado').textContent = 'No hay nada que deshacer.'; return; }
+    u.f.forEach((x, k) => { POSES_GOLPE[u.c].f[u.i][k] = x; }); trasCambio();
+  });
+  $v('vsRestPose').addEventListener('click', () => { apuntaDeshacer(); const { E, g, f } = filaActual(); POSES_ORIG[g.clave].f[E.ki].forEach((x, k) => { f[k] = x; }); trasCambio(); });
+  $v('vsRestGolpe').addEventListener('click', () => { const { g } = filaActual(); POSES_GOLPE[g.clave].f.forEach((f, i) => { (visor.deshacer ??= []).push({ c: g.clave, i, f: f.slice() }); POSES_ORIG[g.clave].f[i].forEach((x, k) => { f[k] = x; }); }); trasCambio(); });
+  const caja = $v('vsTexto');
+  $v('vsCopiar').addEventListener('click', async () => {
+    const txt = JSON.stringify(ajustesActuales()); caja.value = txt;
+    let ok = false; try { await navigator.clipboard.writeText(txt); ok = true; } catch (_) { caja.select(); try { ok = document.execCommand('copy'); } catch (_) {} }
+    $v('vsEstado').textContent = ok ? 'Ajustes copiados: pégamelos en el chat.' : 'Selecciona el texto de abajo y cópialo.';
+  });
+  $v('vsPegar').addEventListener('click', () => {
+    try { const n = aplicaAjustes(JSON.parse(caja.value)); trasCambio(); $v('vsEstado').textContent = n + ' posturas cargadas.'; } catch (_) { $v('vsEstado').textContent = 'Ese texto no son ajustes válidos.'; }
+  });
+  $v('vsGrande').addEventListener('click', async () => {
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await visor.el.requestFullscreen(); }
+    catch (_) { vsHint.textContent = 'Aquí el navegador no deja usar pantalla completa: pulsa F11.'; }
+  });
+  document.addEventListener('fullscreenchange', () => { $v('vsGrande').textContent = document.fullscreenElement ? '✕ Salir de pantalla completa' : '⛶ Pantalla completa'; visorTam(); });
+  visor.cv.addEventListener('wheel', e => { if (!visor.demo) return; e.preventDefault(); visor.dist = clamp((visor.dist || 5.4) * (e.deltaY > 0 ? 1.08 : 0.92), 1.6, 8); }, { passive: false });
+  window.addEventListener('keydown', e => {
+    if (!visor.demo || !visor.el.classList.contains('open') || /TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (e.key === ' ') { e.preventDefault(); pausa(!visor.demo.pausa); } else if (e.key === 'ArrowLeft') { e.preventDefault(); paso(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); paso(1); }
+  });
+}
 window.addEventListener('resize', visorTam);
 document.getElementById('rivPrev').addEventListener('click', () => stepRivals(-1));
 document.getElementById('rivNext').addEventListener('click', () => stepRivals(1));
@@ -5526,7 +5780,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
-  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS,
+  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
