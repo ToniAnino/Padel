@@ -756,76 +756,76 @@ const ALTO_Y = 1.45;   // golpe alto (sobre el hombro) por encima de esta altura
 // ----- Golpes: posturas clave -----
 // Cada golpe es una lista de posturas en momentos de su recorrido s (0 preparación, impacto, terminación = 1), en un sistema
 // «hacia la bola»: +z hacia ella, -x a la derecha del jugador. Por fila: mano de la pala (x, y, z y cuánto sigue a la altura
-// de la bola), mango (x, y, z), hacia dónde sale el codo, mano libre (x, y, z, sigue), su codo, giro del tronco y giro de
+// de la bola), mango (x, y, z), hacia dónde sale el codo, mano libre (x, y, z desde su hombro; 0), su codo, giro del tronco y de
 // cadera y pies (grados; negativo = hacia su derecha, es decir, hombro izquierdo hacia la bola).
 const S_GOLPE = [0, 0.32, 0.64, 0.82, 1], S_ALTO = [0, 0.09, 0.19, 0.5, 1];
 const POSES_GOLPE = {
   driveF: { r: 0.95, f: [
-    [-.50,1.22,-.20,.35, -.12,.90,-.40, -.7,-.5,-.7, .12,1.30,.52,.2, .7,-1,.4, -28,-50],
-    [-.62,.92,-.02,.8, -.62,.25,-.74, -.8,-.8,-.2, .22,1.24,.42,.2, .8,-1,.3, -18,-35],
-    [-.46,.90,.50,1, -.62,.28,.72, -.5,-1,.1, .30,1.12,.24,.1, 1,-1,.1, 0,-8],
-    [-.08,1.12,.66,.8, .38,.72,.58, .1,-1,.4, .32,1.08,.10,.1, 1,-1,-.1, 18,8],
-    [.30,1.40,.20,.4, .42,.62,-.66, -.1,-.2,1, .30,1.12,.02,.1, 1,-1,-.2, 34,20] ] },
+    [-.50,1.22,-.20,.35, -.12,.90,-.40, -.7,-.5,-.7, -.10,-.12,.56,0, .7,-1,.4, -28,-50],
+    [-.62,.92,-.02,.8, -.62,.25,-.74, -.8,-.8,-.2, -.08,-.20,.50,0, .8,-1,.3, -18,-35],
+    [-.46,.90,.50,1, -.62,.28,.72, -.5,-1,.1, .02,-.34,.30,0, 1,-1,.1, 0,-8],
+    [-.08,1.12,.66,.8, .38,.72,.58, .1,-1,.4, .04,-.38,.16,0, 1,-1,-.1, 18,8],
+    [.30,1.40,.20,.4, .42,.62,-.66, -.1,-.2,1, .10,-.36,.20,0, 1,-1,-.2, 34,20] ] },
   driveB: { r: 0.95, f: [
-    [.46,1.22,-.08,.35, .25,.85,-.45, -.2,-.8,.6, .42,1.30,.10,.3, 1,-1,.2, 22,72],
-    [.54,.92,.10,.8, .62,.20,-.75, 0,-1,.4, .46,1.16,.02,.5, 1,-1,0, 14,58],
-    [.40,.92,.52,1, .60,.25,.75, .2,-1,-.1, .52,1.06,-.22,.1, 1,-.8,-.4, -2,34],
-    [.10,1.12,.72,.8, -.35,.70,.60, -.3,-.8,-.3, .54,1.04,-.30,.1, 1,-.7,-.5, -16,18],
-    [-.42,1.38,.30,.4, -.62,.60,-.50, -.6,-.2,-.6, .44,1.06,-.22,.1, 1,-.8,-.4, -28,8] ] },
+    [.46,1.22,-.08,.35, .25,.85,-.45, -.2,-.8,.6, .40,-.08,.18,0, 1,-1,.2, 22,72],
+    [.54,.92,.10,.8, .62,.20,-.75, 0,-1,.4, .42,-.30,.30,0, 1,-1,0, 14,58],
+    [.40,.92,.52,1, .60,.25,.75, .2,-1,-.1, .30,-.36,-.28,0, 1,-.8,-.4, -2,34],
+    [.10,1.12,.72,.8, -.35,.70,.60, -.3,-.8,-.3, .36,-.34,-.32,0, 1,-.7,-.5, -16,18],
+    [-.42,1.38,.30,.4, -.62,.60,-.50, -.6,-.2,-.6, .28,-.32,-.34,0, 1,-.8,-.4, -28,8] ] },
   voleaF: { r: 1.25, f: [
-    [-.30,1.32,.36,.6, -.25,.92,.10, -.8,-.6,-.2, -.02,1.24,.42,.6, .6,-1,.3, -12,-24],
-    [-.36,1.30,.40,.8, -.32,.88,.08, -.8,-.7,-.1, .06,1.22,.40,.4, .7,-1,.3, -10,-20],
-    [-.34,1.25,.62,1, -.30,.78,.45, -.6,-1,0, .24,1.16,.26,.2, 1,-1,.1, -2,-8],
-    [-.26,1.20,.70,1, -.20,.82,.45, -.5,-1,.1, .26,1.14,.22,.2, 1,-1,.1, 0,-4],
-    [-.20,1.15,.58,.9, -.12,.90,.30, -.6,-1,0, .26,1.14,.22,.2, 1,-1,.1, 2,-2] ] },
+    [-.30,1.32,.36,.6, -.25,.92,.10, -.8,-.6,-.2, -.24,-.16,.24,0, .6,-1,.3, -12,-24],
+    [-.36,1.30,.40,.8, -.32,.88,.08, -.8,-.7,-.1, -.20,-.18,.26,0, .7,-1,.3, -10,-20],
+    [-.34,1.25,.62,1, -.30,.78,.45, -.6,-1,0, .00,-.30,.22,0, 1,-1,.1, -2,-8],
+    [-.26,1.20,.70,1, -.20,.82,.45, -.5,-1,.1, .02,-.32,.20,0, 1,-1,.1, 0,-4],
+    [-.20,1.15,.58,.9, -.12,.90,.30, -.6,-1,0, .02,-.32,.20,0, 1,-1,.1, 2,-2] ] },
   voleaB: { r: 1.2, f: [
-    [.34,1.32,.30,.6, .30,.90,.08, -.2,-.8,.5, .34,1.38,.36,.6, 1,-1,.2, 8,42],
-    [.40,1.30,.32,.8, .38,.86,.02, -.1,-.9,.4, .38,1.32,.30,.6, 1,-1,.1, 6,38],
-    [.42,1.20,.58,1, .34,.78,.44, .1,-1,.1, .46,1.10,-.06,.1, 1,-.8,-.3, -2,26],
-    [.38,1.16,.66,1, .24,.82,.46, 0,-1,.1, .48,1.08,-.10,.1, 1,-.8,-.3, -4,22],
-    [.30,1.12,.56,.9, .14,.90,.30, -.2,-1,.1, .46,1.08,-.08,.1, 1,-.8,-.3, -4,18] ] },
+    [.34,1.32,.30,.6, .30,.90,.08, -.2,-.8,.5, .18,-.02,.40,0, 1,-1,.2, 8,42],
+    [.40,1.30,.32,.8, .38,.86,.02, -.1,-.9,.4, .22,-.06,.42,0, 1,-1,.1, 6,38],
+    [.42,1.20,.58,1, .34,.78,.44, .1,-1,.1, .24,-.30,-.16,0, 1,-.8,-.3, -2,26],
+    [.38,1.16,.66,1, .24,.82,.46, 0,-1,.1, .24,-.30,-.16,0, 1,-.8,-.3, -4,22],
+    [.30,1.12,.56,.9, .14,.90,.30, -.2,-1,.1, .24,-.32,-.12,0, 1,-.8,-.3, -4,18] ] },
   globoF: { r: 0.85, f: [
-    [-.48,1.00,-.24,.4, -.20,.72,-.62, -.7,-.7,-.5, .12,1.28,.50,.2, .7,-1,.4, -24,-42],
-    [-.58,.74,-.04,.8, -.62,-.10,-.76, -.8,-.9,-.1, .22,1.22,.42,.2, .8,-1,.3, -14,-28],
-    [-.44,.78,.46,1, -.66,.02,.72, -.5,-1,.1, .30,1.14,.24,.1, 1,-1,.1, 0,-6],
-    [-.20,1.30,.62,.5, -.22,.80,.52, -.4,-1,.4, .32,1.12,.12,.1, 1,-1,0, 10,4],
-    [.10,1.86,.30,0, .10,.92,-.34, -.6,-.1,.8, .30,1.14,.06,.1, 1,-1,-.1, 18,12] ] },
+    [-.48,1.00,-.24,.4, -.20,.72,-.62, -.7,-.7,-.5, -.10,-.14,.54,0, .7,-1,.4, -24,-42],
+    [-.58,.74,-.04,.8, -.62,-.10,-.76, -.8,-.9,-.1, -.06,-.22,.48,0, .8,-1,.3, -14,-28],
+    [-.44,.78,.46,1, -.66,.02,.72, -.5,-1,.1, .02,-.34,.30,0, 1,-1,.1, 0,-6],
+    [-.20,1.30,.62,.5, -.22,.80,.52, -.4,-1,.4, .04,-.36,.20,0, 1,-1,0, 10,4],
+    [.18,1.86,.42,0, .10,.92,.30, -.6,-.1,.8, .08,-.36,.16,0, 1,-1,-.1, 18,12] ] },
   globoB: { r: 0.85, f: [
-    [.44,1.02,-.06,.4, .24,.72,-.62, -.2,-.9,.5, .42,1.16,.08,.3, 1,-1,.2, 18,62],
-    [.52,.76,.10,.8, .62,-.10,-.76, 0,-1,.4, .46,1.02,.02,.5, 1,-1,0, 10,50],
-    [.40,.78,.48,1, .66,.02,.72, .2,-1,0, .52,1.04,-.20,.1, 1,-.8,-.4, -2,30],
-    [.18,1.30,.66,.5, .22,.80,.52, .1,-1,.2, .54,1.04,-.26,.1, 1,-.8,-.4, -10,18],
-    [-.12,1.86,.34,0, -.10,.92,-.34, -.2,-.1,.9, .46,1.06,-.20,.1, 1,-.8,-.4, -16,10] ] },
+    [.44,1.02,-.06,.4, .24,.72,-.62, -.2,-.9,.5, .38,-.14,.18,0, 1,-1,.2, 18,62],
+    [.52,.76,.10,.8, .62,-.10,-.76, 0,-1,.4, .40,-.36,.28,0, 1,-1,0, 10,50],
+    [.40,.78,.48,1, .66,.02,.72, .2,-1,0, .30,-.36,-.26,0, 1,-.8,-.4, -2,30],
+    [.18,1.30,.66,.5, .22,.80,.52, .1,-1,.2, .34,-.34,-.30,0, 1,-.8,-.4, -10,18],
+    [-.20,1.86,.44,0, -.10,.92,.30, -.2,-.1,.9, .28,-.32,-.30,0, 1,-.8,-.4, -16,10] ] },
   altoF: { r: 1.65, f: [
-    [-.40,1.70,-.14,.5, -.10,.85,-.48, -.8,.1,-.5, .24,1.46,.50,.4, .7,-1,.4, -18,-36],
-    [-.42,1.72,.06,.9, -.28,.72,-.62, -.9,-.2,-.2, .26,1.42,.42,.3, .8,-1,.3, -10,-24],
-    [-.34,1.65,.46,1, -.25,.85,.45, -.7,-.6,.1, .26,1.30,.30,.2, 1,-1,.1, 0,-6],
-    [-.12,1.40,.56,.8, .15,.55,.80, -.2,-1,.3, .16,1.20,.30,.1, 1,-1,.1, 14,6],
-    [.22,1.05,.36,.6, .62,.18,.72, 0,-1,.6, .18,1.12,.26,.1, 1,-1,0, 28,16] ] },
+    [-.40,1.70,-.14,.5, -.10,.85,-.48, -.8,.1,-.5, -.10,.12,.54,0, .7,-1,.4, -18,-36],
+    [-.42,1.72,.06,.9, -.28,.72,-.62, -.9,-.2,-.2, -.08,.06,.50,0, .8,-1,.3, -10,-24],
+    [-.34,1.65,.46,1, -.25,.85,.45, -.7,-.6,.1, .02,-.18,.30,0, 1,-1,.1, 0,-6],
+    [-.12,1.40,.56,.8, .15,.55,.80, -.2,-1,.3, .04,-.30,.22,0, 1,-1,.1, 14,6],
+    [.22,1.05,.36,.6, .62,.18,.72, 0,-1,.6, .08,-.36,.18,0, 1,-1,0, 28,16] ] },
   altoB: { r: 1.65, f: [
-    [.38,1.68,-.06,.5, .34,.80,-.46, -.2,-.3,.9, .34,1.62,.08,.5, 1,-1,.2, 14,58],
-    [.38,1.70,.12,.9, .40,.70,-.58, -.2,-.5,.7, .38,1.46,.02,.4, 1,-1,0, 10,48],
-    [.30,1.65,.46,1, .25,.85,.45, 0,-.8,.1, .50,1.16,-.18,.2, 1,-.8,-.4, 0,28],
-    [.10,1.40,.58,.8, -.15,.55,.80, 0,-1,.2, .52,1.10,-.24,.1, 1,-.8,-.4, -12,16],
-    [-.24,1.08,.38,.6, -.62,.18,.72, -.2,-1,.3, .46,1.08,-.20,.1, 1,-.8,-.4, -22,8] ] },
+    [.38,1.68,-.06,.5, .34,.80,-.46, -.2,-.3,.9, .30,.24,.12,0, 1,-1,.2, 14,58],
+    [.38,1.70,.12,.9, .40,.70,-.58, -.2,-.5,.7, .30,.14,.24,0, 1,-1,0, 10,48],
+    [.30,1.65,.46,1, .25,.85,.45, 0,-.8,.1, .30,-.28,-.24,0, 1,-.8,-.4, 0,28],
+    [.10,1.40,.58,.8, -.15,.55,.80, 0,-1,.2, .34,-.34,-.28,0, 1,-.8,-.4, -12,16],
+    [-.24,1.08,.38,.6, -.62,.18,.72, -.2,-1,.3, .28,-.34,-.28,0, 1,-.8,-.4, -22,8] ] },
   saque: { r: 0.9, f: [
-    [-.50,.98,-.06,0, -.30,.55,-.75, -1,-.3,-.6, .30,1.02,.46,0, 1,-1,0, 0,0],
-    [-.54,.84,.10,.6, -.66,.15,-.70, -1,-.7,-.1, .30,1.02,.44,0, 1,-1,0, 0,0],
-    [-.40,.90,.46,1, -.55,.35,.75, -.5,-1,.1, .28,1.08,.30,0, 1,-1,.1, 0,0],
-    [-.16,1.08,.56,.8, .10,.75,.62, -.2,-1,.3, .28,1.08,.20,0, 1,-1,.1, 0,0],
-    [.02,1.22,.46,.5, .30,.82,.45, -.2,-1,.5, .28,1.08,.16,0, 1,-1,.1, 0,0] ] },
+    [-.50,.98,-.06,0, -.30,.55,-.75, -1,-.3,-.6, .08,-.36,.46,0, 1,-1,0, 0,0],
+    [-.54,.84,.10,.6, -.66,.15,-.70, -1,-.7,-.1, .08,-.36,.44,0, 1,-1,0, 0,0],
+    [-.40,.90,.46,1, -.55,.35,.75, -.5,-1,.1, .06,-.34,.30,0, 1,-1,.1, 0,0],
+    [-.16,1.08,.56,.8, .10,.75,.62, -.2,-1,.3, .06,-.36,.20,0, 1,-1,.1, 0,0],
+    [.02,1.22,.46,.5, .30,.82,.45, -.2,-1,.5, .06,-.36,.16,0, 1,-1,.1, 0,0] ] },
   remate: { r: 2.1, s: S_ALTO, f: [
-    [-.36,1.58,-.20,0, -.12,.78,-.62, -1,-.1,-.3, .18,2.05,.34,.2, 1,-.2,.3, -22,-55],
-    [-.32,1.56,-.28,0, -.08,-.62,-.78, -1,.3,-.2, .20,1.90,.34,.1, 1,-.4,.3, -14,-42],
-    [-.20,1.98,.28,.5, -.08,.92,.38, -.9,.2,.2, .20,1.36,.28,0, 1,-1,.1, 0,-12],
-    [-.12,1.52,.62,0, -.05,.10,1, -.8,-.7,.2, .20,1.16,.20,0, 1,-1,.1, 12,6],
-    [.26,1.02,.22,0, .50,-.75,.25, .1,-1,.5, .24,1.04,.14,0, 1,-1,0, 28,18] ] },
+    [-.36,1.58,-.20,0, -.12,.78,-.62, -1,-.1,-.3, -.04,.60,.14,0, 1,-.2,.3, -22,-55],
+    [-.32,1.56,-.28,0, -.08,-.22,-.97, -1,.3,-.2, -.02,.52,.18,0, 1,-.4,.3, -14,-42],
+    [-.20,1.98,.28,.5, -.08,.92,.38, -.9,.2,.2, -.04,-.22,.24,0, 1,-1,.1, 0,-12],
+    [-.12,1.52,.62,0, -.05,.10,1, -.8,-.7,.2, .00,-.34,.20,0, 1,-1,.1, 12,6],
+    [.26,1.02,.22,0, .50,-.75,.25, .1,-1,.5, .02,-.36,.12,0, 1,-1,0, 28,18] ] },
   bandeja: { r: 2.1, s: S_ALTO, f: [
-    [-.36,1.58,-.20,0, -.12,.78,-.62, -1,-.1,-.3, .18,2.05,.34,.2, 1,-.2,.3, -22,-55],
-    [-.32,1.56,-.28,0, -.08,-.62,-.78, -1,.3,-.2, .20,1.90,.34,.1, 1,-.4,.3, -14,-42],
-    [-.20,1.98,.28,.5, -.08,.92,.38, -.9,.2,.2, .20,1.36,.28,0, 1,-1,.1, 0,-12],
-    [-.18,1.62,.62,0, -.50,.55,.62, -.9,-.5,.2, .22,1.20,.20,0, 1,-1,.1, 6,-2],
-    [-.02,1.32,.62,0, -.30,.35,.85, -.4,-1,.3, .24,1.12,.16,0, 1,-1,.1, 16,8] ] },
+    [-.36,1.58,-.20,0, -.12,.78,-.62, -1,-.1,-.3, -.04,.60,.14,0, 1,-.2,.3, -22,-55],
+    [-.32,1.56,-.28,0, -.08,-.22,-.97, -1,.3,-.2, -.02,.52,.18,0, 1,-.4,.3, -14,-42],
+    [-.20,1.98,.28,.5, -.08,.92,.38, -.9,.2,.2, -.04,-.22,.24,0, 1,-1,.1, 0,-12],
+    [-.18,1.62,.62,0, -.50,.55,.62, -.9,-.5,.2, .00,-.30,.22,0, 1,-1,.1, 6,-2],
+    [-.02,1.32,.62,0, -.30,.35,.85, -.4,-1,.3, .02,-.34,.18,0, 1,-1,.1, 16,8] ] },
 };
 // interpola las posturas (curva suave que pasa por todas) en el punto s del golpe
 function filaGolpe(P, s) {
@@ -949,6 +949,53 @@ function ik(S, H, L1, L2, hint) {
   const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
   const bend = hint.clone().addScaledVector(dir, -hint.dot(dir)).normalize();
   return S.clone().addScaledVector(dir, a).addScaledVector(bend, h);
+}
+// dentro del tronco (en el sistema del tronco)
+const enTroncoXYZ = (x, y, z) => y > 0.92 && y < 1.46 && (x / 0.19) ** 2 + (z / 0.14) ** 2 < 1;
+// saca un punto del tronco hacia su superficie (las manos no atraviesan el cuerpo)
+function sacaDeTronco(v) {
+  if (v.y <= 0.9 || v.y >= 1.48) return v;
+  const e = (v.x / 0.2) ** 2 + (v.z / 0.15) ** 2;
+  if (e >= 1) return v;
+  if (e < 1e-3) { v.z = 0.15; return v; }
+  const k = 1 / Math.sqrt(e); v.x *= k; v.z *= k;
+  return v;
+}
+// Codo posible: de todas las posiciones que permiten hombro y mano (un círculo alrededor de la línea entre ambos) elige la
+// que respeta la articulación: el codo solo se dobla hacia delante del brazo y el húmero gira un máximo hacia dentro y hacia
+// fuera. Entre las válidas, la más cercana a la pedida (hint), a la del fotograma anterior (prev) y sin entrar en el tronco.
+const _dC = new V3(), _e1C = new V3(), _e2C = new V3(), _bC = new V3();
+function mejorCodo(lado, S, dir, a, h, hint, prev) {
+  _e1C.copy(hint).addScaledVector(dir, -hint.dot(dir));
+  if (_e1C.lengthSq() < 1e-4) _e1C.set(lado, -1, -0.3).addScaledVector(dir, -(lado * dir.x - dir.y - 0.3 * dir.z));
+  _e1C.normalize(); _e2C.crossVectors(dir, _e1C);
+  const L = Math.hypot(a, h), Hx = S.x + dir.x * 2 * a, Hy = S.y + dir.y * 2 * a, Hz = S.z + dir.z * 2 * a;
+  let mejor = Infinity, bx = _e1C.x, by = _e1C.y, bz = _e1C.z;
+  for (let n = 0; n < 16; n++) {
+    const th = n * Math.PI / 8, c = Math.cos(th), s = Math.sin(th);
+    const px = _e1C.x * c + _e2C.x * s, py = _e1C.y * c + _e2C.y * s, pz = _e1C.z * c + _e2C.z * s;
+    const Ex = S.x + dir.x * a + px * h, Ey = S.y + dir.y * a + py * h, Ez = S.z + dir.z * a + pz * h;
+    let coste = (1 - c) * 0.4;
+    if (prev) coste += (1 - (px * prev.x + py * prev.y + pz * prev.z)) * 0.6;
+    if (enTroncoXYZ(Ex, Ey, Ez)) coste += 3;
+    if (enTroncoXYZ((Ex + S.x) / 2, (Ey + S.y) / 2, (Ez + S.z) / 2)) coste += 1.5;
+    if (enTroncoXYZ((Ex + Hx) / 2, (Ey + Hy) / 2, (Ez + Hz) / 2)) coste += 1.5;
+    // (se trabaja como si fuera el brazo izquierdo: el derecho, reflejado)
+    const ux = lado * (Ex - S.x) / L, uy = (Ey - S.y) / L, uz = (Ez - S.z) / L, fx = lado * (Hx - Ex) / L, fy = (Hy - Ey) / L, fz = (Hz - Ez) / L;
+    let ax = uy * fz - uz * fy, ay = uz * fx - ux * fz, az = ux * fy - uy * fx; const al = Math.hypot(ax, ay, az);
+    if (al > 0.26) {
+      ax /= al; ay /= al; az /= al;
+      // eje de flexión con el húmero sin girar: el del brazo colgando (-x), llevado a la dirección del húmero
+      const d = Math.max(0.02, 1 - uy), rx = -1 + ux * ux / d, ry = -ux, rz = uz * ux / d, rl = Math.hypot(rx, ry, rz);
+      const cx = (ry * az - rz * ay) / rl, cy = (rz * ax - rx * az) / rl, cz = (rx * ay - ry * ax) / rl;
+      const fi = Math.atan2(cx * ux + cy * uy + cz * uz, (rx * ax + ry * ay + rz * az) / rl) / DEG, extra = uy > 0.3 ? 60 : 0;
+      const ex = Math.max(fi - (105 + extra), -(85 + extra) - fi);
+      if (ex > 0) coste += 3 + ex / 30;
+      coste += Math.abs(fi - 15) / 180 * 0.5;
+    }
+    if (coste < mejor) { mejor = coste; bx = px; by = py; bz = pz; }
+  }
+  return _bC.set(bx, by, bz);
 }
 function makeLabel(text, bg, fg) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 96;
@@ -1817,6 +1864,17 @@ class Player {
     }
     if (this.rig && this.rig.auto) poseModelo(this);
   }
+  // posición del codo (i: 0 derecho, 1 izquierdo); si la mano no llega, la deja donde llegue el brazo estirado
+  codo(i, S, H, hint, dt) {
+    const L = 0.34, dir = new V3().subVectors(H, S); let d = dir.length();
+    dir.normalize(); d = clamp(d, 0.1, 2 * L - 0.001); H.copy(S).addScaledVector(dir, d);
+    const a = d / 2, h = Math.sqrt(Math.max(0, L * L - a * a));
+    const B = this.bendC ??= [null, null], prev = dt > 0 ? B[i] : null;
+    const b = mejorCodo(i ? 1 : -1, S, dir, a, h, hint, prev);
+    if (prev) { prev.lerp(b, Math.min(1, dt * 28)).addScaledVector(dir, -prev.dot(dir)); if (prev.lengthSq() < 1e-4) prev.copy(b); prev.normalize(); }
+    else B[i] = b.clone();
+    return S.clone().addScaledVector(dir, a).addScaledVector(B[i], h);
+  }
   updateArms(dt) {
     const sR = new V3(-0.22, 1.42, 0), sL = new V3(0.22, 1.42, 0);
     const y = this.hitY;
@@ -1841,12 +1899,20 @@ class Player {
     this.upper.rotation.y = this.twist; this.upper.updateMatrix();
     // de «hacia la bola» (sin el giro de cadera) al sistema del tronco, que es donde van los brazos
     const off = this.off || 0, iU = new THREE.Matrix4().copy(this.upper.matrix).invert(), qU = this.upper.quaternion.clone().invert();
-    const aPunto = v => v.applyAxisAngle(UP, -off).applyMatrix4(iU), aDir = v => v.applyAxisAngle(UP, -off).applyQuaternion(qU).normalize();
-    let R = aPunto(K.h), L = aPunto(K.l), hR = aDir(K.c), hL = aDir(K.e);
+    const aDir = v => v.applyAxisAngle(UP, -off).applyQuaternion(qU).normalize();
+    // las posturas están pensadas para un jugador algo flexionado: si baja o se inclina más (bolas bajas), los brazos le
+    // acompañan, salvo la mano de la pala en el impacto, que va a la altura de la bola
+    const om = new V3(0, 1.42, 0).applyMatrix4(this.upper.matrix).sub(new V3(0, 1.42, 0));
+    if (st !== 'over') om.add(new V3(0, 0.1, -0.2));
+    const wImp = clamp(Math.abs(s - (st === 'over' ? 0.19 : 0.64)) / 0.3, 0, 1);
+    const conCuerpo = (v, w) => v.applyAxisAngle(UP, -off).addScaledVector(om, w).applyMatrix4(iU);
+    let R = conCuerpo(K.h, wImp), hR = aDir(K.c), hL = aDir(K.e);
+    let L = K.l.applyAxisAngle(UP, -off).applyQuaternion(qU).add(new V3(0.22, 1.42, 0));   // (la mano libre, respecto a su hombro)
     const mango = aDir(K.m), frente = aDir(new V3(0, 0, 1));
     if (!swinging) {            // entre la espera y la preparación según lo cerca que esté la bola
       R = idleR.lerp(R, this.ready); L = idleL.lerp(L, this.ready);
       hR = hintIdleR.lerp(hR, this.ready); hL = hintIdleL.lerp(hL, this.ready);
+      { const ar = Math.sin(Math.PI * this.ready); if (st === 'over' || f.clave === 'altoF') { R.x -= 0.2 * ar; R.z += 0.1 * ar; } else if (f.clave === 'altoB') { R.x += 0.08 * ar; R.z += 0.26 * ar; } }   // (la pala sube por fuera: no pasa por la cabeza)
     }
     if (S.phase === 'serve' && this === S.server && !swinging) {
       // saque: pala atrás a la altura de la cintura, codo algo abierto; la mano izquierda, estirada por delante
@@ -1873,15 +1939,18 @@ class Player {
         R = new V3(-0.21, 0.98, -0.02); L = new V3(0.21, 0.98, -0.02); hR = new V3(-1, 0, -0.6); hL = new V3(1, 0, -0.6);
       }
     }
-    // suavizado para que no haya saltos al cambiar de postura (en el golpe va directo)
-    if (swinging || dt === 0 || !this.hR) { this.hR = R; this.hL = L; }
-    else { const k = Math.min(1, dt * (finishing ? 6 : 14)); this.hR.lerp(R, k); this.hL.lerp(L, k); }   // tras la terminación vuelve más despacio
-    const hand = this.hR.clone(), handL = this.hL.clone();
+    // suavizado para que no haya saltos al cambiar de postura (en el golpe, muy rápido; tras la terminación vuelve más despacio)
+    if (dt === 0 || !this.hR) { this.hR = R; this.hL = L; }
+    else {
+      this.hR.lerp(R, Math.min(1, dt * (swinging ? 55 : s > 0 ? 30 : finishing ? 6 : 14)));
+      this.hL.lerp(L, Math.min(1, dt * (swinging || s > 0 ? 26 : finishing ? 6 : 14)));
+    }
+    const hand = sacaDeTronco(this.hR.clone()), handL = sacaDeTronco(this.hL.clone());
     // el hombro derecho se adelanta cuando el brazo cruza por delante del cuerpo (preparar el revés, terminar la derecha)
     const cross = st === 'back' ? (swinging ? 1 - s : this.ready) : st === 'fore' && swinging ? Math.max(0, (s - 0.4) / 0.6) : 0;
     this.crossS = (this.crossS ?? cross) + (cross - (this.crossS ?? cross)) * (swinging || dt === 0 ? 1 : Math.min(1, dt * 14));
     sR.x += 0.07 * this.crossS; sR.z += 0.15 * this.crossS; sR.y -= 0.02 * this.crossS;
-    const elbowR = ik(sR, hand, 0.34, 0.34, hR);
+    const elbowR = this.codo(0, sR, hand, hR, dt);
     setBone(this.arms[0], sR, elbowR); setBone(this.arms[1], elbowR, hand);
     this.elbows[0].position.copy(elbowR);
     // mano: un poco más allá de la muñeca, siguiendo el antebrazo
@@ -1902,6 +1971,9 @@ class Player {
     // al volver de la terminación, sin saltos
     if (swinging || dt === 0 || !this.mangoS) { this.mangoS = tmpV2.clone(); this.caraS = nCara.clone(); }
     else { const kp = Math.min(1, dt * (finishing ? 7 : 14)); this.mangoS.lerp(tmpV2, kp).normalize(); this.caraS.lerp(nCara, kp).normalize(); tmpV2.copy(this.mangoS); nCara = this.caraS.clone(); }
+    // la muñeca tiene un límite: el mango no se dobla más de 105° respecto al antebrazo
+    { const fa = new V3().subVectors(hand, elbowR).normalize(), c = tmpV2.dot(fa), lim = -0.26;
+      if (c < lim) { const p = tmpV2.clone().addScaledVector(fa, -c); if (p.lengthSq() > 1e-5) tmpV2.copy(fa).multiplyScalar(lim).addScaledVector(p.normalize(), Math.sqrt(1 - lim * lim)); } }
     this.paddle.position.copy(hand);
     nCara.addScaledVector(tmpV2, -nCara.dot(tmpV2));
     if (nCara.lengthSq() < 1e-4) nCara.set(0, 0, 1).addScaledVector(tmpV2, -tmpV2.z);
@@ -1918,7 +1990,7 @@ class Player {
         const lejos = sR.distanceTo(bl) - 0.95;
         if (lejos > 0) sR.addScaledVector(bl.clone().sub(sR).normalize(), Math.min(0.12, lejos) * w);
         hand.addScaledVector(bl.clone().sub(hand.clone().addScaledVector(tmpV2, 0.32)), w);
-        elbowR.copy(ik(sR, hand, 0.34, 0.34, hR));   // (si no llega, la mano se queda con el brazo estirado)
+        elbowR.copy(this.codo(0, sR, hand, hR, dt));   // (si no llega, la mano se queda con el brazo estirado)
         setBone(this.arms[0], sR, elbowR); setBone(this.arms[1], elbowR, hand);
         this.elbows[0].position.copy(elbowR);
         const fa = new V3().subVectors(hand, elbowR).normalize();
@@ -1935,7 +2007,7 @@ class Player {
         }
       }
     }
-    const elbowL = ik(sL, handL, 0.34, 0.34, hL);
+    const elbowL = this.codo(1, sL, handL, hL, dt);
     setBone(this.arms[2], sL, elbowL); setBone(this.arms[3], elbowL, handL);
     this.elbows[1].position.copy(elbowL);
     this.hands[1].position.copy(handL).addScaledVector(tmpV2.subVectors(handL, elbowL).normalize(), 0.025);
@@ -4986,7 +5058,7 @@ function poseModelo(pl) {
     fija(H['clavicle_' + l], conGiro('clavicle_' + l, Uq));
     fija(H['upperarm_' + l], conGiro('upperarm_' + l, Uq));
     const S = cur['upperarm_' + l].p, S0 = aG(s), E0 = aG(e);
-    let W = aG(h), P0 = null, mf = null, mn = null;
+    let W = aG(h), P0 = null, mf = null, mn = null, kB = 1;
     if (l === 'r') {
       // la mano se coloca según la pala: el mango cruza el puño (sale por el lado del pulgar hacia la cabeza de la pala)
       // y la palma mira como la cara de la pala; la muñeca queda detrás del puño
@@ -4994,10 +5066,26 @@ function poseModelo(pl) {
       mn = new V3(0, 0, 1).applyQuaternion(pq); mf = new V3().crossVectors(mh, mn).multiplyScalar(R.F.mano.r.s);
       P0 = W.clone();
       W = P0.clone().addScaledVector(mh, 0.065).addScaledVector(mf, -0.085).addScaledVector(mn, -0.03);
+      // si el brazo del modelo no llega, la mano se queda donde alcance y el mango se inclina para que la pala siga en su sitio
+      // (antes, el brazo se estira un poco: solo se nota en los fotogramas en que va a por una bola lejana)
+      kB = clamp(W.distanceTo(S) / (R.L1 + R.L2 - 0.005), 1, 1.18);
+      H.lowerarm_r.position.copy(rest.lowerarm_r.lp).multiplyScalar(M_BRAZO * kB);
+      H.hand_r.position.copy(rest.hand_r.lp).multiplyScalar(M_BRAZO * kB);
+      for (let i = 0; i < 2; i++) {
+        const Lm = (R.L1 + R.L2) * kB - 0.005, dW = W.distanceTo(S);
+        if (dW <= Lm) break;
+        const C = P0.clone().addScaledVector(mh, 0.32);
+        P0.addScaledVector(S.clone().sub(W).divideScalar(dW), dW - Lm);
+        mh.copy(C).sub(P0).normalize(); mn.addScaledVector(mh, -mn.dot(mh)).normalize();
+        mf.crossVectors(mh, mn).multiplyScalar(R.F.mano.r.s);
+        W = P0.clone().addScaledVector(mh, 0.065).addScaledVector(mf, -0.085).addScaledVector(mn, -0.03);
+        const iq = Uq.clone().invert(), y = mh.clone().applyQuaternion(iq), z = mn.clone().applyQuaternion(iq);
+        pl.paddle.quaternion.setFromRotationMatrix(_mB0.makeBasis(new V3().crossVectors(y, z), y, z));
+      }
     }
     let pv = E0.clone().sub(S0.clone().add(W).multiplyScalar(0.5));
     if (pv.lengthSq() < 1e-6) pv = polo.clone().applyQuaternion(Uq);
-    const E = ik(S, W.clone(), R.L1, R.L2, pv);
+    const E = ik(S, W.clone(), R.L1 * kB, R.L2 * kB, pv);
     const dA = E.clone().sub(S).normalize(), flex = W.clone().sub(E);
     flex.addScaledVector(dA, -flex.dot(dA));
     if (flex.lengthSq() < 1e-6) flex.copy(pv).negate();
@@ -5046,6 +5134,7 @@ const cargaClip = n => CLIPS[n] ??= fetch(MOD.base + 'golpes/' + n + '.json')
 const _qC0 = new THREE.Quaternion(), _qC1 = new THREE.Quaternion();
 function poseClip(pl, c, t) {
   const R = pl.rig; if (!R) return;
+  for (const n of ['lowerarm_r', 'hand_r']) R.H[n].position.copy(R.F.rest[n].lp).multiplyScalar(M_BRAZO);   // (sin el estirón de poseModelo)
   const rest = R.F.rest, H = R.H, n = c.q.length, U = pl.upper;
   const x = clamp(t * c.fps, 0, n - 1), i = Math.floor(x), j = Math.min(n - 1, i + 1), a = x - i;
   const k = rest.pelvis.p.y / c.restCadera;                 // de la medida de la persona del vídeo a la del modelo
