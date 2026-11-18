@@ -19,14 +19,18 @@ export async function convierte(url, op = {}) {
   const clip = o.animations[0], fps = 30, nF = Math.round(clip.duration * fps) + 1;
   const mx = new THREE.AnimationMixer(o); mx.clipAction(clip).play();
   const raw = [];
-  for (let f = op.quita || 0; f < nF; f++) {
+  // tramo: desde/hasta en segundos (por defecto, sin el primer y el último fotograma, que Rokoko deja en postura en T)
+  const f0 = Math.max(op.quita || 1, Math.round((op.desde || 0) * fps)), f1 = Math.min(nF - 2, op.hasta ? Math.round(op.hasta * fps) : nF - 2);
+  for (let f = f0; f <= f1; f++) {
     mx.setTime(f / fps); o.updateMatrixWorld(true);
     const d = nombres.map(n => B[n].getWorldQuaternion(new THREE.Quaternion()).multiply(restQ[n].clone().invert()));
     const sh = wp('LeftArm').sub(wp('RightArm')), fwd = sh.clone().cross(new THREE.Vector3(0, 1, 0)).normalize();   // hacia donde mira
-    raw.push({ d, hips: wp('Hips'), pie: Math.min(wp('LeftFoot').y, wp('RightFoot').y, wp('LeftToeBase').y + 4, wp('RightToeBase').y + 4), fwd, mano: wp('RightHand').y });
+    raw.push({ d, hips: wp('Hips'), pie: Math.min(wp('LeftFoot').y, wp('RightFoot').y, wp('LeftToeBase').y + 4, wp('RightToeBase').y + 4), fwd, mano: wp('RightHand').y, pm: wp('RightHand').sub(wp('Hips')) });
   }
-  // de cara al frente (+z) en el impacto (cuando la mano de la pala está más alta, o en el fotograma op.impacto)
-  let imp = op.impacto ?? raw.reduce((m, r, i) => r.mano > raw[m].mano ? i : m, 0);
+  // impacto: en el remate, cuando la mano de la pala está más alta; en los golpes de abajo (op.rapido), cuando va más
+  // deprisa respecto a la cadera; o el fotograma op.impacto. En el impacto se pone de cara al frente (+z).
+  const vel = i => i > 0 ? raw[i].pm.distanceTo(raw[i - 1].pm) : 0;
+  let imp = op.impacto ?? (op.rapido ? raw.reduce((m, r, i) => vel(i) > vel(m) ? i : m, 0) : raw.reduce((m, r, i) => r.mano > raw[m].mano ? i : m, 0));
   const yaw = Math.atan2(raw[imp].fwd.x, raw[imp].fwd.z), R = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
   // sin desplazamiento horizontal (el jugador lo mueve el juego): la cadera, respecto a su posición en el impacto
   const h0 = raw[imp].hips.clone();
