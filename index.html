@@ -4676,8 +4676,22 @@ function cargaModelos() {
     const ld = new GLTFLoader(), tl = new THREE.TextureLoader();
     const tx = (n, srgb) => tl.loadAsync(MOD.base + n).then(t => { t.flipY = false; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
     const pelos = [...new Set(Object.values(PELO_MOD)), 'Hair_Beard'];
-    // (glTF con los datos binarios dentro, en .json: así también se pueden servir desde la página publicada)
-    const [h, m, ...resto] = await Promise.all(['hombre', 'mujer', ...pelos].map(n => ld.loadAsync(MOD.base + n + '.json')));
+    // (glTF con los datos binarios dentro, en .json: así también se pueden servir desde la página publicada; los
+    // datos se sacan aquí y se monta un .glb en memoria, porque la página publicada no deja leer direcciones data:)
+    const glb = async n => {
+      const r = await fetch(MOD.base + n + '.json'); if (!r.ok) throw new Error(n + '.json: ' + r.status);
+      const j = await r.json(), uri = j.buffers[0].uri; delete j.buffers[0].uri;
+      const bs = atob(uri.slice(uri.indexOf(',') + 1)), bin = new Uint8Array(bs.length);
+      for (let i = 0; i < bs.length; i++) bin[i] = bs.charCodeAt(i);
+      const js = new TextEncoder().encode(JSON.stringify(j)), pj = (4 - js.length % 4) % 4, pb = (4 - bin.length % 4) % 4;
+      const tot = 12 + 8 + js.length + pj + 8 + bin.length + pb, out = new ArrayBuffer(tot), dv = new DataView(out), u8 = new Uint8Array(out);
+      dv.setUint32(0, 0x46546C67, true); dv.setUint32(4, 2, true); dv.setUint32(8, tot, true);
+      dv.setUint32(12, js.length + pj, true); dv.setUint32(16, 0x4E4F534A, true); u8.set(js, 20); u8.fill(0x20, 20 + js.length, 20 + js.length + pj);
+      const o = 20 + js.length + pj;
+      dv.setUint32(o, bin.length + pb, true); dv.setUint32(o + 4, 0x004E4942, true); u8.set(bin, o + 8);
+      return new Promise((ok, ko) => ld.parse(out, '', ok, ko));
+    };
+    const [h, m, ...resto] = await Promise.all(['hombre', 'mujer', ...pelos].map(glb));
     const nt = ['piel_h', 'piel_m', 'pelo1', 'pelo2', 'ojo', 'piel_h_n', 'piel_m_n', 'pelo1_n', 'pelo2_n'];
     const ts = await Promise.all(nt.map((n, i) => tx(n + (n === 'ojo' ? '.png' : '.jpg'), i < 5)));
     nt.forEach((n, i) => { MOD.tex[n] = ts[i]; });
@@ -5021,7 +5035,7 @@ function visorModelo() {
     if (!V.modelo || V.pl !== pl || pl.rig) return;
     ponModelo(pl); if (!V.demo) visorQuieto(pl);
     vsHint.textContent = HINT_VS;
-  }).catch(() => { vsHint.textContent = 'No se ha podido cargar el modelo nuevo'; });
+  }).catch(e => { vsHint.textContent = 'No se ha podido cargar el modelo nuevo (' + ((e && e.message) || e) + ')'; console.error(e); });
 }
 document.querySelector('#visor .vsSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
