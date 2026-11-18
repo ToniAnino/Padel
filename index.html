@@ -402,7 +402,8 @@
       <div class="vsMain"><canvas id="vsCanvas"></canvas>
         <aside id="vsPanel">
           <b id="vsPose"></b>
-          <p>Elige arriba la postura y arrastra los puntos: <i style="color:#fde047">●</i> mano de la pala, <i>●</i> punta de la pala, <i style="color:#38bdf8">●</i> mano libre, <i style="color:#4ade80">●</i> codos.</p>
+          <p>Elige arriba la postura y arrastra los puntos: <i style="color:#fde047">●</i> mano de la pala, <i>●</i> punta de la pala, <i style="color:#38bdf8">●</i> mano libre, <i style="color:#4ade80">●</i> codos, <i style="color:#fb923c">●</i> borde de la pala (la gira sobre el mango).</p>
+          <label>Giro de la pala <span id="vsGiroN"></span><input type="range" id="vsGiro" min="-180" max="180" step="1"></label>
           <label>Giro de hombros <span id="vsTwN"></span><input type="range" id="vsTw" min="-90" max="90" step="1"></label>
           <label>Giro de cadera y pies <span id="vsOfN"></span><input type="range" id="vsOf" min="-90" max="90" step="1"></label>
           <div class="vsFila"><button id="vsDeshacer">Deshacer</button><button id="vsRestPose">Restaurar postura</button><button id="vsRestGolpe">Restaurar golpe</button></div>
@@ -882,15 +883,31 @@ function filaGolpe(P, s) {
 }
 // postura del golpe f (ver faseGolpe) con la altura de la bola ya aplicada
 function poseGolpe(f) {
-  let P = POSES_GOLPE[f.clave], v;
+  let P = POSES_GOLPE[f.clave], v, n;
+  const cara = Q => filaGolpe({ s: Q.s, f: Q.n }, f.s);
   if (f.st === 'over') {   // entre bandeja y mate según la fuerza
-    const k = clamp((f.pow - 0.35) / 0.65, 0, 1), a = filaGolpe(POSES_GOLPE.bandeja, f.s), b = filaGolpe(POSES_GOLPE.remate, f.s);
-    P = POSES_GOLPE.remate; v = a.map((x, n) => x + (b[n] - x) * k);
-  } else v = filaGolpe(P, f.s);
+    const k = clamp((f.pow - 0.35) / 0.65, 0, 1), B = POSES_GOLPE.bandeja, M = POSES_GOLPE.remate, a = filaGolpe(B, f.s), b = filaGolpe(M, f.s), na = cara(B), nb = cara(M);
+    P = M; v = a.map((x, i) => x + (b[i] - x) * k); n = na.map((x, i) => x + (nb[i] - x) * k);
+  } else { v = filaGolpe(P, f.s); n = cara(P); }
   const dy = f.y - P.r;
   return { h: new V3(v[0], v[1] + v[3] * dy, v[2]), m: new V3(v[4], v[5], v[6]).normalize(), c: new V3(v[7], v[8], v[9]),
-    l: new V3(v[10], v[11] + v[13] * dy, v[12]), e: new V3(v[14], v[15], v[16]), tw: v[17], of: v[18] };
+    l: new V3(v[10], v[11] + v[13] * dy, v[12]), e: new V3(v[14], v[15], v[16]), tw: v[17], of: v[18], giro: v[19], n: new V3(n[0], n[1], n[2]) };
 }
+// hacia dónde mira la cara de la pala en cada postura: hacia la bola, de través al mango y sin dar media vuelta de una postura
+// a la siguiente (en el revés, con el dorso de la mano hacia la bola). La columna 19 de cada fila es el giro añadido a mano.
+function normalesGolpe(c) {
+  const P = POSES_GOLPE[c], sg = c.endsWith('B') ? -1 : 1; let prev = null;
+  P.n = P.f.map(r => {
+    const l = Math.hypot(r[4], r[5], r[6]), m = [r[4] / l, r[5] / l, r[6] / l];
+    let ref = prev && Math.abs(m[2]) > 0.85 ? prev : [0, 0, sg];
+    const d = ref[0] * m[0] + ref[1] * m[1] + ref[2] * m[2];
+    let n = [ref[0] - d * m[0], ref[1] - d * m[1], ref[2] - d * m[2]];
+    const nl = Math.hypot(n[0], n[1], n[2]) || 1; n = n.map(x => x / nl);
+    if (prev && n[0] * prev[0] + n[1] * prev[1] + n[2] * prev[2] < 0) n = n.map(x => -x);
+    return prev = n;
+  });
+}
+for (const c in POSES_GOLPE) { for (const r of POSES_GOLPE[c].f) if (r.length < 20) r.push(0); normalesGolpe(c); }
 // tronco con forma: cadera, cintura, pecho, hombros y arranque del cuello (centro en y = 1,13)
 // (acaba en la cintura, a la altura de la cadera: lo de abajo es la pelvis, que no se inclina con el tronco)
 const torsoGeo = new THREE.LatheGeometry([[0, -0.255], [0.14, -0.25], [0.156, -0.21], [0.152, -0.09], [0.163, 0.04],
@@ -2004,18 +2021,26 @@ class Player {
     // pala: el mango como marca la postura del golpe; en espera, casi vertical delante del pecho
     tmpV2.subVectors(hand, elbowR).normalize().add(new V3(0, 2.8, 0)).normalize();
     if (swinging) tmpV2.copy(mango); else tmpV2.lerp(mango, this.ready).normalize();
-    // giro de la pala sobre el mango: en espera, de canto; al prepararse, la cara hacia la bola; en el golpe, hacia donde
-    // sale (y, cerca del impacto, el mango se pone de través a esa dirección para que la cara le dé de lleno)
-    let nCara = new V3(1, 0, 0).lerp(frente, swinging ? 1 : this.ready);
+    // cara de la pala: la de la postura; en el impacto, hacia donde sale la bola (y el mango de través a esa dirección para
+    // que le dé de lleno). Después, el giro añadido a mano, y nunca media vuelta de un fotograma al siguiente
+    let nCara = aDir(K.n); if (!swinging) nCara = new V3(1, 0, 0).lerp(nCara, this.ready);
     if (swinging && this.swingDir) {
       const dL = this.swingDir.clone().applyQuaternion(this.upper.getWorldQuaternion(_qPala).invert());
       const w = clamp(1 - Math.abs(s - (st === 'over' ? 0.19 : 0.64)) / 0.3, 0, 1);   // (impacto: s = 0,19 en el remate, 0,64 en los demás)
       tmpV2.addScaledVector(dL, -w * tmpV2.dot(dL)).normalize();
-      nCara = dL;
+      if (dL.dot(nCara) < 0) dL.negate();
+      nCara.lerp(dL, w);
     }
-    // al volver de la terminación, sin saltos
-    if (swinging || dt === 0 || !this.mangoS) { this.mangoS = tmpV2.clone(); this.caraS = nCara.clone(); }
-    else { const kp = Math.min(1, dt * (finishing ? 7 : 14)); this.mangoS.lerp(tmpV2, kp).normalize(); this.caraS.lerp(nCara, kp).normalize(); tmpV2.copy(this.mangoS); nCara = this.caraS.clone(); }
+    nCara.addScaledVector(tmpV2, -nCara.dot(tmpV2));
+    if (nCara.lengthSq() < 1e-4) nCara.set(0, 0, 1).addScaledVector(tmpV2, -tmpV2.z);
+    nCara.normalize().applyAxisAngle(tmpV2, K.giro * DEG * (swinging ? 1 : this.ready));
+    if (this.caraS && dt > 0 && nCara.dot(this.caraS) < 0) nCara.negate();
+    if (dt === 0 || !this.mangoS) { this.mangoS = tmpV2.clone(); this.caraS = nCara.clone(); }
+    else {
+      if (swinging) { this.mangoS.lerp(tmpV2, Math.min(1, dt * 70)).normalize(); tmpV2.copy(this.mangoS); }
+      else { this.mangoS.lerp(tmpV2, Math.min(1, dt * (finishing ? 7 : 14))).normalize(); tmpV2.copy(this.mangoS); }
+      this.caraS.lerp(nCara, Math.min(1, dt * (swinging ? 70 : finishing ? 7 : 14))).normalize(); nCara = this.caraS.clone();
+    }
     // la muñeca tiene un límite: el mango no se dobla más de 105° respecto al antebrazo
     { const fa = new V3().subVectors(hand, elbowR).normalize(), c = tmpV2.dot(fa), lim = -0.26;
       if (c < lim) { const p = tmpV2.clone().addScaledVector(fa, -c); if (p.lengthSq() > 1e-5) tmpV2.copy(fa).multiplyScalar(lim).addScaledVector(p.normalize(), Math.sqrt(1 - lim * lim)); } }
@@ -5341,7 +5366,7 @@ function aplicaAjustes(o) {
   let n = 0;
   for (const c in o) for (const i in o[c]) {
     const dest = POSES_GOLPE[c] && POSES_GOLPE[c].f[i], v = o[c][i];
-    if (dest && Array.isArray(v) && v.length === dest.length && v.every(Number.isFinite)) { v.forEach((x, k) => { dest[k] = x; }); n++; }
+    if (dest && Array.isArray(v) && v.length >= 19 && v.length <= dest.length && v.every(Number.isFinite)) { v.forEach((x, k) => { dest[k] = x; }); normalesGolpe(c); n++; }
   }
   return n;
 }
@@ -5413,7 +5438,7 @@ function refrescaEstudio() {
     if (E.pausa && !E.fijaK) E.ki = claveCercana(g, E.t);
     document.querySelectorAll('#vsMarcas button').forEach(b => b.classList.toggle('on', V.el.classList.contains('ajusta') && +b.dataset.i === E.ki));
     const f = POSES_GOLPE[g.clave].f[E.ki];
-    $v('vsTw').value = f[17]; $v('vsOf').value = f[18]; $v('vsTwN').textContent = Math.round(f[17]) + '°'; $v('vsOfN').textContent = Math.round(f[18]) + '°';
+    $v('vsGiro').value = f[19]; $v('vsGiroN').textContent = Math.round(f[19]) + '°'; $v('vsTw').value = f[17]; $v('vsOf').value = f[18]; $v('vsTwN').textContent = Math.round(f[17]) + '°'; $v('vsOfN').textContent = Math.round(f[18]) + '°';
     $v('vsPose').textContent = g.n + ' · ' + (g.st === 'over' ? NOM_POSES_ALTO : NOM_POSES)[E.ki];
   }
   vsHint.textContent = g.n + (E.sel < 0 ? ' · todos seguidos' : '') + (g.clip && !V.pl.rig ? ' · solo con el modelo nuevo' : '');
@@ -5451,7 +5476,7 @@ function demoGolpes(pl, dt) {
   refrescaEstudio(); ponAsas(pl);
 }
 // --- ajuste de posturas: puntos que se arrastran en 3D ---
-const ASAS = [['mano', 0xfde047], ['punta', 0xffffff], ['izq', 0x38bdf8], ['codoD', 0x4ade80], ['codoI', 0x4ade80]];
+const ASAS = [['mano', 0xfde047], ['punta', 0xffffff], ['izq', 0x38bdf8], ['codoD', 0x4ade80], ['codoI', 0x4ade80], ['borde', 0xfb923c]];
 function creaAsas() {
   const V = visor; if (V.asas) return;
   V.asas = {}; const geo = new THREE.SphereGeometry(0.04, 16, 12);
@@ -5460,8 +5485,9 @@ function creaAsas() {
 function puntosBrazo(pl) {
   pl.g.updateMatrixWorld(true);
   const J = pl.J, mundo = v => pl.upper.localToWorld(v.clone()), R = pl.rig, hueso = n => R.H[n].getWorldPosition(new V3());
-  const mano = mundo(pl.paddle.position), eje = new V3(0, 1, 0).applyQuaternion(pl.paddle.quaternion);
-  return { mano, punta: mundo(pl.paddle.position.clone().addScaledVector(eje, 0.46)), izq: R ? hueso('hand_l') : mundo(J.hL), codoD: R ? hueso('lowerarm_r') : mundo(J.eR), codoI: R ? hueso('lowerarm_l') : mundo(J.eL),
+  const mano = mundo(pl.paddle.position), eje = new V3(0, 1, 0).applyQuaternion(pl.paddle.quaternion), ejeX = new V3(1, 0, 0).applyQuaternion(pl.paddle.quaternion);
+  const cabeza = mundo(pl.paddle.position.clone().addScaledVector(eje, 0.32)), borde = mundo(pl.paddle.position.clone().addScaledVector(eje, 0.32).addScaledVector(ejeX, 0.14));
+  return { mano, cabeza, borde, punta: mundo(pl.paddle.position.clone().addScaledVector(eje, 0.46)), izq: R ? hueso('hand_l') : mundo(J.hL), codoD: R ? hueso('lowerarm_r') : mundo(J.eR), codoI: R ? hueso('lowerarm_l') : mundo(J.eL),
     hD: R ? hueso('upperarm_r') : mundo(J.sR), hI: R ? hueso('upperarm_l') : mundo(J.sL) };
 }
 function ponAsas(pl) {
@@ -5478,7 +5504,7 @@ function rayoVisor(e) {
 }
 function filaActual() { const E = visor.demo, g = golpeAct(E); return { E, g, f: POSES_GOLPE[g.clave].f[E.ki] }; }
 function apuntaDeshacer() { const { E, g, f } = filaActual(); (visor.deshacer ??= []).push({ c: g.clave, i: E.ki, f: f.slice() }); if (visor.deshacer.length > 60) visor.deshacer.shift(); }
-function trasCambio() { const E = visor.demo; E.simT = Infinity; guardaAjustes(); $v('vsEstado').textContent = 'Guardado. Se aplica también en los partidos, a los dos equipos.'; refrescaEstudio(); }
+function trasCambio() { const E = visor.demo; for (const c in POSES_GOLPE) normalesGolpe(c); E.simT = Infinity; guardaAjustes(); $v('vsEstado').textContent = 'Guardado. Se aplica también en los partidos, a los dos equipos.'; refrescaEstudio(); }
 function cogeAsa(e) {
   const V = visor, E = V.demo;
   if (!E || !V.asas || !V.el.classList.contains('ajusta') || !E.pausa) return false;
@@ -5501,7 +5527,12 @@ function mueveAsa(e) {
   const pon = (i, v) => { f[i] = v.x; f[i + 1] = v.y; f[i + 2] = v.z; };
   if (A.n === 'mano') { f[0] += d.x; f[1] += d.y; f[2] += d.z; }
   else if (A.n === 'izq') { f[10] += d.x; f[11] += d.y; f[12] += d.z; }
-  else if (A.n === 'punta') pon(4, hit.clone().sub(P.mano).normalize());
+  else if (A.n === 'punta') { pon(4, hit.clone().sub(P.mano).normalize()); normalesGolpe(g.clave); }
+  else if (A.n === 'borde') {   // gira la pala sobre su mango
+    const h = P.punta.clone().sub(P.mano).normalize(), a = hit.clone().sub(d).sub(P.cabeza), b = hit.clone().sub(P.cabeza);
+    a.addScaledVector(h, -a.dot(h)); b.addScaledVector(h, -b.dot(h));
+    f[19] = clamp(f[19] + Math.atan2(new V3().crossVectors(a, b).dot(h), a.dot(b)) / DEG, -180, 180);
+  }
   else if (A.n === 'codoD') pon(7, hit.clone().sub(P.hD.clone().add(P.mano).multiplyScalar(0.5)).normalize());
   else pon(14, hit.clone().sub(P.hI.clone().add(P.izq).multiplyScalar(0.5)).normalize());
   E.simT = Infinity;
@@ -5528,7 +5559,7 @@ function mueveAsa(e) {
     const g = golpeAct(E); if (!g.clip) { E.ki = claveCercana(g, E.t); E.t = tiempoClave(POSES_GOLPE[g.clave], E.ki, g.st === 'over'); E.simT = Infinity; }
     $v('vsEstado').textContent = ''; visorTam(); refrescaEstudio();
   });
-  for (const [id, col] of [['vsTw', 17], ['vsOf', 18]]) {
+  for (const [id, col] of [['vsTw', 17], ['vsOf', 18], ['vsGiro', 19]]) {
     const s = $v(id);
     s.addEventListener('pointerdown', () => { apuntaDeshacer(); visor.demo.fijaK = true; });
     s.addEventListener('input', () => { filaActual().f[col] = +s.value; trasCambio(); });
