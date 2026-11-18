@@ -9,6 +9,6 @@ Cambios hechos aquí:
 - Los glTF ya no enlazan sus texturas (el juego las pone por código) y llevan los datos binarios dentro (base64);
   se guardan como .json (hombre.json, mujer.json y un .json por peinado).
 
-Golpes grabados (modelos/golpes/*.json): movimiento sacado con Rokoko Vision de v�deos gratuitos de Pexels
-(licencia Pexels: https://www.pexels.com/license/). remate_a: v�deo 34445198, del segundo 1,5 al 4.
+Golpes grabados (modelos/golpes/*.json): movimiento sacado con Rokoko Vision de vídeos gratuitos de Pexels
+(licencia Pexels: https://www.pexels.com/license/). remate_a: vídeo 34445198, del segundo 1,5 al 4.
 Se convierten con un script (fbx de Rokoko con esqueleto Mixamo -> giro de cada hueso respecto a la postura en T).
