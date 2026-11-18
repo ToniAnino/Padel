@@ -342,6 +342,11 @@
         <button data-v="azul">Pista azul</button>
         <button data-v="verde">Pista verde</button>
       </div>
+      <h2 data-ico="jugadores">Jugadores</h2>
+      <div class="opts row" data-k="modelo">
+        <button data-v="piezas">Muñeco<span>el de siempre</span></button>
+        <button data-v="nuevo">Modelo nuevo<span>prueba</span></button>
+      </div>
       <h2 data-ico="camara">Vista de la pista</h2>
       <div class="opts row" data-k="view" style="margin-bottom:8px">
         <button data-v="normal">Normal</button>
@@ -418,7 +423,7 @@ const DRIVE_NET = 1.35;           // altura a la que el golpe normal pasa por la
 const E_FLOOR = 0.72, F_FLOOR = 0.85, E_WALL = 0.7;
 const US = 0, RIVAL = 1;
 // Ajustes elegidos en el menú (se recuerdan en este navegador)
-const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal' };
+const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'piezas' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
 if (CFG.match === '1' || CFG.match === '5p') CFG.match = '6p';   // los antiguos «1 set» y «5 puntos» son ahora el partido a 6 puntos
@@ -1531,7 +1536,7 @@ class Player {
     const ge = this.gesto, gp = ge ? { puño: -0.25, brazos: -0.35, cabeza: 0.35, jarras: 0.5 }[ge.k] : undefined;
     this.head.rotation.y += ((gp !== undefined ? 0 : yaw) - this.head.rotation.y) * k;
     this.head.rotation.x += ((gp !== undefined ? gp : -pitch) - this.head.rotation.x) * k;
-    if (this.rig) poseModelo(this);
+    if (this.rig && this.rig.auto) poseModelo(this);
   }
   // Piernas: paso al correr, piernas abiertas y flexionadas en la espera, pie adelantado al golpear
   // y rodillas recogidas en el salto. Todo en coordenadas locales (+z adelante, -x derecha).
@@ -1702,7 +1707,7 @@ class Player {
       shoe.rotation.set(0.55 * tr, (atras ? -0.6 : 0.6) * tr, 0, 'YXZ');
       if (tr > 0) shoe.position.z += 0.03 * tr;   // (gira sobre la punta, que sigue en el suelo)
     }
-    if (this.rig) poseModelo(this);
+    if (this.rig && this.rig.auto) poseModelo(this);
   }
   updateArms(dt) {
     const sR = new V3(-0.22, 1.42, 0), sL = new V3(0.22, 1.42, 0);
@@ -1897,7 +1902,7 @@ class Player {
     // articulaciones para el modelo con esqueleto (en el sistema del tronco; hR/hL son hacia dónde sale el codo)
     this.J = Object.assign(this.J || {}, { sR: sR.clone(), eR: elbowR.clone(), hR: hand.clone(), sL: sL.clone(), eL: elbowL.clone(), hL: handL.clone(),
       cara: nCara.clone(), poloR: hR.clone(), poloL: hL.clone() });
-    if (this.rig) poseModelo(this);
+    if (this.rig && this.rig.auto) poseModelo(this);
   }
 }
 
@@ -1969,6 +1974,7 @@ function applyLook() {
   floor.material.needsUpdate = true; outer.material.needsUpdate = true;
   courtFrame.visible = det; edges.visible = !det; entorno.visible = det;
   players.forEach(p => p.setLook(det));
+  modelosPartido(det);
 }
 const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20),
   new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6, depthWrite: false }));
@@ -3986,6 +3992,7 @@ function update(dt) {
     p.updateArms(S.phase === 'pause' ? 0 : dt);
     p.updateLegs(S.phase === 'pause' ? 0 : dt);
     p.lookAtBall(S.phase === 'pause' ? 0 : dt);
+    if (p.rig) poseModelo(p);   // modelo con esqueleto: una vez por fotograma, con todo ya colocado
   }
   // anillo azul bajo el jugador nuestro que va a golpear (el que antes llega a la bola)
   let mine = null;
@@ -4808,18 +4815,38 @@ function matPelo(color, t) {
 const piezasMuneco = pl => [...pl.legs, pl.torso, pl.neck, pl.head, ...pl.arms, ...pl.knees, ...pl.ankles, ...pl.elbows, ...pl.hands,
   pl.pelvis, ...pl.shortLegs, ...pl.shoes, ...pl.shoulders, pl.yoke, ...pl.sleeves, pl.collar, ...pl.wrists];
 const accCabeza = pl => [pl.headband, pl.cap, pl.brim, pl.glasses, pl.hairExtra];
-function quitaModelo(pl) {
+function quitaModelo(pl, det = true) {
   const R = pl.rig; if (!R) return;
-  pl.g.remove(R.obj);
+  pl.g.remove(R.obj); R.mc.dispose();
   for (const m of accCabeza(pl)) pl.head.add(m);
   for (const z of pl.shoes) z.scale.set(1, 1, 1);
   pl.rig = null;
   if (pl.prof) pl.setProfile(pl.prof);   // (medidas de la falda)
-  pl.setLook(true);
+  pl.setLook(det);
+}
+// con el modelo puesto: piezas del muñeco ocultas, sus zapatillas calzadas y la falda a la medida (setLook y
+// setProfile las vuelven a poner como para el muñeco, así que se repite tras ellos)
+function ajustaPiezas(pl) {
+  for (const m of piezasMuneco(pl)) m.visible = false;
+  pl.hair.visible = false;
+  if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
+  for (const z of pl.shoes) { z.visible = true; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
+  const p = pl.prof, k = p.cx === 'f' ? 1.2 : p.cx === 'd' ? 0.86 : 1;
+  pl.skirt.scale.set(k * 0.9, 1, 0.8 * (0.5 + 0.5 * k) * 0.92);   // (las caderas del modelo, algo más estrechas)
+}
+// lo que cambia el modelo: si no ha cambiado nada, no se rehace
+const claveModelo = p => JSON.stringify([p.id, p.s, p.pv || 0, p.piel, p.pelo, p.pc, p.cam, p.pan, p.zap, p.man, p.acc, materialDe(p).map(x => x.id)]);
+// en el partido, con gráficos detallados y «Modelo nuevo» elegido en Configuración
+function modelosPartido(det) {
+  if (!(det && CFG.modelo === 'nuevo')) { for (const p of players) if (p.rig) quitaModelo(p, det); return; }
+  if (!MOD.src.h) { cargaModelos().then(() => { if (CFG.modelo === 'nuevo') applyLook(); }).catch(e => console.error(e)); return; }
+  for (const p of players) ponModelo(p);
 }
 function ponModelo(pl) {
-  if (pl.rig) quitaModelo(pl);
   const p = pl.prof; if (!p || !MOD.src.h) return;
+  const clave = claveModelo(p);
+  if (pl.rig && pl.rig.clave === clave) { ajustaPiezas(pl); poseModelo(pl); return; }
+  if (pl.rig) quitaModelo(pl);
   const fem = p.s === 'm', F = MOD.src[fem ? 'm' : 'h'], rest = F.rest;
   const obj = MOD.SU.clone(F.sc), H = {};
   obj.traverse(o => { if (o.isBone) H[o.name] = o; });
@@ -4852,14 +4879,10 @@ function ponModelo(pl) {
   const [cc, ce] = M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
   cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
   for (const m of accCabeza(pl)) cab.add(m);
-  pl.hair.visible = false;
-  if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
-  for (const m of piezasMuneco(pl)) m.visible = false;
-  for (const z of pl.shoes) { z.visible = true; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
-  pl.skirt.scale.multiply(new V3(0.9, 1, 0.92));   // (las caderas del modelo, algo más estrechas)
   pl.g.add(obj);
   const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * M_BRAZO, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * M_BRAZO;
-  pl.rig = { obj, H, F, cur: {}, L1, L2, fem };
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, auto: pl === visor.pl };
+  ajustaPiezas(pl);
   poseModelo(pl);
 }
 // cuaternión que lleva la base (dir0, sec0) a la (dir, sec): x = dirección del hueso, y = eje secundario
