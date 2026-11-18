@@ -4676,7 +4676,8 @@ function cargaModelos() {
     const ld = new GLTFLoader(), tl = new THREE.TextureLoader();
     const tx = (n, srgb) => tl.loadAsync(MOD.base + n).then(t => { t.flipY = false; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
     const pelos = [...new Set(Object.values(PELO_MOD)), 'Hair_Beard'];
-    const [h, m, ...resto] = await Promise.all([ld.loadAsync(MOD.base + 'hombre.gltf'), ld.loadAsync(MOD.base + 'mujer.gltf'), ...pelos.map(n => ld.loadAsync(MOD.base + n + '.gltf'))]);
+    // (glTF con los datos binarios dentro, en .json: así también se pueden servir desde la página publicada)
+    const [h, m, ...resto] = await Promise.all(['hombre', 'mujer', ...pelos].map(n => ld.loadAsync(MOD.base + n + '.json')));
     const nt = ['piel_h', 'piel_m', 'pelo1', 'pelo2', 'ojo', 'piel_h_n', 'piel_m_n', 'pelo1_n', 'pelo2_n'];
     const ts = await Promise.all(nt.map((n, i) => tx(n + (n === 'ojo' ? '.png' : '.jpg'), i < 5)));
     nt.forEach((n, i) => { MOD.tex[n] = ts[i]; });
@@ -4713,7 +4714,7 @@ function preparaFuente(sc) {
   F.dir = n => R[n].p.clone();
   const g = cuerpo.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
   const nb = cuerpo.skeleton.bones.map(b => b.name), n = pos.count;
-  const conM = new Float32Array(n * 4), sinM = new Float32Array(n * 4);
+  const conM = new Float32Array(n * 4), sinM = new Float32Array(n * 4), cab = new Float32Array(n);
   const muslo = R.thigh_r.p.y, rodilla = R.calf_r.p.y;
   const cintura = muslo + 0.05, pernera = muslo - 0.42 * (muslo - rodilla), cuello = R.neck_01.p.y;
   const hx = Math.abs(R.upperarm_r.p.x), ex = Math.abs(R.lowerarm_r.p.x), hy = R.upperarm_r.p.y;
@@ -4725,15 +4726,16 @@ function preparaFuente(sc) {
     const brazo = /arm|hand|index|middle|ring|pinky|thumb/.test(b), cabeza = /neck|Head/.test(b);
     const t = (ax - hx) / (ex - hx);                                   // por el brazo: 0 hombro .. 1 codo
     // escote: solo junto al cuello (algo más bajo delante); por los lados la camiseta sube hasta los hombros
-    const cuelloX = 0.11 - Math.max(0, cuello - y) * 0.6;
-    const tronco = !cabeza && y > cintura && !(ax < cuelloX && y > cuello - 0.025 - (z > 0 ? 0.045 : 0));
+    const cuelloX = 0.095 - Math.max(0, cuello - y) * 0.6;
+    const tronco = !cabeza && y > cintura && !(ax < cuelloX && y > cuello - 0.015 - (z > 0 ? 0.03 : 0));
     const camM = tronco && (!brazo || t < 0.42) ? 1 : 0;                                  // camiseta con manga corta
     const camS = tronco && !brazo && !(ax > hx - 0.025 && y > hy - 0.09) && !(ax < cuelloX + 0.01 && y > cuello - 0.035 - (z > 0 ? 0.035 : 0)) ? 1 : 0;   // sin mangas (tirantes)
     const pan = !brazo && y <= cintura && y > pernera ? 1 : 0;
     const zap = y < tobillo + 0.035 ? 1 : 0, calc = y < tobillo + 0.085 ? 1 : 0;
-    conM.set([camM, pan, zap, calc], i * 4); sinM.set([camS, pan, zap, calc], i * 4);
+    conM.set([camM, pan, zap, calc], i * 4); sinM.set([camS, pan, zap, calc], i * 4); cab[i] = cabeza || y > cuello ? 1 : 0;
   }
   g.setAttribute('ropaM', new THREE.BufferAttribute(conM, 4)); g.setAttribute('ropaS', new THREE.BufferAttribute(sinM, 4));
+  g.setAttribute('aCab', new THREE.BufferAttribute(cab, 1));
   // dedos: eje de flexión de cada falange (hacia la palma, que en la postura en T mira abajo)
   for (const lado of ['r', 'l']) for (const d of ['index', 'middle', 'ring', 'pinky', 'thumb']) for (const k of [1, 2, 3]) {
     const nm = `${d}_0${k}_${lado}`, hijo = `${d}_0${k + 1}_${lado}` + (k === 3 ? '' : ''), nh = R[`${d}_0${k + 1}_${lado}`] || R[`${d}_04_leaf_${lado}`];
@@ -4760,16 +4762,18 @@ function matCuerpo(fem) {
   m.userData.u = u;
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 ropaM;\nattribute vec4 ropaS;\nuniform float uMangas;\nvarying vec4 vRopa;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRopa = mix(ropaS, ropaM, uMangas);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uPiel, uCam, uPan, uZap, uCalc;\nvarying vec4 vRopa;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 ropaM;\nattribute vec4 ropaS;\nattribute float aCab;\nuniform float uMangas;\nvarying vec4 vRopa;\nvarying float vCab;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRopa = mix(ropaS, ropaM, uMangas); vCab = aCab;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uPiel, uCam, uPan, uZap, uCalc;\nvarying vec4 vRopa;\nvarying float vCab;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         {
           vec3 t = diffuseColor.rgb; float lum = dot(t, vec3(0.299, 0.587, 0.114));
-          float sat = max(t.r, max(t.g, t.b)) - min(t.r, min(t.g, t.b)), gris = smoothstep(0.07, 0.025, sat);
+          float sat = max(t.r, max(t.g, t.b)) - min(t.r, min(t.g, t.b)), gris = smoothstep(0.07, 0.025, sat) * (1.0 - vCab);
           vec3 som = vec3(mix(1.0, clamp(lum / mix(0.21, 0.5, gris), 0.6, 1.2), 0.55));   // algo del sombreado de la textura, para la ropa
           // (la ropa interior gris del modelo: si asoma fuera de la ropa, se pinta de piel)
-          vec3 c = mix(t * uPiel, vec3(0.39, 0.18, 0.083) * uPiel * clamp(lum / 0.5, 0.6, 1.2), gris);
+          // piel: el tono del jugador con el sombreado de la textura (y algo de su color: labios, mejillas)
+          vec3 piel = mix(uPiel * vec3(0.39, 0.18, 0.083) * clamp(lum / 0.235, 0.35, 1.6), t * uPiel, 0.3);
+          vec3 c = mix(piel, vec3(0.39, 0.18, 0.083) * uPiel * clamp(lum / 0.5, 0.6, 1.2), gris);
           c = mix(c, uCam * som, smoothstep(0.35, 0.65, vRopa.x)); c = mix(c, uPan * som, smoothstep(0.35, 0.65, vRopa.y));
           c = mix(c, uCalc * som, smoothstep(0.35, 0.65, vRopa.w)); c = mix(c, uZap * som, smoothstep(0.35, 0.65, vRopa.z));
           diffuseColor.rgb = c;
