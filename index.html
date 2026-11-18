@@ -4820,7 +4820,11 @@ function quitaModelo(pl, det = true) {
   pl.g.remove(R.obj); R.mc.dispose();
   for (const m of accCabeza(pl)) pl.head.add(m);
   for (const z of pl.shoes) z.scale.set(1, 1, 1);
+  pl.skirt.quaternion.identity();   // (un golpe grabado la deja girada con la cadera)
   pl.rig = null;
+  // vuelven las piezas que ocultó ajustaPiezas (setLook solo decide las opcionales: mangas, pelo, cuello...)
+  for (const m of piezasMuneco(pl)) m.visible = true;
+  pl.hair.visible = true;
   if (pl.prof) pl.setProfile(pl.prof);   // (medidas de la falda)
   pl.setLook(det);
 }
