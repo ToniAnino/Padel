@@ -16,6 +16,15 @@
   #view canvas{display:block;width:100%;height:100%}
   #panelWrap{position:relative;flex:0 0 38%}
   #panel{display:block;width:100%;height:100%;touch-action:none}
+  /* controles sobre la pista (ordenador): sin el panel de abajo y a todo lo ancho de la ventana */
+  #app.ancho{width:100vw}
+  #app.ancho #panelWrap{display:none}
+  body:not(.pc) .soloPc{display:none}
+  #ayudaPista{position:absolute;left:50%;bottom:46px;transform:translateX(-50%);max-width:92%;text-align:center;font-size:14px;font-weight:700;
+    color:rgba(255,255,255,.88);text-shadow:0 1px 4px #000;pointer-events:none;white-space:nowrap}
+  #ayudaPista:empty{display:none}
+  #ayudaPista .dif{display:block;color:#ffd23f}
+  #ayudaPista .cuenta{display:block;height:5px;margin:6px auto 0;border-radius:3px;background:#ff4757}
   #hud{position:absolute;top:10px;left:46px;right:46px;text-align:center;font-weight:800;   /* sin pisar el botón del menú */
     font-size:14px;letter-spacing:.5px;white-space:nowrap;pointer-events:none}
   @media (max-width:420px){#hud{font-size:12px;letter-spacing:0}#hud b{margin:0 2px}}
@@ -286,6 +295,7 @@
   <div id="view">
     <div id="hud">NOSOTROS <b id="s0">0</b> – <b id="s1" class="r">0</b> RIVALES</div>
     <div id="msg"></div>
+    <div id="ayudaPista"></div>
     <div id="tip"></div>
     <div id="bigScore"><div class="sb"><div class="col us"><div class="tn">NOSOTROS</div><div class="tile" id="bsU"></div><div class="gm" id="bsUg"></div></div><div class="sep">–</div><div class="col riv"><div class="tn">RIVALES</div><div class="tile" id="bsR"></div><div class="gm" id="bsRg"></div></div><div class="bsSub" id="bsSub"></div></div></div>
     <div id="banner"><div class="bt"></div><div class="bs"></div></div>
@@ -373,6 +383,11 @@
       <div class="opts row" data-k="modelo">
         <button data-v="piezas">Muñeco<span>el de siempre</span></button>
         <button data-v="nuevo">Modelo nuevo<span>prueba</span></button>
+      </div>
+      <h2 data-ico="jugadores" class="soloPc">Controles (ordenador)</h2>
+      <div class="opts row soloPc" data-k="ctrl">
+        <button data-v="panel">Con panel<span>el recuadro de abajo</span></button>
+        <button data-v="pista">Sobre la pista<span>pantalla ancha</span></button>
       </div>
       <h2 data-ico="camara">Vista de la pista</h2>
       <div class="opts row" data-k="view" style="margin-bottom:8px">
@@ -470,7 +485,7 @@ const DRIVE_NET = 1.35;           // altura a la que el golpe normal pasa por la
 const E_FLOOR = 0.72, F_FLOOR = 0.85, E_WALL = 0.7;
 const US = 0, RIVAL = 1;
 // Ajustes elegidos en el menú (se recuerdan en este navegador)
-const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'piezas' };
+const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'piezas', ctrl: 'panel' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
 if (CFG.match === '1' || CFG.match === '5p') CFG.match = '6p';   // los antiguos «1 set» y «5 puntos» son ahora el partido a 6 puntos
@@ -3681,18 +3696,70 @@ document.getElementById('palaCerrar').addEventListener('click', () => { document
 // el saque vuestro, el destino del golpe en tiempo real (un toque golpe, dos globo) y, con pausa, el golpe que se elige.
 // Es lo mismo que tocar en el recuadro de abajo, pero directamente en la pista.
 const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _ground = new THREE.Plane(new V3(0, 1, 0), 0), _gp = new V3();
-renderer.domElement.addEventListener('pointerdown', e => {
-  if (menuOpen) return;
+// punto del suelo bajo el puntero (false si no lo toca)
+function sueloBajo(e) {
   const r = renderer.domElement.getBoundingClientRect();
   _ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
   _ray.setFromCamera(_ndc, camera);
-  if (!_ray.ray.intersectPlane(_ground, _gp) || _gp.z >= 0 || Math.abs(_gp.x) > HW + 1 || _gp.z < -HL - 1) return;
+  return !!_ray.ray.intersectPlane(_ground, _gp);
+}
+// Controles sobre la pista (ordenador, sin el panel): arrastrando con el botón izquierdo por vuestro campo, TÚ va ahí
+// (a cualquier sitio de vuestro lado, también al de COMPI); COMPI sigue con el teclado
+const pistaOn = () => ORDENADOR && CFG.ctrl === 'pista';
+const enNuestroCampo = p => ({ x: clamp(p.x, -4.7, 4.7), z: clamp(p.z, 0.6, 9.6) });   // (como el recuadro del panel)
+let arrastraPista = null;
+function aplicaCtrl() { document.getElementById('app').classList.toggle('ancho', pistaOn()); resize(); }
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (menuOpen || !sueloBajo(e)) return;
+  if (pistaOn() && e.button === 0 && _gp.z > 0 && S.phase !== 'pause' && !palaOn()) {
+    e.preventDefault(); try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+    const o = unoSolo() ? ctrlP() : ours[0];
+    arrastraPista = { id: e.pointerId, o };
+    o.target = enNuestroCampo(_gp); o.hardStop = false; audioOn();
+    return;
+  }
+  if (_gp.z >= 0 || Math.abs(_gp.x) > HW + 1 || _gp.z < -HL - 1) return;
   e.preventDefault();
   if (ourServeTurn()) { serveTap(_gp.x, _gp.z); audioOn(); return; }
   const [px, py] = worldToPanel(clamp(_gp.x, -HW, HW), clamp(_gp.z, -HL, 0), 'rival');
   if (S.phase === 'pause') tapPause(px, py);
   else if (S.phase === 'play' && CFG.mode === 'manual') aimTap(px, py);
 });
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!arrastraPista || arrastraPista.id !== e.pointerId || S.phase === 'pause' || !sueloBajo(e)) return;
+  (unoSolo() ? ctrlP() : arrastraPista.o).target = enNuestroCampo(_gp);
+});
+const sueltaPista = e => { if (arrastraPista && arrastraPista.id === e.pointerId) arrastraPista = null; };
+renderer.domElement.addEventListener('pointerup', sueltaPista);
+renderer.domElement.addEventListener('pointercancel', sueltaPista);
+// Lo que el panel enseñaba, con los controles sobre la pista: los avisos, en un texto abajo de la vista; la zona de
+// saque, pintada en verde en el suelo; el punto elegido en la pausa, con el aro del destino
+const zonaSaque = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x3ddc84, transparent: true, opacity: 0.28, depthWrite: false }));
+zonaSaque.rotation.x = -Math.PI / 2; zonaSaque.visible = false; scene.add(zonaSaque);
+const ayudaEl = document.getElementById('ayudaPista');
+let ayudaTxt = '';
+function ayudaPista() {
+  const on = pistaOn() && !menuOpen;
+  let html = '';
+  zonaSaque.visible = false;
+  if (on) {
+    if (S.phase === 'pause' && S.pause && !S.pause.pala) {
+      const P = S.pause, left = P.taps > 0 ? 1 : 1 - P.t / PAUSE_MAX;
+      html = '1 CLIC EN LA PISTA RIVAL: GOLPE · 2 CLICS: GLOBO' + ((P.diff || 0) > 0.6 ? '<span class="dif">BOLA DIFÍCIL: EL GOLPE PUEDE IRSE</span>' : '')
+        + `<span class="cuenta" style="width:${Math.round(260 * clamp(left, 0, 1))}px"></span>`;
+      if (P.taps > 0) { targetRing.position.set(P.x, 0.013, P.z); targetRing.visible = true; }
+    } else if (ourServeWaiting()) {
+      const half = S.serveRight ? 1 : -1;
+      zonaSaque.scale.set(HW, HL - SERVICE_LINE, 1); zonaSaque.position.set(half * HW / 2, 0.012, (SERVICE_LINE + HL) / 2); zonaSaque.visible = true;
+      html = '2 clics en la pista rival: saque bombeado';   // (el aviso de abajo ya dice quién saca y que se toque dónde)
+    } else if (S.phase === 'serve' && S.score[0] + S.score[1] === 0 && !arrastraPista) {
+      html = 'Arrastra a TÚ por vuestro campo con el ratón · COMPI con W A S D o las flechas';
+    } else if (CFG.mode === 'manual' && S.phase === 'play' && !S.aim && S.rallyHits < 3) {
+      html = 'Clic en la pista rival: a dónde va la bola · 1 clic golpe · 2 globo';
+    }
+  }
+  if (html !== ayudaTxt) { ayudaTxt = html; ayudaEl.innerHTML = html; }
+}
 // sin el menú del navegador con el botón derecho en el juego (el botón derecho marca el destino)
 document.getElementById('app').addEventListener('contextmenu', e => { if (!e.target.closest('#menu')) e.preventDefault(); });
 // ================= Panel de control =================
@@ -3704,6 +3771,7 @@ function resizePanel() {
   const r = panel.getBoundingClientRect();
   DPR = Math.min(devicePixelRatio, 2);
   PW = r.width; PH = r.height;
+  if (PW < 60 || PH < 60) { PW = 360; PH = 360; }   // (oculto, con los controles sobre la pista: tamaño de cuentas para las conversiones)
   panel.width = Math.round(PW * DPR); panel.height = Math.round(PH * DPR);
 }
 function worldToPanel(x, z, mode) {
@@ -6455,11 +6523,13 @@ menuEl.addEventListener('click', e => {
   // la escalera se juega a partido con final (si estaba «Sin final», a 6 puntos)
   if ((CFG.tipo === 'escalera' || CFG.tipo === 'torneo') && CFG.match === 'libre') { CFG.match = '6p'; CFG.scoring = 'simple'; }
   if (k === 'view') resize();
+  if (k === 'ctrl') aplicaCtrl();
   saveCfg(); paintMenu(); paintPlay();
   applyLook(); updateHud(); renderer.render(scene, camera);   // se ve el cambio detrás del menú
 });
 sanitizeLineup(); applyLineup(); lineAtOpen = lineupKey();
 loadMatch();
+document.body.classList.toggle('pc', ORDENADOR); aplicaCtrl();   // (la opción de controles solo sale en ordenador)
 applyLook(); updateHud(); paintPlay();
 // ventana de confirmación (Sí / Cancelar)
 let cfYes = null;
@@ -6496,7 +6566,7 @@ function frame(now) {
   if (!menuOpen) update(dt);
   updateCam(menuOpen ? 0 : dt);
   renderer.render(scene, camera);
-  drawPanel();
+  drawPanel(); ayudaPista();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
