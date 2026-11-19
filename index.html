@@ -5485,6 +5485,7 @@ function preparaFuente(sc) {
     F.mano[lado] = { f0, p0, s: Math.sign(new V3().crossVectors(l0, p0).dot(f0)) || 1, off: { h: 0.065, f: 0.085, n: 0.03 } };
   }
   F.kBrazo = M_BRAZO;
+  F.munecas = { r: munequeraAjustada(cuerpo.geometry, R, 'r'), l: munequeraAjustada(cuerpo.geometry, R, 'l') };
   return F;
 }
 // el chico (TRELLIS + Mixamo, sin dedos): su mano derecha ya viene cerrada en puño alrededor de un mango que cruza la
@@ -5510,10 +5511,53 @@ function preparaChico(sc, img) {
   for (let i = 0; i < U.count; i++) U.setY(i, 1 - U.getY(i));
   F.tinte = TINTE.preparaTinte({ geometry: g, material: { map: { image: img } } }, 'chico');
   F.cintaGeo = cintaAjustada(cuerpo.geometry);
+  F.munecas = { r: munequeraAjustada(cuerpo.geometry, R, 'r'), l: munequeraAjustada(cuerpo.geometry, R, 'l') };
   return F;
 }
 // cinta del pelo del chico, ajustada al contorno de su cabeza (con el pelo): para cada dirección alrededor de la cabeza, lo
 // más saliente a esa altura, algo más alta delante (frente) que detrás; banda plana de 2,8 cm, 4 mm por fuera del pelo
+// puntos repartidos por la superficie de los triángulos que pasan cerca de c (a menos de rad): la malla tiene pocos
+// vértices y, con ellos solos, al medir contornos quedan huecos
+function puntosSuperficie(geo0, c, rad, m = 10) {
+  const pos = geo0.attributes.position, ix = geo0.index, pts = [], a = new V3(), b = new V3(), d = new V3();
+  const nt = ix ? ix.count / 3 : pos.count / 3, vi = k => ix ? ix.getX(k) : k;
+  for (let t = 0; t < nt; t++) {
+    a.fromBufferAttribute(pos, vi(3 * t)); b.fromBufferAttribute(pos, vi(3 * t + 1)); d.fromBufferAttribute(pos, vi(3 * t + 2));
+    if (a.distanceTo(c) > rad && b.distanceTo(c) > rad && d.distanceTo(c) > rad) continue;
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= m - i; j++) {
+      const u = i / m, w = j / m;
+      pts.push(new V3(a.x + (b.x - a.x) * u + (d.x - a.x) * w, a.y + (b.y - a.y) * u + (d.y - a.y) * w, a.z + (b.z - a.z) * u + (d.z - a.z) * w));
+    }
+  }
+  return pts;
+}
+// muñequera: anillo plano alrededor del antebrazo, de 6,5 a 1 cm antes de la muñeca, 5 mm por fuera de la piel
+// (en el espacio del reposo; va pegada al hueso de la mano)
+function munequeraAjustada(geo0, R, lado) {
+  const W = R['hand_' + lado].p, E = R['lowerarm_' + lado].p, ax = W.clone().sub(E).normalize();
+  const u = new V3(0, 1, 0).addScaledVector(ax, -ax.y).normalize(), v = new V3().crossVectors(ax, u);
+  const N = 32, d0 = -0.065, d1 = -0.01, hueco = 0.005;
+  const pts = puntosSuperficie(geo0, W, 0.14), q = new V3();
+  const radio = s0 => {
+    const r = new Float32Array(N);
+    for (const p of pts) {
+      q.subVectors(p, W); const s = q.dot(ax); if (Math.abs(s - s0) > 0.006) continue;
+      const x = q.dot(u), y = q.dot(v), d = Math.hypot(x, y); if (d > 0.07) continue;
+      const k = ((Math.round(Math.atan2(y, x) / (2 * Math.PI) * N) % N) + N) % N;
+      if (d > r[k]) r[k] = d;
+    }
+    for (let k = 0; k < N; k++) if (!r[k]) { let i = 1; while (i < N / 2 && !r[(k + i) % N] && !r[(k - i + N) % N]) i++; r[k] = Math.max(r[(k + i) % N], r[(k - i + N) % N]) || 0.03; }
+    return r.map((x, k) => Math.max(x, (r[(k + N - 1) % N] + 2 * x + r[(k + 1) % N]) / 4));
+  };
+  const r0 = radio(d0), r1 = radio(d1), vs = [], idx = [];
+  for (let k = 0; k <= N; k++) {
+    const th = (k % N) / N * 2 * Math.PI, dir = u.clone().multiplyScalar(Math.cos(th)).addScaledVector(v, Math.sin(th));
+    for (const [r, s] of [[r0[k % N], d0], [r1[k % N], d1]]) { const p = W.clone().addScaledVector(ax, s).addScaledVector(dir, r + hueco); vs.push(p.x, p.y, p.z); }
+  }
+  for (let k = 0; k < N; k++) { const a = 2 * k; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(vs, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
+}
 function cintaAjustada(geo0) {
   const N = 64, yF = 1.712, inc = 0.009, alto = 0.028, hueco = 0.004;
   const alt = th => yF - inc + inc * Math.cos(th);           // (th = 0: delante)
@@ -5640,6 +5684,8 @@ function quitaModelo(pl, det = true) {
 const _dobleCara = new WeakMap();
 const dobleCara = m => { let d = _dobleCara.get(m); if (!d) { d = m.clone(); d.side = THREE.DoubleSide; _dobleCara.set(m, d); } return d; };
 function ajustaPiezas(pl) {
+  // muñequeras: las del muñeco no van en el modelo; si el jugador las lleva, se encienden las del modelo, con su color
+  if (pl.wrists[0].visible && pl.rig && pl.rig.munecas) for (const m of pl.rig.munecas) { m.visible = true; m.material = dobleCara(pl.wrists[0].material); }
   for (const m of piezasMuneco(pl)) m.visible = false;
   pl.hair.visible = false;
   if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
@@ -5706,12 +5752,21 @@ function ponModelo(pl) {
   // el chico lleva su propia cinta, a la medida de su cabeza (se enciende en ajustaPiezas si el jugador la lleva)
   let cinta = null;
   if (F.cintaGeo) { cinta = new THREE.Mesh(F.cintaGeo, pl.headband.material); cinta.visible = false; cinta.castShadow = true; marco.add(cinta); }
+  // muñequeras, pegadas al hueso de cada mano (en un marco con los ejes del reposo, como la cabeza)
+  const munecas = [];
+  for (const l of ['r', 'l']) {
+    if (!F.munecas || !F.munecas[l]) continue;
+    const rq = rest['hand_' + l].q.clone().invert(), mg = new THREE.Group();
+    mg.quaternion.copy(rq); mg.position.copy(rest['hand_' + l].p).negate().applyQuaternion(rq);
+    const m = new THREE.Mesh(F.munecas[l], pl.wrists[0].material); m.visible = false; m.castShadow = true;
+    mg.add(m); H['hand_' + l].add(mg); munecas.push(m);
+  }
   const [cc, ce] = F.cab || M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
   cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
   for (const m of accCabeza(pl)) cab.add(m);
   pl.g.add(obj);
   const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * F.kBrazo, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * F.kBrazo;
-  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, auto: pl === visor.pl };
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, munecas, auto: pl === visor.pl };
   ajustaPiezas(pl);
   poseModelo(pl);
 }
