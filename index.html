@@ -972,7 +972,10 @@ const HAIR_EXTRA = {
   mono: new THREE.SphereGeometry(0.06, 12, 8),
   melena: (() => { const g = hairGeo(0.12, Math.PI * 0.75, 0.05, 3); g.scale(1.08, 1.4, 0.72); return g; })(),
 };
-const headbandGeo = new THREE.TorusGeometry(0.122, 0.016, 8, 32).scale(0.96, 1, 1);   // ajustada a la cabeza (con pelo)
+// cinta: una banda plana (2,8 cm de alto, 6 mm de grueso) ajustada a la cabeza con pelo; el eje queda en z, como el del
+// toro de antes, para que valga el mismo giro
+const headbandGeo = new THREE.LatheGeometry([new THREE.Vector2(0.113, -0.014), new THREE.Vector2(0.119, -0.014), new THREE.Vector2(0.119, 0.014), new THREE.Vector2(0.113, 0.014), new THREE.Vector2(0.113, -0.014)], 40)
+  .rotateX(Math.PI / 2).scale(0.96, 1, 1);
 const capGeo = new THREE.SphereGeometry(0.14, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
 const brimGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.012, 16, 1, false, -Math.PI / 2, Math.PI);   // visera: medio disco
 const glassesGeo = new THREE.BoxGeometry(0.17, 0.034, 0.025);
@@ -5506,7 +5509,49 @@ function preparaChico(sc, img) {
   for (let i = 0; i < P.count; i++) P.setXYZ(i, P.getX(i) / 1.8, P.getY(i) / 1.8 - 0.5, P.getZ(i) / 1.8);
   for (let i = 0; i < U.count; i++) U.setY(i, 1 - U.getY(i));
   F.tinte = TINTE.preparaTinte({ geometry: g, material: { map: { image: img } } }, 'chico');
+  F.cintaGeo = cintaAjustada(cuerpo.geometry);
   return F;
+}
+// cinta del pelo del chico, ajustada al contorno de su cabeza (con el pelo): para cada dirección alrededor de la cabeza, lo
+// más saliente a esa altura, algo más alta delante (frente) que detrás; banda plana de 2,8 cm, 4 mm por fuera del pelo
+function cintaAjustada(geo0) {
+  const N = 64, yF = 1.712, inc = 0.009, alto = 0.028, hueco = 0.004;
+  const alt = th => yF - inc + inc * Math.cos(th);           // (th = 0: delante)
+  // puntos repartidos por la superficie de la cabeza (la malla tiene pocos vértices: con ellos solos quedan huecos)
+  const pos = geo0.attributes.position, ix = geo0.index, pts = [], a = new V3(), b = new V3(), c = new V3();
+  const nt = ix ? ix.count / 3 : pos.count / 3, vi = k => ix ? ix.getX(k) : k;
+  for (let t = 0; t < nt; t++) {
+    a.fromBufferAttribute(pos, vi(3 * t)); b.fromBufferAttribute(pos, vi(3 * t + 1)); c.fromBufferAttribute(pos, vi(3 * t + 2));
+    if (Math.max(a.y, b.y, c.y) < yF - 0.06 || Math.min(a.y, b.y, c.y) > yF + 0.06) continue;
+    const m = 10;
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= m - i; j++) {
+      const u = i / m, w = j / m;
+      pts.push(a.x + (b.x - a.x) * u + (c.x - a.x) * w, a.y + (b.y - a.y) * u + (c.y - a.y) * w, a.z + (b.z - a.z) * u + (c.z - a.z) * w);
+    }
+  }
+  let cx = 0, cz = 0, n = 0;
+  for (let i = 0; i < pts.length; i += 3) if (Math.abs(pts[i + 1] - yF) < 0.02 && Math.abs(pts[i]) < 0.15) { cx += pts[i]; cz += pts[i + 2]; n++; }
+  cx /= n || 1; cz /= n || 1;
+  const radio = (dy) => {   // radio en cada dirección, en la franja de altura alt(th)+dy
+    const r = new Float32Array(N);
+    for (let i = 0; i < pts.length; i += 3) {
+      const x = pts[i] - cx, z = pts[i + 2] - cz, th = Math.atan2(x, z), y = pts[i + 1];
+      if (Math.abs(y - (alt(th) + dy)) > 0.006 || x * x + z * z > 0.03) continue;
+      const k = ((Math.round(th / (2 * Math.PI) * N) % N) + N) % N, d = Math.hypot(x, z);
+      if (d > r[k]) r[k] = d;
+    }
+    // direcciones sin puntos: lo de los vecinos con radio; luego, suavizado (sin bajar del contorno)
+    for (let k = 0; k < N; k++) if (!r[k]) { let i = 1; while (i < N / 2 && !r[(k + i) % N] && !r[(k - i + N) % N]) i++; r[k] = Math.max(r[(k + i) % N], r[(k - i + N) % N]); }
+    return r.map((v, k) => Math.max(v, (r[(k + N - 1) % N] + 2 * v + r[(k + 1) % N]) / 4));
+  };
+  const rB = radio(-alto / 2), rT = radio(alto / 2), v = [], idx = [];
+  for (let k = 0; k <= N; k++) {
+    const th = (k % N) / N * 2 * Math.PI, s = Math.sin(th), c = Math.cos(th), y = alt(th);
+    for (const [r, dy] of [[rB[k % N], -alto / 2], [rT[k % N], alto / 2]]) v.push(cx + s * (r + hueco), y + dy, cz + c * (r + hueco));
+  }
+  for (let k = 0; k < N; k++) { const a = 2 * k; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
 }
 // marcas de ropa (inventadas), cada una con su tipo de letra (Google Fonts, enlazadas en la cabecera)
 const MARCAS = [
@@ -5592,12 +5637,18 @@ function quitaModelo(pl, det = true) {
 }
 // con el modelo puesto: piezas del muñeco ocultas, sus zapatillas calzadas y la falda a la medida (setLook y
 // setProfile las vuelven a poner como para el muñeco, así que se repite tras ellos)
+const _dobleCara = new WeakMap();
+const dobleCara = m => { let d = _dobleCara.get(m); if (!d) { d = m.clone(); d.side = THREE.DoubleSide; _dobleCara.set(m, d); } return d; };
 function ajustaPiezas(pl) {
   for (const m of piezasMuneco(pl)) m.visible = false;
   pl.hair.visible = false;
   if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
   const ch = pl.rig && pl.rig.F.chico;   // (el chico trae sus zapatillas y su pelo)
   if (ch) pl.hairExtra.visible = false;
+  if (ch && pl.headband.visible) {   // la cinta del muñeco no le encaja: se usa la suya, con el mismo color
+    const c = pl.rig.cinta; if (c) { c.visible = true; c.material = dobleCara(pl.headband.material); }
+    pl.headband.visible = false;
+  }
   for (const z of pl.shoes) { z.visible = !ch; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
   const p = pl.prof, k = p.cx === 'f' ? 1.2 : p.cx === 'd' ? 0.86 : 1;
   pl.skirt.scale.set(k * 0.9, 1, 0.8 * (0.5 + 0.5 * k) * 0.92);   // (las caderas del modelo, algo más estrechas)
@@ -5652,12 +5703,15 @@ function ponModelo(pl) {
   const peinado = !F.chico && MOD.pelo[PELO_MOD[p.pelo]];   // (el chico trae su pelo)
   if (peinado) { const m = new THREE.Mesh(peinado.geo, matPelo(hc, peinado.t)); m.castShadow = true; marco.add(m); }
   if (p.acc.barba && !F.chico) marco.add(new THREE.Mesh(MOD.pelo.Hair_Beard.geo, matPelo(hc, 1)));
+  // el chico lleva su propia cinta, a la medida de su cabeza (se enciende en ajustaPiezas si el jugador la lleva)
+  let cinta = null;
+  if (F.cintaGeo) { cinta = new THREE.Mesh(F.cintaGeo, pl.headband.material); cinta.visible = false; cinta.castShadow = true; marco.add(cinta); }
   const [cc, ce] = F.cab || M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
   cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
   for (const m of accCabeza(pl)) cab.add(m);
   pl.g.add(obj);
   const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * F.kBrazo, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * F.kBrazo;
-  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, auto: pl === visor.pl };
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, auto: pl === visor.pl };
   ajustaPiezas(pl);
   poseModelo(pl);
 }
@@ -5741,13 +5795,20 @@ function poseModelo(pl) {
     const dF = W.clone().sub(E).normalize();
     const palma = l === 'r' ? mn : new V3(-1, -0.6, 0.2).applyQuaternion(Uq);
     apunta('lowerarm_' + l, dF, palma, rdir('lowerarm_' + l, 'hand_' + l), new V3(0, -1, 0));
+    // el codo es una bisagra: el antebrazo entero girado como la palma retorcía la piel del codo hasta 180°. Se reparte:
+    // la mitad del giro en el antebrazo (respecto a la bisagra) y el resto en la muñeca (la mano se coloca aparte)
+    const qPal = cur['lowerarm_' + l].q.clone(), rL = rest['lowerarm_' + l].q;
+    const qBis = cur['upperarm_' + l].q.clone().multiply(rest['upperarm_' + l].q.clone().invert()).multiply(rL);
+    const dB = rdir('lowerarm_' + l, 'hand_' + l).applyQuaternion(rL.clone().invert()).applyQuaternion(qBis);
+    qBis.premultiply(_qB0.setFromUnitVectors(dB.normalize(), dF));
+    fija(H['lowerarm_' + l], qBis.slerp(qPal, 0.5));
     if (l === 'r') {
       const M = R.F.mano.r;
       fija(H.hand_r, baseQ(mf, mn, _qB1).multiply(baseQ(M.f0, M.p0, _qB0).invert()).multiply(rest.hand_r.q));
       // la pala, en el puño (si el brazo del modelo no llega a la muñeca del muñeco, se queda donde llegue)
       P0.add(cur.hand_r.p).sub(W);
       pl.paddle.position.copy(P0.applyMatrix4(_mB0.copy(U.matrix).invert()));
-    } else fija(H['hand_' + l], cur['lowerarm_' + l].q.clone().multiply(rest['lowerarm_' + l].q.clone().invert()).multiply(rest['hand_' + l].q));
+    } else fija(H['hand_' + l], qPal.multiply(rest['lowerarm_' + l].q.clone().invert()).multiply(rest['hand_' + l].q));   // (la mano, como antes)
   }
   // dedos: la mano de la pala cerrada sobre el mango; la otra, algo flexionada
   for (const d of R.F.dedos) {
