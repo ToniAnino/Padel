@@ -812,7 +812,7 @@ const POSES_GOLPE = {
     [-.62,.92,-.02,.8, -.62,.25,-.74, -.8,-.8,-.2, -.08,-.2,.5,0, .714,-.589,.378, -18,-35, 0],
     [-.46,.90,.50,1, -.62,.28,.72, -.5,-1,.1, .02,-.34,.30,0, 1,-1,.1, 0,-8],
     [.105,1.01,.756,.8, .555,.832,-.01, -.976,-.212,.054, .04,-.38,.16,0, 1,-1,-.1, 18,8, 180],
-    [.386,1.221,.134,.4, -.431,.669,.605, -.251,-.797,.55, .1,-.36,.2,0, .458,-.404,-.792, 34,20, 180] ] },
+    [.42,1.17,.06,.4, .3,.7,-.65, -.251,-.797,.55, .1,-.36,.2,0, .458,-.404,-.792, 34,20, 180] ] },
   driveB: { r: 0.95, f: [
     [.475,1.171,.101,.35, .25,.85,-.45, -.322,-.817,.479, .311,-.241,.074,0, -.192,-.733,-.652, 22,72],
     [.54,.92,.10,.8, .62,.20,-.75, 0,-1,.4, .327,-.511,-.077,0, -.111,-.75,-.652, 14,58],
@@ -4285,7 +4285,7 @@ function amortigua(cur, vel, target, tiempo, dt) {
   vel.sub(tmp.clone().multiplyScalar(w)).multiplyScalar(ex);
   cur.copy(target).add(ch.add(tmp).multiplyScalar(ex));
 }
-let tpBolaW = 0, tpBolaS = null;
+let tpBolaW = 0, tpBolaS = null, tpResta = 0;
 const tpVelPos = new V3(), tpVelLook = new V3(), tpVelBola = new V3();
 function bolaEnToma(pos, look) {   // ¿se ve la bola con la cámara en pos mirando a look? (con margen en los bordes)
   camTest.fov = camera.fov; camTest.aspect = camera.aspect; camTest.updateProjectionMatrix();
@@ -4300,17 +4300,31 @@ function bolaEnToma(pos, look) {   // ¿se ve la bola con la cámara en pos mira
 // En «alterna» la cámara no salta de un jugador al otro: se pone en un punto entre los dos según dónde esté la
 // bola a lo ancho (bola a la izquierda, detrás del de la izquierda; en el centro, entre los dos) y se desliza suave.
 let tpMezcla = null;
+// saca el rival: el vuestro que resta (el del cuadro cruzado), desde que se prepara el saque hasta que resta
+function restaNuestra() {
+  const sv = S.server;
+  if (!sv || sv.team === US) return null;
+  if (S.phase === 'serve') return ourReceiver(sv.pos.x);
+  return S.receiver && S.receiver.team === US ? S.receiver : null;
+}
 function anclaAlterna(dt) {
   const [a, b] = ours[0].pos.x <= ours[1].pos.x ? [ours[0], ours[1]] : [ours[1], ours[0]];
-  const ancho = b.pos.x - a.pos.x;
-  const want = ancho > 0.6 ? clamp((ball.p.x - a.pos.x) / ancho, 0, 1) : 0.5;
+  const ancho = b.pos.x - a.pos.x, rec = restaNuestra();
+  // (la bola del saque sale del lado contrario al del que resta: mientras tanto, la cámara, detrás del que resta)
+  const want = rec ? (rec === b ? 1 : 0) : ancho > 0.6 ? clamp((ball.p.x - a.pos.x) / ancho, 0, 1) : 0.5;
   if (tpMezcla === null || dt === 0) tpMezcla = want;
   else tpMezcla += (want - tpMezcla) * Math.min(1, dt * 1.6);
   return { pos: a.pos.clone().lerp(b.pos, tpMezcla) };
 }
 function updateCam(dt) {
   if (!terceraP()) return;
-  const me = CFG.view === 'tpx' ? anclaAlterna(dt) : ctrlP();
+  let me = CFG.view === 'tpx' ? anclaAlterna(dt) : ctrlP();
+  // llevando a uno solo: si saca el rival y resta el otro, la cámara se corre hacia el que resta (y vuelve suave)
+  if (CFG.view === 'tp') {
+    const rec = restaNuestra(), want = rec && rec !== me ? 0.85 : 0;
+    tpResta = dt === 0 ? want : tpResta + (want - tpResta) * Math.min(1, dt * 3);
+    if (tpResta > 0.001) me = { pos: me.pos.clone().lerp((rec && rec !== me ? rec : ours.find(o => o !== me)).pos, tpResta) };
+  }
   // si la bola se sale de la toma (un globo que pasa por encima, una bola que va al fondo detrás del jugador), la
   // cámara se aleja hacia atrás y sube lo justo para que siga viéndose; cuando vuelve, se acerca otra vez
   let eWant = 0;
