@@ -6074,20 +6074,23 @@ function reiniciaSim(pl, E, g) {
   pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.g.rotation.y = 0; pl.head.rotation.set(0, 0, 0); pl.skirt.quaternion.identity();
   pl.swingDir = new V3(0, g.up, 1).normalize();
   pl.updateLegs(0); pl.updateArms(0);
-  E.simT = 0; E.golpe = false;
+  E.simT = 0; E.golpe = false; E.sucio = true;
 }
 function pasoSim(pl, E, g) {
   const t = E.simT;
   if (t < T_IMPACTO) { pl.contact = { t: T_IMPACTO - t, y: g.y, first: g.first ?? 0 }; pl.ready += (1 - pl.ready) * Math.min(1, H_SIM * 8); }
   else if (!E.golpe) { E.golpe = true; pl.contact = null; pl.ready = 0; pl.finishT = -1; pl.swingT = g.st === 'over' ? 0.1 : 0.4; }
   pl.giroGolpe(H_SIM); pl.updateLegs(H_SIM); pl.updateArms(H_SIM);
-  E.simT = t + H_SIM;
+  E.simT = t + H_SIM; E.sucio = true;
 }
+// (el modelo solo se coloca si la simulación ha cambiado: poseModelo retoca la pala cuando el brazo no llega, y
+// repetirlo sobre su propio retoque, en pausa, la hacía saltar de una postura a otra en cada fotograma)
 function llevaA(pl, E, g, t) {
   const auto = pl.rig && pl.rig.auto; if (auto) pl.rig.auto = false;
   if (!(E.simT <= t + 1e-9)) reiniciaSim(pl, E, g);
   while (E.simT + H_SIM <= t + 1e-9) pasoSim(pl, E, g);
-  if (pl.rig) { pl.rig.auto = auto; poseModelo(pl); }
+  if (pl.rig) { pl.rig.auto = auto; if (E.sucio || E.rigPuesto !== pl.rig) poseModelo(pl); E.rigPuesto = pl.rig; }
+  E.sucio = false;
 }
 // momento del golpe en que se ve cada postura clave
 function tiempoClave(P, i, over) {
