@@ -1,3 +1,7 @@
 artifact.html
 
 animaciones/
+modelos/*.glb
+modelos/*.fbx
+modelos/*.zip
+modelos/imagenes jugadores/

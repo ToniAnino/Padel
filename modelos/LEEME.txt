@@ -12,3 +12,12 @@ Cambios hechos aquí:
 Golpes grabados (modelos/golpes/*.json): movimiento sacado con Rokoko Vision de vídeos gratuitos de Pexels
 (licencia Pexels: https://www.pexels.com/license/). remate_a: vídeo 34445198 (recorte del segundo 1,5 al 4, sin la carrerilla). derecha_c: vídeo 34449214, del segundo 3,6 al 5,6.
 Se convierten con un script (fbx de Rokoko con esqueleto Mixamo -> giro de cada hueso respecto a la postura en T).
+
+Chico (modelos/chico.json + chico.png): figura de los jugadores hombres con «Modelo nuevo».
+- Hecho a partir de una imagen propia con TRELLIS (Microsoft, licencia MIT; espacio gratuito de Hugging Face) y riggeado
+  en Mixamo (Adobe), con «No Fingers (25)».
+- Se convierte con herramientas/construye_chico.js (FBX de Mixamo -> glTF en .json): huesos con los nombres del juego,
+  en metros, hueso 'root', normales suaves y la mano derecha cerrada en puño (herramientas/mano.js, cierraMano).
+- La textura se tiñe en el juego por jugador (TINTE en index.html): piel, pelo, camiseta y calzona con bandas laterales,
+  cuello, zapatillas y la marca (KOVA, VEXA, NORDIK, ZELO, BALTIX, ORIX, SORA o TRIX, cada una con su letra de Google Fonts).
+- Las fuentes originales (Chica.glb, chico.glb, chico_mixamo.fbx/.zip e imágenes) se quedan fuera del repositorio.

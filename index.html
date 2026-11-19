@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#000000">
 <title>Pádel</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Audiowide&family=Bebas+Neue&family=Black+Ops+One&family=Bungee&family=Kanit:ital,wght@1,900&family=Orbitron:wght@900&family=Righteous&family=Russo+One&display=swap');   /* letras de las marcas de las camisetas */
   html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff}
@@ -4867,6 +4868,498 @@ menuEl.addEventListener('click', e => { const s = e.target.closest('.slot'); if 
 // orienta los huesos para pasar por ellas. La ropa se pinta en la propia malla por zonas (camiseta, pantalón, calcetín y
 // zapatilla) con los colores de cada jugador. El muñeco de piezas sigue igual: se elige uno u otro.
 const MOD = { base: 'modelos/', carga: null, src: {}, tex: {}, pelo: {} };
+// ----- Tinte de la textura del chico (modelo hecho con TRELLIS y riggeado en Mixamo) -----
+// El atlas de la textura está desordenado: cada píxel se clasifica por el punto del cuerpo del que viene (3D) y por su
+// color (piel, pelo, camiseta, calzona, calcetines, zapatillas...), y luego se pinta la equipación de cada jugador por
+// capas (color base, bandas laterales, ribetes, logo, letras). Las medidas están en las del modelo de 1 de alto.
+const TINTE = (() => {
+const R = { NADA: 0, PIEL: 1, PELO: 2, CAM: 3, CAM_AC: 4, CAL: 5, CAL_AC: 6, BLANCO: 7, ZAP: 8, CINTA: 9, MUNEQ: 10, OJO: 11, CAL_BL: 12, CAM_BL: 13, CALCETIN: 14, SUELA: 15 };
+const COL_REG = ['#000', '#f2b48a', '#5a3a1a', '#1d3fbf', '#22d3ee', '#b91c1c', '#facc15', '#ffffff', '#16a34a', '#a855f7', '#f97316', '#000', '#fde68a', '#93c5fd', '#ec4899', '#777777'];
+
+// límites en unidades del modelo (alto 1, de -0.5 a 0.5; +z es el frente)
+let Z;   // límites del perfil en uso
+
+function hsv(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d > 0) {
+    if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+  }
+  return [h, mx ? d / mx : 0, mx];
+}
+
+function clasificaChica(r, g, b, x, y, z) {
+  const [h, s, v] = hsv(r / 255, g / 255, b / 255);
+  const ax = Math.abs(x);
+  const blanco = s < .16 && v > .62;
+  const azulH = h > 160 && h < 260 && s > .25 && v > .16;
+  let azul = azulH || (h > 160 && h < 260 && s > .18);
+  const enTronco = ax <= Z.manga && y <= Z.cuello && y > Z.calcetin;
+  if (enTronco && v < .2 && b >= r) azul = true;   // en el tronco, lo muy oscuro es sombra de tela
+  const acento = azul && h < 207 && v > .3;
+  const calido = h < 50 || h > 340;
+  // cabeza
+  if (y > Z.cuello && ax < .14) {
+    if ((azulH && v > .25) || (blanco && y > .40)) return R.CINTA;
+    if (calido && v > .48 && s > .12) return R.PIEL;
+    if (z > 0 && y < .37 && ax < .05) return R.PIEL;           // sombra bajo la barbilla
+    if (z > .05 && y < .44 && y > .34) return R.OJO;          // rasgos de la cara: no se tiñen como pelo
+    return R.PELO;
+  }
+  if (y > Z.cuello - .04 && ax < .1 && z < -.02 && !azul && !(calido && v > .5)) return R.PELO; // coleta por detrás
+  // brazos
+  if (ax > Z.manga) {
+    if (ax > Z.muneca && azulH) return R.MUNEQ;
+    if (ax < Z.manga + .05 && v < .22 && b >= r) return R.CAM;   // borde oscuro de la manga por detrás
+    if (azulH) return acento ? R.CAM_AC : R.CAM;
+    if (blanco) return R.CAM_BL;
+    if (ax < .24 && (!calido || s < .12)) return R.CAM_BL;      // costuras grises de la manga
+    return R.PIEL;
+  }
+  // en la camiseta y la calzona, lo que no es claramente piel es tela (costuras y ribetes grisáceos)
+  const piel = calido && s > .15 && v > .25;
+  if (y > Z.bajo) {
+    if (azul) return acento ? R.CAM_AC : R.CAM;
+    if (piel && y > Z.cuello - .06) return R.PIEL;   // cuello
+    return R.CAM_BL;
+  }
+  if (y > Z.calzona) {
+    if (azul) return acento ? R.CAL_AC : R.CAL;
+    if (piel) return R.PIEL;
+    return R.CAL_BL;
+  }
+  if (y > Z.calcetin) return (azul && !calido) ? R.CAL : R.PIEL;
+  if (y > Z.zapatilla) return blanco || s < .2 ? R.CALCETIN : (calido ? R.PIEL : R.ZAP);
+  return blanco ? R.BLANCO : R.ZAP;
+}
+
+function preparaTinte(mesh, nombre = 'chica') {
+  const PF = PERFILES[nombre]; Z = PF.Z;
+  const img = mesh.material.map.image;
+  const W = img.width, H = img.height;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
+  const orig = cx.getImageData(0, 0, W, H);
+  const reg = new Uint8Array(W * H), pos = new Float32Array(W * H * 3), nrm = new Float32Array(W * H * 3);
+  const G = mesh.geometry, P = G.attributes.position, U = G.attributes.uv, I = G.index;
+  const N = G.attributes.normal;
+  const nt = I ? I.count / 3 : P.count / 3;
+  const iv = k => I ? I.getX(k) : k;
+  const D = orig.data;
+  for (let t = 0; t < nt; t++) {
+    const a = iv(3 * t), b = iv(3 * t + 1), c = iv(3 * t + 2);
+    const ua = U.getX(a) * W, va = U.getY(a) * H, ub = U.getX(b) * W, vb = U.getY(b) * H, uc = U.getX(c) * W, vc = U.getY(c) * H;
+    const x0 = Math.max(0, Math.floor(Math.min(ua, ub, uc)) - 1), x1 = Math.min(W - 1, Math.ceil(Math.max(ua, ub, uc)) + 1);
+    const y0 = Math.max(0, Math.floor(Math.min(va, vb, vc)) - 1), y1 = Math.min(H - 1, Math.ceil(Math.max(va, vb, vc)) + 1);
+    const den = (vb - vc) * (ua - uc) + (uc - ub) * (va - vc);
+    if (Math.abs(den) < 1e-9) continue;
+    for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+      const X = px + .5, Y = py + .5;
+      const l1 = ((vb - vc) * (X - uc) + (uc - ub) * (Y - vc)) / den;
+      const l2 = ((vc - va) * (X - uc) + (ua - uc) * (Y - vc)) / den;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -.02 || l2 < -.02 || l3 < -.02) continue;
+      const k = py * W + px;
+      const x = l1 * P.getX(a) + l2 * P.getX(b) + l3 * P.getX(c);
+      const y = l1 * P.getY(a) + l2 * P.getY(b) + l3 * P.getY(c);
+      const z = l1 * P.getZ(a) + l2 * P.getZ(b) + l3 * P.getZ(c);
+      pos[3 * k] = x; pos[3 * k + 1] = y; pos[3 * k + 2] = z;
+      if (N) {
+        const nx = l1 * N.getX(a) + l2 * N.getX(b) + l3 * N.getX(c), ny = l1 * N.getY(a) + l2 * N.getY(b) + l3 * N.getY(c), nz = l1 * N.getZ(a) + l2 * N.getZ(b) + l3 * N.getZ(c);
+        const l = Math.hypot(nx, ny, nz) || 1; nrm[3 * k] = nx / l; nrm[3 * k + 1] = ny / l; nrm[3 * k + 2] = nz / l;
+      }
+      reg[k] = PF.clasifica(D[4 * k], D[4 * k + 1], D[4 * k + 2], x, y, z);
+    }
+  }
+  // limpia ruido: un píxel de tela suelto entre piel (o al revés) toma la mayoría de sus vecinos
+  const lim = new Uint8Array(reg);
+  for (let py = 1; py < H - 1; py++) for (let px = 1; px < W - 1; px++) {
+    const k = py * W + px; if (!reg[k]) continue;
+    const cuenta = {}; let mx = 0, mj = reg[k];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const r = reg[k + dy * W + dx]; if (!r) continue;
+      cuenta[r] = (cuenta[r] || 0) + 1; if (cuenta[r] > mx) { mx = cuenta[r]; mj = r; }
+    }
+    if (mx >= 6 && mj !== reg[k]) lim[k] = mj;
+  }
+  reg.set(lim);
+  // extiende las regiones a los márgenes del atlas para que el filtrado no traiga el color viejo
+  for (let pase = 0; pase < 4; pase++) {
+    const cp = new Uint8Array(reg);
+    for (let py = 1; py < H - 1; py++) for (let px = 1; px < W - 1; px++) {
+      const k = py * W + px; if (reg[k]) continue;
+      const kv = reg[k - 1] ? k - 1 : reg[k + 1] ? k + 1 : reg[k - W] ? k - W : reg[k + W] ? k + W : -1;
+      if (kv >= 0) { cp[k] = reg[kv]; for (let i = 0; i < 3; i++) { pos[3 * k + i] = pos[3 * kv + i]; nrm[3 * k + i] = nrm[3 * kv + i]; } }
+    }
+    reg.set(cp);
+  }
+  // pelo degradado (rapado): mezcla gradual entre piel y pelo según lo oscuro que sea, sin manchas
+  const wPelo = new Float32Array(W * H).fill(-1);
+  if (PF.peloSuave) {
+    for (let k = 0; k < W * H; k++) {
+      const r = reg[k]; if (r !== R.PELO && r !== R.PIEL) continue;
+      const x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2];
+      if (y < PF.peloSuave.desde || Math.abs(x) > .12) continue;
+      if (z > .03 && Math.abs(x) < .04 && y < .452) continue;          // la cara
+      const v = Math.max(D[4 * k], D[4 * k + 1], D[4 * k + 2]) / 255;
+      const w = Math.min(1, Math.max(0, (PF.peloSuave.vPiel - v) / (PF.peloSuave.vPiel - PF.peloSuave.vPelo)));
+      wPelo[k] = w; reg[k] = w > .5 ? R.PELO : R.PIEL;
+    }
+  }
+  // manchas oscuras de TRELLIS detrás de las rodillas: se aclaran hacia el tono de la pierna por delante
+  if (PF.igualaPiernas) {
+    const lum = k => .299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2];
+    const h = new Uint32Array(256); let tot = 0;
+    for (let k = 0; k < W * H; k++) if (reg[k] === R.PIEL && pos[3 * k + 1] < Z.calzona && pos[3 * k + 2] > .01) { h[lum(k) | 0]++; tot++; }
+    let acc = 0, Lp = 150; for (let i = 0; i < 256; i++) { acc += h[i]; if (acc >= tot * .5) { Lp = i; break; } }
+    for (let k = 0; k < W * H; k++) {
+      if (reg[k] !== R.PIEL || pos[3 * k + 1] > Z.calzona) continue;
+      const L = lum(k), obj = Lp * .85; if (L >= obj || L < 1) continue;
+      const f = Math.min(2.2, (obj - (obj - L) * .25) / L);
+      for (let i = 0; i < 3; i++) D[4 * k + i] = Math.min(255, D[4 * k + i] * f);
+    }
+  }
+  // luminancia de referencia de cada región (mediana)
+  const ref = {};
+  const hist = {};
+  for (let k = 0; k < W * H; k++) {
+    const r = reg[k]; if (!r) continue;
+    const L = .299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2];
+    (hist[r] = hist[r] || new Uint32Array(256))[L | 0]++;
+  }
+  const med = {};
+  for (const r in hist) {
+    const h = hist[r]; let tot = 0; for (const c of h) tot += c;
+    let acc = 0, m = 0; for (let i = 0; i < 256; i++) { acc += h[i]; if (acc >= tot * .6) { m = i; break; } }
+    ref[r] = Math.max(m, 20); med[r] = tot;
+  }
+  // color medio de cada región (para teñir la piel y el pelo por proporción)
+  const medio = {};
+  { const sum = {}; for (let k = 0; k < W * H; k++) { const r = reg[k]; if (!r) continue; const s = sum[r] = sum[r] || [0, 0, 0, 0]; s[0] += D[4 * k]; s[1] += D[4 * k + 1]; s[2] += D[4 * k + 2]; s[3]++; }
+    for (const r in sum) medio[r] = sum[r].slice(0, 3).map(v => v / sum[r][3]); }
+  // color de referencia: media de los píxeles con luminancia cerca de la de referencia (tono iluminado típico)
+  const refCol = {};
+  { const sum = {}; for (let k = 0; k < W * H; k++) { const r = reg[k]; if (!r) continue; const L = .299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2]; if (Math.abs(L - ref[r]) > 12) continue; const s = sum[r] = sum[r] || [0, 0, 0, 0]; s[0] += D[4 * k]; s[1] += D[4 * k + 1]; s[2] += D[4 * k + 2]; s[3]++; }
+    for (const r in sum) refCol[r] = sum[r].slice(0, 3).map(v => v / sum[r][3]); }
+
+  // distancia de la tela a la piel (en pasos de 4 mm): sirve para los ribetes del cuello, los puños y el bajo de la calzona
+  const borde = new Uint8Array(W * H).fill(255);
+  {
+    const C = .004, X0 = -.6, Y0 = -.6, Z0 = -.2, NX = 300, NY = 300, NZ = 100;
+    const vox = new Uint8Array(NX * NY * NZ).fill(255);
+    const idx = (x, y, z) => { const i = Math.floor((x - X0) / C), j = Math.floor((y - Y0) / C), l = Math.floor((z - Z0) / C); return (i < 0 || j < 0 || l < 0 || i >= NX || j >= NY || l >= NZ) ? -1 : (l * NY + j) * NX + i; };
+    for (let k = 0; k < W * H; k++) if (reg[k] === R.PIEL) { const v = idx(pos[3 * k], pos[3 * k + 1], pos[3 * k + 2]); if (v >= 0) vox[v] = 0; }
+    let frente = []; for (let v = 0; v < vox.length; v++) if (vox[v] === 0) frente.push(v);
+    for (let paso = 1; paso <= 5; paso++) {
+      const sig = [];
+      for (const v of frente) {
+        const i = v % NX, j = ((v / NX) | 0) % NY, l = (v / (NX * NY)) | 0;
+        for (let dl = -1; dl <= 1; dl++) for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          const ii = i + di, jj = j + dj, ll = l + dl; if (ii < 0 || jj < 0 || ll < 0 || ii >= NX || jj >= NY || ll >= NZ) continue;
+          const w = (ll * NY + jj) * NX + ii; if (vox[w] === 255) { vox[w] = paso; sig.push(w); }
+        }
+      }
+      frente = sig;
+    }
+    for (let k = 0; k < W * H; k++) { const r = reg[k]; if (r === R.PIEL || !r) continue; const v = idx(pos[3 * k], pos[3 * k + 1], pos[3 * k + 2]); if (v >= 0) borde[k] = vox[v]; }
+  }
+
+  // sombra de la tela para los estampados: luminancia normalizada por zona y mediana 5x5 dentro de la misma prenda,
+  // para que no se transparenten las franjas ni los ribetes originales
+  const grupo = r => (r === R.CAM || r === R.CAM_AC || r === R.CAM_BL || r === R.MUNEQ) ? 1 : (r === R.CAL || r === R.CAL_AC || r === R.CAL_BL) ? 2 : 0;
+  const sombra = new Float32Array(W * H);
+  {
+    const n = new Float32Array(W * H);
+    for (let k = 0; k < W * H; k++) { const r = reg[k]; if (grupo(r)) n[k] = (.299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2]) / ref[r]; }
+    const v = [];
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const k = py * W + px, gk = grupo(reg[k]); if (!gk) continue;
+      v.length = 0;
+      for (let dy = -2; dy <= 2; dy++) { const yy = py + dy; if (yy < 0 || yy >= H) continue;
+        for (let dx = -2; dx <= 2; dx++) { const xx = px + dx; if (xx < 0 || xx >= W) continue; const kk = yy * W + xx; if (grupo(reg[kk]) === gk) v.push(n[kk]); } }
+      v.sort((a, b) => a - b);
+      sombra[k] = Math.min(1.15, Math.max(.4, v[v.length >> 1]));
+    }
+  }
+
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  const ox = out.getContext('2d');
+
+  function texRegiones() {
+    const im = ox.createImageData(W, H);
+    const cols = COL_REG.map(c => new THREE.Color(c));
+    for (let k = 0; k < W * H; k++) {
+      const c = cols[reg[k]] || cols[0], L = (.299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2]) / 255;
+      const f = .55 + .45 * L;
+      im.data[4 * k] = c.r * 255 * f; im.data[4 * k + 1] = c.g * 255 * f; im.data[4 * k + 2] = c.b * 255 * f; im.data[4 * k + 3] = 255;
+    }
+    return lienzo(im);
+  }
+  function lienzo(im) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(im, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; return t;
+  }
+  const hex = h => { const n = new THREE.Color(h).getHex(); return [n >> 16, (n >> 8) & 255, n & 255]; };   // (en sRGB, como los píxeles)
+
+  // o: { camiseta, acento, calzona, calzonaAcento, piel, pelo, zapatillas, cinta, munequeras, ojos }
+  function aplica(o = {}) {
+    const im = ox.createImageData(W, H), S = im.data;
+    S.set(D);
+    const tela = { [R.CAM]: o.camiseta, [R.CAM_AC]: o.acento, [R.CAL]: o.calzona, [R.CAL_AC]: o.calzonaAcento ?? o.acento,
+      [R.ZAP]: o.zapatillas, [R.CINTA]: o.cinta, [R.MUNEQ]: o.munequeras ?? o.camiseta, [R.CAM_BL]: o.ribete, [R.CAL_BL]: o.ribete, [R.PELO]: o.pelo, [R.CALCETIN]: o.calcetines, [R.SUELA]: o.suela };
+    // la piel se tiñe por proporción respecto al tono iluminado (conserva labios y rasgos)
+    const prop = { [R.PIEL]: o.piel, [R.OJO]: o.piel };
+    const T = {}, Pp = {};
+    for (const r in tela) if (tela[r]) T[r] = hex(tela[r]);
+    for (const r in prop) if (prop[r]) { const n = hex(prop[r]), m = refCol[R.PIEL] || n; Pp[r] = n.map((v, i) => (o.pielK ?? 1) * v / Math.max(m[i], 1)); }
+    // estampados: la camiseta (y la calzona) se dibujan en 3D con un patrón y dos colores;
+    // la sombra sale de la luminancia normalizada de cada zona, así desaparecen las franjas originales
+    const dib = o.dibujo, dibC = o.dibujoCalzona;
+    const zonaCam = new Set([R.CAM, R.CAM_AC, R.CAM_BL, R.MUNEQ]), zonaCal = new Set([R.CAL, R.CAL_AC, R.CAL_BL]);
+    const A1 = hex(o.camiseta || '#1e3a8a'), A2 = hex((dib && dib.color) || o.acento || '#ffffff');
+    const B1 = hex(o.calzona || '#1e3a8a'), B2 = hex((dibC && dibC.color) || o.acento || '#ffffff');
+    // diseños por capas (equipación de pádel): color base + bandas, ribetes, hombros, letras, símbolos
+    const dzCam = o.disenoCamiseta && prepDiseno(o.disenoCamiseta), dzCal = o.disenoCalzona && prepDiseno(o.disenoCalzona);
+    for (let k = 0; k < W * H; k++) {
+      const r = reg[k], j = 4 * k;
+      const dz = zonaCam.has(r) ? dzCam : zonaCal.has(r) ? dzCal : null;
+      if (dz) {
+        const c = evalDiseno(dz, k, zonaCam.has(r)), f = sombra[k];
+        for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, c[i] * f);
+        continue;
+      }
+      const d = zonaCam.has(r) ? dib : zonaCal.has(r) ? dibC : null;
+      if (d) {
+        const f = sombra[k];
+        const cam = zonaCam.has(r);
+        const m = patron(d, pos[3 * k], pos[3 * k + 1], pos[3 * k + 2], cam);
+        const c1 = cam ? A1 : B1, c2 = cam ? A2 : B2;
+        for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, (c1[i] * (1 - m) + c2[i] * m) * f);
+        continue;
+      }
+      if (T[r]) {
+        const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
+        const f = Math.min(L / ref[r], 1.6);
+        const c = T[r];
+        S[j] = Math.min(255, c[0] * f); S[j + 1] = Math.min(255, c[1] * f); S[j + 2] = Math.min(255, c[2] * f);
+      } else if (Pp[r]) {
+        const p = Pp[r];
+        S[j] = Math.min(255, D[j] * p[0]); S[j + 1] = Math.min(255, D[j + 1] * p[1]); S[j + 2] = Math.min(255, D[j + 2] * p[2]);
+      }
+    }
+    // pelo degradado: mezcla del tinte de piel y del de pelo
+    if (PF.peloSuave && (Pp[R.PIEL] || T[R.PELO])) {
+      for (let k = 0; k < W * H; k++) {
+        const w = wPelo[k]; if (w < 0) continue;
+        const j = 4 * k, L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
+        const p = Pp[R.PIEL], c = T[R.PELO], f = Math.min(L / ref[R.PELO], 1.6);
+        for (let i = 0; i < 3; i++) {
+          const piel = p ? D[j + i] * p[i] : D[j + i], pelo = c ? c[i] * f : D[j + i];
+          S[j + i] = Math.min(255, piel * (1 - w) + pelo * w);
+        }
+      }
+    }
+    if (o.ojos !== false) pintaOjos(S, o);
+    return lienzo(im);
+  }
+
+  // ojos: se pintan en 3D (distancia a cada centro, vista de frente), sea cual sea el sitio del atlas
+  function pintaOjos(S, o) {
+    const ojos = o.ojosPos || PF.ojos;
+    const rad = o.ojoR || PF.ojoR;
+    const iris = hex(o.iris || '#8a5a2b');
+    // los ojos originales (más grandes y borrosos) se tapan con la piel de la mejilla de al lado, ya teñida
+    const dTapa = (x, y, e) => { const tx = (x - e.x) / PF.tapa[0], dyT = y - e.y, ty = dyT > 0 ? dyT / (PF.tapa[2] || PF.tapa[1]) : -dyT / (PF.tapa[3] || PF.tapa[1]); return [Math.hypot(tx, ty), dyT]; };
+    const pielOjo = ojos.map(e => {
+      const L = [];
+      for (let k = 0; k < W * H; k++) {
+        const y = pos[3 * k + 1]; if (y < .3 || pos[3 * k + 2] < .03) continue;
+        if (reg[k] !== R.PIEL && reg[k] !== R.OJO) continue;
+        const [td, dy] = dTapa(pos[3 * k], y, e); if (td < 1.4 || td > 2.2 || dy > 0) continue;
+        L.push([S[4 * k] + S[4 * k + 1] + S[4 * k + 2], k]);
+      }
+      L.sort((a, b) => a[0] - b[0]);
+      const sel = L.slice(L.length * .2 | 0, L.length * .6 | 0), m = [0, 0, 0];   // sin sombras ni brillos
+      for (const [, k] of sel) for (let i = 0; i < 3; i++) m[i] += S[4 * k + i] / sel.length;
+      return sel.length ? m : (refCol[R.PIEL] || [200, 160, 130]);
+    });
+    for (let k = 0; k < W * H; k++) {
+      const y = pos[3 * k + 1]; if (y < .3) continue;
+      const z = pos[3 * k + 2]; if (z < .03) continue;
+      const x = pos[3 * k];
+      for (let n = 0; n < ojos.length; n++) {
+        const e = ojos[n], piel = pielOjo[n];
+        const [td] = dTapa(x, y, e);
+        if (td < 1.25 && reg[k] !== R.PELO && reg[k] !== R.CINTA) {
+          const j = 4 * k, t = Math.min(1, Math.max(0, (td - .85) / .4));
+          for (let i = 0; i < 3; i++) S[j + i] = piel[i] * (1 - t) + S[j + i] * t;
+        }
+        const dx = (x - e.x) / (rad * 1.35), dy = (y - e.y) / rad;
+        const d = Math.hypot(dx, dy); if (d > 1.15) continue;
+        const j = 4 * k; let c;
+        const di = Math.hypot((x - e.x) / rad, dy);
+        if (d > 1) { const t = (d - 1) / .15; c = [S[j] * .55 + 30 * (1 - t), S[j + 1] * .55, S[j + 2] * .55]; c = c.map((v, i) => v * (1 - t) + S[j + i] * t); }
+        else if (Math.hypot((x - e.x) / rad + .22, dy - .22) < .16) c = [250, 248, 244];   // brillo
+        else if (di < .36) c = [18, 14, 12];
+        else if (di < .86) c = iris.map(v => v * (1.05 - .4 * di));
+        else c = [222, 214, 206];
+        if (d <= 1 && d > .7 && dy > .3) c = [40, 28, 22];  // párpado superior y pestañas
+        S[j] = c[0]; S[j + 1] = c[1]; S[j + 2] = c[2];
+      }
+    }
+  }
+
+  // ---- diseños por capas ----
+  const suaveC = (v, a) => Math.min(1, Math.max(0, .5 + v / a));
+  function prepDiseno(dz) {
+    return { base: hex(dz.base || '#ffffff'), capas: (dz.capas || []).map(c => {
+      const p = Object.assign({}, c, { rgb: hex(c.color || '#ffffff') });
+      if (c.tipo === 'texto' || c.tipo === 'simbolo') p.calco = calco(c);
+      return p;
+    }) };
+  }
+  // dibuja la letra o el símbolo en un lienzo y guarda su máscara (alfa)
+  function calco(c) {
+    const cw = 512, ch = Math.max(16, Math.round(cw * (c.alto / c.ancho)));
+    const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    if (c.tipo === 'texto') {
+      const fs = ch * .92;
+      g.font = c.fuente ? `${c.estilo || ""} ${fs}px "${c.fuente}", "Arial Black", sans-serif` : `${c.cursiva === false ? "" : "italic "}900 ${fs}px "Arial Black", Arial, sans-serif`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      const w = g.measureText(c.texto).width, s = Math.min(1, cw * .98 / w);
+      g.save(); g.translate(cw / 2, ch / 2 + fs * .04); g.scale(s, 1); g.fillText(c.texto, 0, 0); g.restore();
+    } else simbolo(g, c.forma, cw, ch);
+    const a = g.getImageData(0, 0, cw, ch).data, m = new Uint8Array(cw * ch);
+    for (let i = 0; i < cw * ch; i++) m[i] = a[4 * i + 3];
+    return { m, cw, ch };
+  }
+  function simbolo(g, forma, w, h) {
+    const s = Math.min(w, h), cx = w / 2, cy = h / 2;
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath();
+    if (forma === 'rayo') {
+      const p = [[.58, .02], [.22, .56], [.47, .56], [.38, .98], [.8, .4], [.54, .4], [.66, .02]];
+      p.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](cx + (x - .5) * s, cy + (y - .5) * s)); g.closePath(); g.fill();
+    } else if (forma === 'estrella') {
+      for (let i = 0; i < 10; i++) { const r = (i % 2 ? .2 : .48) * s, a = -Math.PI / 2 + i * Math.PI / 5; g[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+      g.closePath(); g.fill();
+    } else if (forma === 'pala') {
+      // pala de pádel: cabeza redonda con agujeros y mango, y la bola al lado
+      g.lineWidth = s * .07;
+      g.ellipse(cx - s * .08, cy - s * .12, s * .26, s * .3, -.5, 0, 2 * Math.PI); g.stroke();
+      g.beginPath(); g.moveTo(cx + s * .08, cy + s * .14); g.lineTo(cx + s * .28, cy + s * .44); g.lineWidth = s * .1; g.stroke();
+      for (const [dx, dy] of [[-.14, -.2], [-.02, -.24], [-.12, -.06], [0, -.1], [-.2, -.1]]) { g.beginPath(); g.arc(cx + dx * s, cy + dy * s, s * .03, 0, 2 * Math.PI); g.fill(); }
+      g.beginPath(); g.arc(cx + s * .32, cy - s * .32, s * .1, 0, 2 * Math.PI); g.fill();
+    } else if (forma === 'chevron') {
+      g.lineWidth = s * .14;
+      for (const o of [-.16, .14]) { g.beginPath(); g.moveTo(cx - s * .34, cy + (o + .12) * s); g.lineTo(cx, cy + (o - .16) * s); g.lineTo(cx + s * .34, cy + (o + .12) * s); g.stroke(); }
+    } else if (forma === 'ola') {
+      g.lineWidth = s * .12;
+      for (const o of [-.15, .15]) { g.beginPath(); for (let i = 0; i <= 40; i++) { const t = i / 40, x = cx + (t - .5) * s * .9, y = cy + o * s + Math.sin(t * Math.PI * 2) * s * .1; g[i ? 'lineTo' : 'moveTo'](x, y); } g.stroke(); }
+    } else {   // circulo con una P
+      g.lineWidth = s * .09; g.arc(cx, cy, s * .4, 0, 2 * Math.PI); g.stroke();
+      g.font = `italic 900 ${s * .55}px "Arial Black", Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(forma || 'P', cx, cy + s * .03);
+    }
+  }
+  function evalDiseno(dz, k, cam) {
+    const x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2], nx = nrm[3 * k], ny = nrm[3 * k + 1], nz = nrm[3 * k + 2];
+    const ax = Math.abs(x), enBrazo = cam && ax > (Z.hombro || Z.manga);
+    const c = dz.base.slice();
+    for (const p of dz.capas) {
+      let m = 0;
+      switch (p.tipo) {
+        case 'lateral': if (!enBrazo) m = suaveC(nx * Math.sign(x) - (1 - (p.ancho || .18)), .04); break;
+        case 'ribetes': {
+          const b = borde[k]; if (b > (p.grosor || 2)) break;
+          if (p.solo === 'cuello' && enBrazo) break;
+          if (p.solo === 'punos' && !enBrazo) break;
+          m = 1; break;
+        }
+        case 'hombros': m = suaveC(y - (p.desde ?? .25), .004); break;
+        case 'mangas': m = enBrazo ? 1 : 0; break;
+        case 'franja': if (p.lado === 'delante' && z < 0) break; if (enBrazo) break; m = Math.min(suaveC(y - p.y0, .003), suaveC(p.y1 - y, .003)); break;
+        case 'diagonal': if (z < 0 || enBrazo) break; m = suaveC((p.ancho || .025) / 2 - Math.abs(x * (p.pend ?? .7) + y - (p.c ?? .2)), .003); break;
+        case 'texto': case 'simbolo': {
+          let u, v;
+          if (p.lado === 'detras') { if (nz > -.3) break; u = (p.cx - x) / p.ancho + .5; v = (p.cy - y) / p.alto + .5; }
+          else if (p.lado === 'manga') { if (ny < .3 || !enBrazo) break; u = (Math.abs(x) - p.cx) / p.ancho + .5; v = (z - (p.cz || 0)) / p.alto + .5; if (x < 0) u = 1 - u; }
+          else { if (nz < .3) break; u = (x - p.cx) / p.ancho + .5; v = (p.cy - y) / p.alto + .5; }
+          if (u < 0 || u >= 1 || v < 0 || v >= 1) break;
+          const C = p.calco; m = C.m[(v * C.ch | 0) * C.cw + (u * C.cw | 0)] / 255; break;
+        }
+      }
+      if (m > 0) for (let i = 0; i < 3; i++) c[i] = c[i] * (1 - m) + p.rgb[i] * m;
+    }
+    return c;
+  }
+
+  // 0 = color principal, 1 = segundo color (con borde suave)
+  function patron(d, x, y, z, cam) {
+    const suave = (v, a) => Math.min(1, Math.max(0, .5 + v / a));   // v>0 → segundo color
+    const ax = Math.abs(x);
+    const enBrazo = cam && ax > (Z.hombro || Z.manga);
+    const s = x;   // horizontal: igual delante y detrás (los costados quedan de un color, como un panel)
+    const w = d.ancho || .028;
+    const onda = (u, w) => { const t = ((u / w) % 2 + 2) % 2; return Math.min(t, 2 - t) - .5; };  // -0.5..0.5
+    switch (d.tipo) {
+      case 'lisa': return 0;
+      case 'rayas': return enBrazo ? 0 : suave(onda(s, w), .12);
+      case 'horizontales': return suave(onda(y, w), .12);
+      case 'cuadros': { const a = onda(enBrazo ? ax : s, w) > 0, b = onda(y, w) > 0; return a !== b ? 1 : 0; }
+      case 'diagonal': return suave(onda(enBrazo ? ax + y : s + y, w), .12);
+      case 'lunares': {
+        const u = enBrazo ? ax : s, cx = Math.round(u / (2 * w)) * 2 * w, cy = Math.round(y / (2 * w)) * 2 * w;
+        return suave(w * .45 - Math.hypot(u - cx, y - cy), .002);
+      }
+      case 'mitades': return suave(x, .004);
+      case 'banda': { const u = (z > 0 ? x : -x) + (y - .15) * .9; return enBrazo ? 0 : suave(.035 - Math.abs(u), .004); }
+      case 'mangas': return enBrazo ? 1 : 0;
+      case 'degradado': return Math.min(1, Math.max(0, (.28 - y) / .3));
+    }
+    return 0;
+  }
+  return { W, H, reg, pos, orig, ref, medio, texRegiones, aplica, cuenta: med };
+}
+function clasificaChico(r, g, b, x, y, z) {
+  const [h, s, v] = hsv(r / 255, g / 255, b / 255);
+  const ax = Math.abs(x);
+  const calido = h < 50 || h > 340;
+  const blanco = s < .16 && v > .55;
+  const piel = calido && s > .12 && v > .2 && !blanco;
+  if (y > Z.cuello && ax < .12) {
+    if (blanco && y < Z.cuello + .04) return R.CAM;                // cuello de la camiseta por detrás
+    // el límite del pelo lo marca el color: la piel es clara (v > .52) y el pelo, también el rapado, más oscuro
+    const cara = z > .03 && ax < .04;
+    if (cara && y > .452) return R.PELO;                           // flequillo
+    if (calido && s > .15 && v > .52) return R.PIEL;
+    if (cara && y < .445) return R.OJO;                            // ojos, cejas y sombras de la cara
+    if (y < .375) return R.PIEL;                                   // mandíbula y barba
+    return R.PELO;
+  }
+  if (ax > Z.manga) {
+    if (piel) return R.PIEL;
+    return ax < Z.manga + .09 ? R.CAM : R.PIEL;
+  }
+  if (y > Z.bajo) return (piel && y > Z.cuello - .05) ? R.PIEL : R.CAM;
+  if (y > Z.calzona) return piel && s > .25 && y < Z.calzona + .02 ? R.PIEL : R.CAL;
+  if (y > Z.calcetin) return (!piel && y > Z.calzona - .04) ? R.CAL : R.PIEL;   // el bajo de la calzona
+  if (y > Z.zapatilla) return piel ? R.PIEL : R.CALCETIN;
+  return y < -.5 + Z.suela ? R.SUELA : R.ZAP;
+}
+
+const PERFILES = {
+  chica: { Z: { cuello: .30, bajo: .022, calzona: -.10, calcetin: -.36, zapatilla: -.415, manga: .17, muneca: .33 },
+    clasifica: clasificaChica, ojos: [{ x: -.027, y: .3945 }, { x: .028, y: .3955 }], ojoR: .0072, tapa: [.0165, .0115] },
+  chico: { Z: { cuello: .33, bajo: .012, calzona: -.15, calcetin: -.345, zapatilla: -.41, manga: .165, hombro: .125, muneca: .40, suela: .014 },
+    clasifica: clasificaChico, ojos: [{ x: -.0205, y: .4245 }, { x: .0185, y: .4245 }], ojoR: .0052, tapa: [.0135, .0068, .0052, .0105], igualaPiernas: true,
+    peloSuave: { desde: .36, vPiel: .6, vPelo: .4 } },
+};
+const LOGO = (forma, color) => ({ tipo: 'simbolo', forma, color, lado: 'delante', cx: .052, cy: .205, ancho: .032, alto: .032 });
+const ESPALDA = (texto, color) => ({ tipo: 'texto', texto, color, lado: 'detras', cx: 0, cy: .235, ancho: .13, alto: .026 });
+return { R, preparaTinte, LOGO, ESPALDA };
+})();
 const PELO_MOD = { corto: 'Hair_SimpleParted', rizado: 'Hair_SimpleParted', rapado: 'Hair_Buzzed', coleta: 'Hair_BuzzedFemale', mono: 'Hair_Buns', melena: 'Hair_Long' };
 const M_BRAZO = 1.15;   // los brazos del modelo, algo más largos (los trae cortos: 0,49 m del hombro a la muñeca)
 const M_CABEZA = { h: [new V3(0, 1.72, 0.0), 0.86], m: [new V3(0, 1.68, 0.0), 0.84] };   // centro y tamaño de la cabeza (para la cinta, gorra, gafas...)
@@ -4894,7 +5387,10 @@ function cargaModelos() {
       dv.setUint32(o, bin.length + pb, true); dv.setUint32(o + 4, 0x004E4942, true); u8.set(bin, o + 8);
       return new Promise((ok, ko) => ld.parse(out, '', ok, ko));
     };
-    const [h, m, ...resto] = await Promise.all(['hombre', 'mujer', ...pelos].map(glb));
+    const imgChico = new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('chico.png')); i.src = MOD.base + 'chico.png'; });
+    const [h, m, c, ...resto] = await Promise.all(['hombre', 'mujer', 'chico', ...pelos].map(glb));
+    MOD.src.c = preparaChico(c.scene, await imgChico);
+    await cargaMarcas();   // (las letras de las camisetas, antes de pintar ninguna)
     const nt = ['piel_h', 'piel_m', 'pelo1', 'pelo2', 'ojo', 'piel_h_n', 'piel_m_n', 'pelo1_n', 'pelo2_n'];
     const ts = await Promise.all(nt.map((n, i) => tx(n + (n === 'ojo' ? '.png' : '.jpg'), i < 5)));
     nt.forEach((n, i) => { MOD.tex[n] = ts[i]; });
@@ -4968,9 +5464,65 @@ function preparaFuente(sc) {
     const f0 = R['middle_01_' + lado].p.clone().sub(R['hand_' + lado].p).normalize();
     const p0 = new V3(0, -1, 0).addScaledVector(f0, f0.y).normalize();
     const l0 = R['thumb_01_' + lado].p.clone().sub(R['hand_' + lado].p); l0.addScaledVector(f0, -l0.dot(f0)).addScaledVector(p0, -l0.dot(p0)).normalize();
-    F.mano[lado] = { f0, p0, s: Math.sign(new V3().crossVectors(l0, p0).dot(f0)) || 1 };
+    // off: de la muñeca al origen de la pala (h: por el mango, f: hacia los dedos, n: hacia la palma)
+    F.mano[lado] = { f0, p0, s: Math.sign(new V3().crossVectors(l0, p0).dot(f0)) || 1, off: { h: 0.065, f: 0.085, n: 0.03 } };
   }
+  F.kBrazo = M_BRAZO;
   return F;
+}
+// el chico (TRELLIS + Mixamo, sin dedos): su mano derecha ya viene cerrada en puño alrededor de un mango que cruza la
+// palma (a 11 cm de la muñeca y 3,1 cm bajo el hueso); lleva su propio pelo y zapatillas, y la textura se tiñe por jugador
+function preparaChico(sc, img) {
+  sc.updateMatrixWorld(true);
+  const F = { sc, rest: {}, dedos: [], chico: true, kBrazo: 1.25, cab: [new V3(0, 1.665, 0.01), 0.8] }; let cuerpo = null;
+  sc.traverse(o => {
+    if (o.isBone) { const p = new V3(), q = new THREE.Quaternion(); o.getWorldPosition(p); o.getWorldQuaternion(q); F.rest[o.name] = { p, q, lp: o.position.clone(), lq: o.quaternion.clone() }; }
+    if (o.isSkinnedMesh) cuerpo = o;
+  });
+  const R = F.rest;
+  F.mano = {};
+  for (const lado of ['r', 'l']) {
+    const f0 = R['hand_' + lado].p.clone().sub(R['lowerarm_' + lado].p).normalize();
+    const p0 = new V3(0, -1, 0).addScaledVector(f0, f0.y).normalize();
+    const l0 = new V3(0, 0, 1); l0.addScaledVector(f0, -l0.dot(f0)).addScaledVector(p0, -l0.dot(p0)).normalize();   // el pulgar, hacia delante
+    F.mano[lado] = { f0, p0, s: Math.sign(new V3().crossVectors(l0, p0).dot(f0)) || 1, off: { h: 0.065, f: 0.11, n: 0.031 } };
+  }
+  // el tinte trabaja en las medidas del modelo original (1 de alto, centrado) y con la v de la textura como en glTF
+  const g = cuerpo.geometry.clone(), P = g.attributes.position, U = g.attributes.uv;
+  for (let i = 0; i < P.count; i++) P.setXYZ(i, P.getX(i) / 1.8, P.getY(i) / 1.8 - 0.5, P.getZ(i) / 1.8);
+  for (let i = 0; i < U.count; i++) U.setY(i, 1 - U.getY(i));
+  F.tinte = TINTE.preparaTinte({ geometry: g, material: { map: { image: img } } }, 'chico');
+  return F;
+}
+// marcas de ropa (inventadas), cada una con su tipo de letra (Google Fonts, enlazadas en la cabecera)
+const MARCAS = [
+  { t: 'KOVA', f: 'Russo One' }, { t: 'VEXA', f: 'Orbitron', e: '900' }, { t: 'NORDIK', f: 'Bebas Neue' }, { t: 'ZELO', f: 'Kanit', e: 'italic 900' },
+  { t: 'BALTIX', f: 'Black Ops One' }, { t: 'ORIX', f: 'Audiowide' }, { t: 'SORA', f: 'Righteous' }, { t: 'TRIX', f: 'Bungee' }];
+const cargaMarcas = () => Promise.race([Promise.all(MARCAS.map(m => document.fonts.load(`${m.e || ''} 40px "${m.f}"`))),
+  new Promise(ok => setTimeout(ok, 4000))]).catch(() => {});
+const marcaDe = p => { let h = 0; for (const ch of String(p.id ?? p.n ?? '')) h = (h * 31 + ch.charCodeAt(0)) | 0; return MARCAS[Math.abs(h) % MARCAS.length]; };
+// textura del chico con la equipación del jugador: su camiseta y calzona con bandas laterales, cuello, y su marca en el
+// pecho y en la espalda (en blanco o en oscuro, lo que contraste); se guardan las hechas
+const TEX_CHICO = new Map();
+function texChico(p) {
+  const gear = materialDe(p), zap = gear.find(x => x.tipo === 'zap'), zl = zap && ZAPA_LOOK[zap.id];
+  const cam = new THREE.Color(p.cam).getHex(), lum = (0.299 * (cam >> 16) + 0.587 * ((cam >> 8) & 255) + 0.114 * (cam & 255)) / 255;
+  const ac = lum > 0.6 ? '#1f2937' : '#f5f5f5';
+  const mc = marcaDe(p), letra = { fuente: mc.f, estilo: mc.e || '' };
+  // (pielK: la textura ya trae su luz; sin rebajarla, con la luz de la pista la piel sale casi blanca)
+  const o = { piel: SKIN_TONES[p.piel], pielK: 0.78, pelo: p.pc, zapatillas: zl ? zl.c[0] : p.zap, calcetines: '#f2f2f2',
+    disenoCamiseta: { base: p.cam, capas: [{ tipo: 'lateral', color: ac, ancho: 0.14 }, { tipo: 'ribetes', color: ac, solo: 'cuello' },
+      { tipo: 'texto', texto: mc.t, color: ac, lado: 'delante', cx: 0.045, cy: 0.207, ancho: 0.048, alto: 0.016, ...letra },
+      { ...TINTE.ESPALDA(mc.t, ac), ancho: 0.12, alto: 0.03, ...letra }] },
+    disenoCalzona: { base: p.pan, capas: [{ tipo: 'lateral', color: ac, ancho: 0.06 }] } };
+  const k = JSON.stringify(o);
+  let t = TEX_CHICO.get(k);
+  if (!t) {
+    if (TEX_CHICO.size > 16) { for (const v of TEX_CHICO.values()) v.dispose(); TEX_CHICO.clear(); }
+    t = MOD.src.c.tinte.aplica(o); t.flipY = true; t.anisotropy = 4; t.needsUpdate = true;
+    TEX_CHICO.set(k, t);
+  }
+  return t;
 }
 function matCuerpo(fem) {
   const u = { uPiel: { value: new THREE.Color() }, uCam: { value: new THREE.Color() }, uPan: { value: new THREE.Color() },
@@ -5030,12 +5582,14 @@ function ajustaPiezas(pl) {
   for (const m of piezasMuneco(pl)) m.visible = false;
   pl.hair.visible = false;
   if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
-  for (const z of pl.shoes) { z.visible = true; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
+  const ch = pl.rig && pl.rig.F.chico;   // (el chico trae sus zapatillas y su pelo)
+  if (ch) pl.hairExtra.visible = false;
+  for (const z of pl.shoes) { z.visible = !ch; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
   const p = pl.prof, k = p.cx === 'f' ? 1.2 : p.cx === 'd' ? 0.86 : 1;
   pl.skirt.scale.set(k * 0.9, 1, 0.8 * (0.5 + 0.5 * k) * 0.92);   // (las caderas del modelo, algo más estrechas)
 }
 // lo que cambia el modelo: si no ha cambiado nada, no se rehace
-const claveModelo = p => JSON.stringify([p.id, p.s, p.pv || 0, p.piel, p.pelo, p.pc, p.cam, p.pan, p.zap, p.man, p.acc, materialDe(p).map(x => x.id)]);
+const claveModelo = p => JSON.stringify([p.id, p.n, p.s, p.pv || 0, p.piel, p.pelo, p.pc, p.cam, p.pan, p.zap, p.man, p.acc, materialDe(p).map(x => x.id)]);
 // en el partido, con gráficos detallados y «Modelo nuevo» elegido en Configuración
 function modelosPartido(det) {
   if (!(det && CFG.modelo === 'nuevo')) { for (const p of players) if (p.rig) quitaModelo(p, det); return; }
@@ -5047,25 +5601,33 @@ function ponModelo(pl) {
   const clave = claveModelo(p);
   if (pl.rig && pl.rig.clave === clave) { ajustaPiezas(pl); poseModelo(pl); return; }
   if (pl.rig) quitaModelo(pl);
-  const fem = p.s === 'm', F = MOD.src[fem ? 'm' : 'h'], rest = F.rest;
+  // los hombres llevan el chico (si está cargado); las mujeres, el modelo de mujer
+  const fem = p.s === 'm', F = (!fem && MOD.src.c) || MOD.src[fem ? 'm' : 'h'], rest = F.rest;
   const obj = MOD.SU.clone(F.sc), H = {};
   obj.traverse(o => { if (o.isBone) H[o.name] = o; });
-  const mc = matCuerpo(fem), hc = p.pc;
-  obj.traverse(o => {
-    if (!o.isMesh) return;
-    o.castShadow = true; o.frustumCulled = false;
-    if (/Superhero/i.test(o.material.name)) o.material = mc;
-    else if (/Eyes/.test(o.material.name)) o.material = MOD.matOjo ??= new THREE.MeshStandardMaterial({ map: MOD.tex.ojo, roughness: 0.25 });
-    else o.material = matPelo(hc, /2/.test(o.material.name) ? 2 : 1);   // cejas
-  });
-  // colores de la ropa y la piel del jugador
-  const u = mc.userData.u, gear = materialDe(p), zap = gear.find(x => x.tipo === 'zap'), zl = zap && ZAPA_LOOK[zap.id];
-  u.uPiel.value.set(SKIN_TONES[p.piel]).multiply(MOD.pielInv);
-  u.uCam.value.set(p.cam); u.uPan.value.set(p.pan); u.uZap.value.set(zl ? zl.c[0] : p.zap); u.uMangas.value = p.man ? 1 : 0;
+  const hc = p.pc;
+  let mc;
+  if (F.chico) {
+    mc = new THREE.MeshStandardMaterial({ map: texChico(p), roughness: 0.78, metalness: 0 });
+    obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; o.material = mc; } });
+  } else {
+    mc = matCuerpo(fem);
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.frustumCulled = false;
+      if (/Superhero/i.test(o.material.name)) o.material = mc;
+      else if (/Eyes/.test(o.material.name)) o.material = MOD.matOjo ??= new THREE.MeshStandardMaterial({ map: MOD.tex.ojo, roughness: 0.25 });
+      else o.material = matPelo(hc, /2/.test(o.material.name) ? 2 : 1);   // cejas
+    });
+    // colores de la ropa y la piel del jugador
+    const u = mc.userData.u, gear = materialDe(p), zap = gear.find(x => x.tipo === 'zap'), zl = zap && ZAPA_LOOK[zap.id];
+    u.uPiel.value.set(SKIN_TONES[p.piel]).multiply(MOD.pielInv);
+    u.uCam.value.set(p.cam); u.uPan.value.set(p.pan); u.uZap.value.set(zl ? zl.c[0] : p.zap); u.uMangas.value = p.man ? 1 : 0;
+  }
   // brazos algo más largos; piernas, a la medida de las del muñeco
   for (const l of ['r', 'l']) {
-    H['lowerarm_' + l].position.copy(rest['lowerarm_' + l].lp).multiplyScalar(M_BRAZO);
-    H['hand_' + l].position.copy(rest['hand_' + l].lp).multiplyScalar(M_BRAZO);
+    H['lowerarm_' + l].position.copy(rest['lowerarm_' + l].lp).multiplyScalar(F.kBrazo);
+    H['hand_' + l].position.copy(rest['hand_' + l].lp).multiplyScalar(F.kBrazo);
     H['calf_' + l].position.copy(rest['calf_' + l].lp).multiplyScalar(THIGH / rest['calf_' + l].p.distanceTo(rest['thigh_' + l].p));
     H['foot_' + l].position.copy(rest['foot_' + l].lp).multiplyScalar(SHIN / rest['foot_' + l].p.distanceTo(rest['calf_' + l].p));
   }
@@ -5073,14 +5635,14 @@ function ponModelo(pl) {
   const rh = rest.Head, qi = rh.q.clone().invert();
   const marco = new THREE.Group(); marco.quaternion.copy(qi); marco.position.copy(rh.p).negate().applyQuaternion(qi);
   H.Head.add(marco);
-  const peinado = MOD.pelo[PELO_MOD[p.pelo]];
+  const peinado = !F.chico && MOD.pelo[PELO_MOD[p.pelo]];   // (el chico trae su pelo)
   if (peinado) { const m = new THREE.Mesh(peinado.geo, matPelo(hc, peinado.t)); m.castShadow = true; marco.add(m); }
-  if (p.acc.barba) marco.add(new THREE.Mesh(MOD.pelo.Hair_Beard.geo, matPelo(hc, 1)));
-  const [cc, ce] = M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
+  if (p.acc.barba && !F.chico) marco.add(new THREE.Mesh(MOD.pelo.Hair_Beard.geo, matPelo(hc, 1)));
+  const [cc, ce] = F.cab || M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
   cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
   for (const m of accCabeza(pl)) cab.add(m);
   pl.g.add(obj);
-  const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * M_BRAZO, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * M_BRAZO;
+  const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * F.kBrazo, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * F.kBrazo;
   pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, auto: pl === visor.pl };
   ajustaPiezas(pl);
   poseModelo(pl);
@@ -5135,12 +5697,13 @@ function poseModelo(pl) {
       const pq = Uq.clone().multiply(pl.paddle.quaternion), mh = new V3(0, 1, 0).applyQuaternion(pq);
       mn = new V3(0, 0, 1).applyQuaternion(pq); mf = new V3().crossVectors(mh, mn).multiplyScalar(R.F.mano.r.s);
       P0 = W.clone();
-      W = P0.clone().addScaledVector(mh, 0.065).addScaledVector(mf, -0.085).addScaledVector(mn, -0.03);
+      const MO = R.F.mano.r.off;
+      W = P0.clone().addScaledVector(mh, MO.h).addScaledVector(mf, -MO.f).addScaledVector(mn, -MO.n);
       // si el brazo del modelo no llega, la mano se queda donde alcance y el mango se inclina para que la pala siga en su sitio
       // (antes, el brazo se estira un poco: solo se nota en los fotogramas en que va a por una bola lejana)
       kB = clamp(W.distanceTo(S) / (R.L1 + R.L2 - 0.005), 1, 1.18);
-      H.lowerarm_r.position.copy(rest.lowerarm_r.lp).multiplyScalar(M_BRAZO * kB);
-      H.hand_r.position.copy(rest.hand_r.lp).multiplyScalar(M_BRAZO * kB);
+      H.lowerarm_r.position.copy(rest.lowerarm_r.lp).multiplyScalar(R.F.kBrazo * kB);
+      H.hand_r.position.copy(rest.hand_r.lp).multiplyScalar(R.F.kBrazo * kB);
       for (let i = 0; i < 2; i++) {
         const Lm = (R.L1 + R.L2) * kB - 0.005, dW = W.distanceTo(S);
         if (dW <= Lm) break;
@@ -5148,7 +5711,7 @@ function poseModelo(pl) {
         P0.addScaledVector(S.clone().sub(W).divideScalar(dW), dW - Lm);
         mh.copy(C).sub(P0).normalize(); mn.addScaledVector(mh, -mn.dot(mh)).normalize();
         mf.crossVectors(mh, mn).multiplyScalar(R.F.mano.r.s);
-        W = P0.clone().addScaledVector(mh, 0.065).addScaledVector(mf, -0.085).addScaledVector(mn, -0.03);
+        W = P0.clone().addScaledVector(mh, MO.h).addScaledVector(mf, -MO.f).addScaledVector(mn, -MO.n);
         const iq = Uq.clone().invert(), y = mh.clone().applyQuaternion(iq), z = mn.clone().applyQuaternion(iq);
         pl.paddle.quaternion.setFromRotationMatrix(_mB0.makeBasis(new V3().crossVectors(y, z), y, z));
       }
@@ -5204,7 +5767,7 @@ const cargaClip = n => CLIPS[n] ??= fetch(MOD.base + 'golpes/' + n + '.json')
 const _qC0 = new THREE.Quaternion(), _qC1 = new THREE.Quaternion();
 function poseClip(pl, c, t) {
   const R = pl.rig; if (!R) return;
-  for (const n of ['lowerarm_r', 'hand_r']) R.H[n].position.copy(R.F.rest[n].lp).multiplyScalar(M_BRAZO);   // (sin el estirón de poseModelo)
+  for (const n of ['lowerarm_r', 'hand_r']) R.H[n].position.copy(R.F.rest[n].lp).multiplyScalar(R.F.kBrazo);   // (sin el estirón de poseModelo)
   const rest = R.F.rest, H = R.H, n = c.q.length, U = pl.upper;
   const x = clamp(t * c.fps, 0, n - 1), i = Math.floor(x), j = Math.min(n - 1, i + 1), a = x - i;
   const k = rest.pelvis.p.y / c.restCadera;                 // de la medida de la persona del vídeo a la del modelo
@@ -5237,7 +5800,7 @@ function poseClip(pl, c, t) {
   const mf = M.f0.clone().applyQuaternion(dq), mn = M.p0.clone().applyQuaternion(dq), mh = new V3().crossVectors(mn, mf).multiplyScalar(M.s).normalize();
   const qp = new THREE.Quaternion().setFromRotationMatrix(_mB0.makeBasis(new V3().crossVectors(mh, mn), mh, mn));
   pl.paddle.quaternion.copy(U.quaternion).invert().multiply(qp);
-  const P0 = cur.hand_r.p.clone().addScaledVector(mh, -0.065).addScaledVector(mf, 0.085).addScaledVector(mn, 0.03);
+  const P0 = cur.hand_r.p.clone().addScaledVector(mh, -M.off.h).addScaledVector(mf, M.off.f).addScaledVector(mn, M.off.n);
   pl.paddle.position.copy(P0.applyMatrix4(_mB0.copy(U.matrix).invert()));
   // zapatillas en los pies y falda en la cadera
   for (const [z, l] of [[pl.shoes[0], 'r'], [pl.shoes[1], 'l']]) {
