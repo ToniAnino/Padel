@@ -19,7 +19,8 @@
   /* controles sobre la pista (ordenador): sin el panel de abajo y a todo lo ancho de la ventana */
   #app.ancho{width:100vw}
   #app.ancho #panelWrap{display:none}
-  body:not(.pc) .soloPc{display:none}
+  body:not(.pc) .soloPc{display:none!important}
+  body.pc .soloMovil{display:none!important}
   #ayudaPista{position:absolute;left:50%;bottom:46px;transform:translateX(-50%);max-width:92%;text-align:center;font-size:14px;font-weight:700;
     color:rgba(255,255,255,.88);text-shadow:0 1px 4px #000;pointer-events:none;white-space:nowrap}
   #ayudaPista:empty{display:none}
@@ -342,7 +343,7 @@
       <div class="mtab" data-tab="config">
       <h2 data-ico="mando">Modo de juego</h2>
       <div class="opts" data-k="mode">
-        <button data-v="manual"><b>1 · Tiempo real</b><span>El juego no se para: mueves a los jugadores y golpean solos. Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo (ratón: botón derecho)</span></button>
+        <button data-v="manual"><b>1 · Tiempo real</b><span>El juego no se para: mueves a los jugadores y golpean solos. <span class="soloMovil">Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo</span><span class="soloPc">Si quieres, con el botón derecho del ratón marcas en el recuadro a dónde va la bola: 1 clic golpe, 2 globo</span></span></button>
         <button data-v="partido"><b>2 · Con pausa</b><span>El juego se para en cada golpe vuestro para que elijas a dónde va la bola</span></button>
       </div>
       <div class="tipoTxt" id="teclasTxt" style="display:none">En ordenador: con el ratón llevas a TÚ (botón derecho: a dónde va la bola) y con W A S D o las flechas, a COMPI.</div>
@@ -379,12 +380,7 @@
         <button data-v="azul">Pista azul</button>
         <button data-v="verde">Pista verde</button>
       </div>
-      <h2 data-ico="jugadores">Jugadores</h2>
-      <div class="opts row" data-k="modelo">
-        <button data-v="piezas">Muñeco<span>el de siempre</span></button>
-        <button data-v="nuevo">Modelo nuevo<span>prueba</span></button>
-      </div>
-      <h2 data-ico="jugadores" class="soloPc">Controles (ordenador)</h2>
+      <h2 data-ico="jugadores" class="soloPc">Controles</h2>
       <div class="opts row soloPc" data-k="ctrl">
         <button data-v="panel">Con panel<span>el recuadro de abajo</span></button>
         <button data-v="pista">Sobre la pista<span>pantalla ancha</span></button>
@@ -437,7 +433,7 @@
         <div class="vsLinea"><input type="range" id="vsT" min="0" max="2100" step="1" value="0" aria-label="Momento del golpe"><span id="vsTiempo"></span></div>
         <div class="vsFila" id="vsMarcas"></div>
       </div>
-      <div class="vsBtns"><div class="vsSeg" id="vsModelo"><button data-m="0">Piezas</button><button data-m="1">Modelo nuevo (prueba)</button></div><button id="vsGolpes">▶ Ver golpes</button></div>
+      <div class="vsBtns"><div class="vsSeg" id="vsModelo" hidden></div><button id="vsGolpes">▶ Ver golpes</button></div>
       <div class="vsHint" id="vsHint">Arrastra a los lados para girarlo</div></div>
     <div id="confirm"><div class="cbox"><p id="cfTxt"></p><div class="cbtn"><button id="cfNo">Cancelar</button><button id="cfSi">Sí</button></div></div></div>
   </div>
@@ -486,9 +482,10 @@ const DRIVE_NET = 1.35;           // altura a la que el golpe normal pasa por la
 const E_FLOOR = 0.72, F_FLOOR = 0.85, E_WALL = 0.7;
 const US = 0, RIVAL = 1;
 // Ajustes elegidos en el menú (se recuerdan en este navegador)
-const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'piezas', ctrl: 'panel' };
+const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'nuevo', ctrl: 'panel' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
+CFG.modelo = 'nuevo';   // (el muñeco de piezas ya no se elige: siempre el modelo nuevo; en el aspecto sencillo siguen las piezas)
 if (CFG.match === '1' || CFG.match === '5p') CFG.match = '6p';   // los antiguos «1 set» y «5 puntos» son ahora el partido a 6 puntos
 if (CFG.match === '3') CFG.match = '4j';                          // y el de «3 sets», el de 4 juegos
 // a 6 puntos se cuenta por puntos; a 4 juegos, con el marcador de pádel
@@ -4205,7 +4202,7 @@ function drawPanel() {
         targetRing.position.set(S.aim.x, 0.013, S.aim.z); targetRing.visible = true;
       } else if (!ourServeWaiting()) {   // se puede marcar en cualquier momento: vale para el siguiente golpe vuestro
         c.fillStyle = 'rgba(255,210,63,0.75)'; c.font = '11px system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
-        c.fillText('Otro dedo: marca a dónde va · 1 toque golpe · 2 globo', PW / 2, y0 + h - 4);
+        c.fillText(ORDENADOR ? 'Botón derecho: marca a dónde va · 1 clic golpe · 2 globo' : 'Otro dedo: marca a dónde va · 1 toque golpe · 2 globo', PW / 2, y0 + h - 4);
       }
     }
   } else {
@@ -4782,7 +4779,7 @@ function paintMenu() {
     for (const b of g.querySelectorAll('button')) b.classList.toggle('sel', CFG[g.dataset.k] === b.dataset.v);
   menuEl.classList.toggle('tpv', terceraP()); menuEl.classList.toggle('tp1', unoSolo());
   document.getElementById('vistaTxt').textContent = CFG.view === 'tp' ? 'Llevas a TÚ con la cámara detrás; COMPI juega solo, como los rivales.' + (ORDENADOR ? ' En ordenador, con «Teclado y ratón» en Controles: W A S D o flechas para moverte y el ratón para apuntar (clic o espacio: globo).' : '')
-    : CFG.view === 'tpx' ? 'Llevas a los dos (ratón y teclado, o los dos pulgares); la cámara se pone detrás del que le va a llegar la bola.' : '';
+    : CFG.view === 'tpx' ? 'Llevas a los dos (' + (ORDENADOR ? 'TÚ con el ratón y COMPI con el teclado' : 'con los dos pulgares') + '); la cámara se pone detrás del que le va a llegar la bola.' : '';
   document.getElementById('camAng').value = CFG.camAng; document.getElementById('camZoom').value = CFG.camZoom || 0; document.getElementById('camYaw').value = CFG.camYaw || 0; document.getElementById('camScale').value = CFG.camScale || 0;
 
 }
@@ -6780,7 +6777,7 @@ function visorQuieto(pl) {
   pl.updateLegs(0); pl.updateArms(0);
 }
 // muñeco de piezas o modelo con esqueleto (se recuerda la elección)
-try { visor.modelo = localStorage.getItem('padel.visorModelo') === '1'; } catch (_) { visor.modelo = false; }
+visor.modelo = true;   // (siempre el modelo nuevo)
 const vsHint = document.getElementById('vsHint'), HINT_VS = 'Arrastra a los lados para girarlo';
 function visorModelo() {
   const V = visor, pl = V.pl;
