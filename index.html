@@ -673,10 +673,12 @@ function turfTex(base) {
   return t;
 }
 const TURF = { azul: turfTex('#2563b8'), verde: turfTex('#3f8f3a') };
-// ================= Entorno del club (solo en el modo detallado; sin público) =================
-// Suelo de baldosas alrededor de las pistas y césped más allá, dos pistas vecinas, setos, árboles, el edificio
-// del club al fondo, bancos con bolsas junto a la red y un cielo de anochecer con niebla a lo lejos.
+// ================= Entorno del club (solo en el modo detallado) =================
+// Suelo de baldosas alrededor de las pistas y césped más allá, una pista vecina a la derecha y una grada a la
+// izquierda (con público en los torneos), setos, árboles, el edificio del club al fondo, bancos con bolsas junto a la
+// red y un cielo de anochecer con niebla a lo lejos.
 const entorno = new THREE.Group(); scene.add(entorno);
+const VECINA = {};   // suelo de la pista vecina (tex: azul y verde)
 const lienzo = (w, h, pinta) => { const c = document.createElement('canvas'); c.width = w; c.height = h; pinta(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 const ruido = (g, w, h, n, a) => { for (let i = 0; i < n; i++) { const l = Math.random() < 0.5 ? 255 : 0; g.fillStyle = `rgba(${l},${l},${l},${a * Math.random()})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } };
 const GRASS_TEX = lienzo(128, 128, (g, w, h) => { g.fillStyle = '#2d5a2a'; g.fillRect(0, 0, w, h); ruido(g, w, h, 3000, 0.16); });
@@ -699,7 +701,8 @@ GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(6
     const a = new THREE.Mesh(new THREE.BoxGeometry(APRON_W + 0.3, 0.12, 0.15), curbMat); a.position.set(0, 0.05, s * (APRON_L / 2 + 0.07)); entorno.add(a);
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, APRON_L), curbMat); b.position.set(s * (APRON_W / 2 + 0.07), 0.05, 0); entorno.add(b);
   }
-  // pistas vecinas, a los dos lados: suelo con líneas, cristales al fondo y estructura (postes y barandillas)
+  // pista vecina, a la derecha: suelo con líneas, cristales al fondo y estructura (postes y barandillas); es del
+  // color contrario al de la vuestra (applyLook)
   const vecinaTex = color => lienzo(256, 512, (g, w, h) => {
     g.fillStyle = color; g.fillRect(0, 0, w, h); ruido(g, w, h, 4000, 0.1);
     g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3;
@@ -709,9 +712,10 @@ GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(6
   });
   const postGeo = new THREE.BoxGeometry(0.08, 1, 0.08), postMat = new THREE.MeshStandardMaterial({ color: 0x14181e, roughness: 0.6, metalness: 0.4 });
   const posts = [];
-  for (const [sx, col] of [[-1, '#2a5fae'], [1, '#2d7d3a']]) {
+  VECINA.tex = { azul: vecinaTex('#2a5fae'), verde: vecinaTex('#2d7d3a') };
+  for (const sx of [1]) {
     const cx = sx * (2 * HW + 3);
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW, 2 * HL), new THREE.MeshStandardMaterial({ map: vecinaTex(col), roughness: 0.95 }));
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW, 2 * HL), VECINA.mat = new THREE.MeshStandardMaterial({ map: VECINA.tex.verde, roughness: 0.95 }));
     f.rotation.x = -Math.PI / 2; f.position.set(cx, -0.002, 0); f.receiveShadow = true; entorno.add(f);
     for (const sz of [-1, 1]) {   // cristales del fondo
       const gl = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW, 3), glassMat); gl.position.set(cx, 1.5, sz * HL); entorno.add(gl);
@@ -781,6 +785,95 @@ GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(6
     entorno.add(b);
   }
 }
+// grada, a la izquierda de la pista: 8 filas de hormigón con asientos, paredes a los lados y detrás, y delante una
+// pancarta con las marcas; en los torneos, público en parte de los asientos (se balancea y celebra los puntos)
+const GRADA = (() => {
+  const X0 = -(HW + 3), FONDO = 0.85, SUBE = 0.42, Y0 = 0.9, FILAS = 8, LZ = 21, top = k => Y0 + k * SUBE;
+  const xFila = k => X0 - (k + 0.5) * FONDO, XB = X0 - FILAS * FONDO;
+  const hormigon = new THREE.MeshStandardMaterial({ color: 0x8b9099, roughness: 0.95 });
+  for (let k = 0; k < FILAS; k++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(FONDO, top(k), LZ), hormigon);
+    b.position.set(xFila(k), top(k) / 2, 0); b.receiveShadow = true; entorno.add(b);
+  }
+  // paredes: la de detrás y las de los lados, con el perfil escalonado de las filas
+  const atras = new THREE.Mesh(new THREE.BoxGeometry(0.25, top(FILAS - 1) + 1.3, LZ + 0.5), hormigon);
+  atras.position.set(XB - 0.125, (top(FILAS - 1) + 1.3) / 2, 0); entorno.add(atras);
+  const perfil = new THREE.Shape([new THREE.Vector2(X0, 0), new THREE.Vector2(X0, Y0 + 0.3), new THREE.Vector2(XB, top(FILAS - 1) + 1.3), new THREE.Vector2(XB, 0)]);
+  const ladoGeo = new THREE.ExtrudeGeometry(perfil, { depth: 0.25, bevelEnabled: false });
+  for (const s of [-1, 1]) { const l = new THREE.Mesh(ladoGeo, hormigon); l.position.z = s > 0 ? LZ / 2 : -LZ / 2 - 0.25; entorno.add(l); }
+  // pancarta delante (se pinta con las letras de las marcas cuando se han cargado)
+  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 112;
+  const panTex = new THREE.CanvasTexture(cv); panTex.colorSpace = THREE.SRGBColorSpace; panTex.anisotropy = 4;
+  const pan = new THREE.Mesh(new THREE.PlaneGeometry(LZ, 1.15), new THREE.MeshStandardMaterial({ map: panTex, roughness: 0.6, emissive: 0xffffff, emissiveMap: panTex, emissiveIntensity: 0.25 }));
+  pan.rotation.y = Math.PI / 2; pan.position.set(X0 + 0.01, 0.575, 0); entorno.add(pan);
+  const pinta = () => {
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height, n = MARCAS.length * 2, paso = W / n;
+    g.fillStyle = '#0f1729'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#22d3ee'; g.fillRect(0, 0, W, 5); g.fillRect(0, H - 5, W, 5);
+    const cols = ['#ffffff', '#facc15', '#ffffff', '#4ade80'];
+    for (let i = 0; i < n; i++) {
+      const m = MARCAS[i % MARCAS.length];
+      g.font = `${m.e || ''} 62px "${m.f}", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = cols[i % cols.length]; g.fillText(m.t, paso * (i + 0.5), H / 2 + 3, paso * 0.86);
+    }
+    panTex.needsUpdate = true;
+  };
+  // asientos (con pasillo en el centro)
+  const sitios = [];
+  for (let k = 0; k < FILAS; k++) for (let z = -LZ / 2 + 0.45; z <= LZ / 2 - 0.4; z += 0.55) if (Math.abs(z) > 0.6) sitios.push([xFila(k) + 0.08, top(k), z, k]);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), uno = new V3(1, 1, 1);
+  const asientoIM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42, 0.07, 0.44), new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 }), sitios.length);
+  const respaldoIM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.4, 0.44), asientoIM.material, sitios.length);
+  sitios.forEach(([x, y, z], i) => { asientoIM.setMatrixAt(i, m4.compose(new V3(x, y + 0.28, z), q, uno)); respaldoIM.setMatrixAt(i, m4.compose(new V3(x - 0.2, y + 0.46, z), q, uno)); });
+  entorno.add(asientoIM, respaldoIM);
+  // público: más lleno en el centro y abajo; cada uno con su ropa, su piel y su ritmo
+  const gente = sitios.filter(([, , z, k]) => Math.random() < 0.85 - Math.abs(z) / 22 - k * 0.03).map(([x, y, z]) => ({ x, y: y + 0.3, z, fase: Math.random() * 6.3, vel: 0.6 + Math.random() * 0.8, t0: 0, dur: 0, sube: 0 }));
+  const N = gente.length, grupo = new THREE.Group(); grupo.visible = false; entorno.add(grupo);
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.75 });
+  const tronco = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.17, 0.3, 3, 8), mat, N), cabeza = new THREE.InstancedMesh(new THREE.SphereGeometry(0.115, 10, 8), mat, N);
+  const muslo = new THREE.InstancedMesh(new THREE.BoxGeometry(0.4, 0.15, 0.3), mat, N), pierna = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13, 0.4, 0.13), mat, 2 * N);
+  const brazo = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.05, 0.38, 3, 6), mat, 2 * N);
+  const ROPA = [0xd8343e, 0x1e3a8a, 0xf4f4f4, 0x16a34a, 0xfacc15, 0x111827, 0xf97316, 0x7c3aed, 0x0ea5e9, 0xec4899, 0x6b7280];
+  const PIEL = [0xf1c7a5, 0xe8b896, 0xc68c64, 0x9c6644, 0x6b4430], PANT = [0x1f2a44, 0x2b2b2b, 0x3b4a6b, 0xd6cfc2, 0x4b5563];
+  const col = new THREE.Color();
+  gente.forEach((p, i) => {
+    const ropa = ROPA[Math.random() * ROPA.length | 0], piel = PIEL[Math.random() * PIEL.length | 0], pant = PANT[Math.random() * PANT.length | 0];
+    tronco.setColorAt(i, col.set(ropa)); cabeza.setColorAt(i, col.set(piel)); muslo.setColorAt(i, col.set(pant));
+    for (const j of [2 * i, 2 * i + 1]) { pierna.setColorAt(j, col.set(pant)); brazo.setColorAt(j, col.set(Math.random() < 0.5 ? ropa : piel)); }
+  });
+  for (const im of [tronco, cabeza, muslo, pierna, brazo]) { im.frustumCulled = false; grupo.add(im); }
+  const _p = new V3(), _d = new V3(), _s = new V3(1, 1, 1), ARRIBA = new V3(0, 1, 0), _qz = new THREE.Quaternion(), EZ = new V3(0, 0, 1);
+  let reloj = 0;
+  const pon = (im, i, x, y, z, qq = q) => im.setMatrixAt(i, m4.compose(_p.set(x, y, z), qq, _s));
+  function actualiza(dt) {
+    grupo.visible = entorno.visible && (enTorneo() || API.forzar);   // (forzar: para probar sin torneo)
+    if (!grupo.visible) return;
+    reloj += dt;
+    gente.forEach((p, i) => {
+      // de pie (0..1) al celebrar; si no, sentado con un vaivén suave
+      const tc = reloj - p.t0, cel = tc > 0 && tc < p.dur ? Math.min(1, tc / 0.25, (p.dur - tc) / 0.35) * p.sube : 0;
+      const bote = cel > 0.5 ? Math.max(0, Math.sin(tc * 9 + p.fase)) * 0.12 * cel : 0;
+      const vaiven = Math.sin(reloj * p.vel + p.fase) * 0.02;
+      const hx = p.x + 0.12 * cel, hy = p.y + 0.08 + 0.5 * cel + bote, hz = p.z + vaiven;
+      pon(tronco, i, hx, hy + 0.3, hz); pon(cabeza, i, hx + 0.02, hy + 0.66, hz);
+      const a = cel * Math.PI / 2;   // muslo: de horizontal (sentado) a vertical (de pie)
+      _qz.setFromAxisAngle(EZ, -a);
+      pon(muslo, i, hx + 0.2 * Math.cos(a), hy - 0.2 * Math.sin(a), hz, _qz);
+      const kx = hx + 0.4 * Math.cos(a), ky = hy - 0.4 * Math.sin(a);
+      for (const s of [-1, 1]) pon(pierna, 2 * i + (s > 0 ? 1 : 0), kx, ky - 0.2, hz + s * 0.08);
+      for (const s of [-1, 1]) {   // brazos: abajo, sobre las piernas; al celebrar, arriba
+        _d.set(0.45 * (1 - cel), -0.9 * (1 - cel) + cel, s * (0.12 + 0.3 * cel)).normalize();
+        _qz.setFromUnitVectors(ARRIBA, _d);
+        pon(brazo, 2 * i + (s > 0 ? 1 : 0), hx + _d.x * 0.24, hy + 0.5 + _d.y * 0.24, hz + s * 0.2 + _d.z * 0.24, _qz);
+      }
+    });
+    for (const im of [tronco, cabeza, muslo, pierna, brazo]) im.instanceMatrix.needsUpdate = true;
+  }
+  // al acabar un punto: la mayoría se levanta un momento (cada uno a su tiempo)
+  function celebra() { for (const p of gente) { p.t0 = reloj + Math.random() * 0.4; p.dur = 1.2 + Math.random() * 1.0; p.sube = Math.random() < 0.7 ? 1 : 0.15; } }
+  const API = { pinta, actualiza, celebra, gente, forzar: false };
+  return API;
+})();
 // cielo de anochecer (degradado) y niebla a lo lejos, del mismo color que el horizonte
 const HORIZONTE = new THREE.Color(0x3a4a66);
 const cielo = new THREE.Mesh(new THREE.SphereGeometry(105, 32, 16), new THREE.ShaderMaterial({
@@ -2174,6 +2267,7 @@ function applyLook() {
   const det = CFG.look !== 'sencillo';
   if (det) {
     floor.material.map = TURF[CFG.look]; floor.material.color.set(0xffffff);
+    VECINA.mat.map = VECINA.tex[CFG.look === 'verde' ? 'azul' : 'verde'];   // la vecina, del otro color
     outer.material.color.set(0xffffff); outer.material.map = GRASS_TEX;   // césped alrededor del club
     scene.background.copy(HORIZONTE); scene.fog = NIEBLA;
     frameMat.color.set(CFG.look === 'verde' ? 0x14361f : 0x111111);
@@ -3060,6 +3154,7 @@ const RETRASO_CARTEL = 1.5;   // s tras el punto antes de que salgan el cartel y
 function endPoint(winner, reason) {
   S.phase = 'point'; S.timer = 1.8;
   S.score[winner]++;
+  GRADA.celebra();   // (el público del torneo, si lo hay)
   // marcador de pádel: 0-15-30-40, iguales y ventaja; quien gana el juego suma un juego
   const P = S.pts, L = 1 - winner, conSets = CFG.scoring === 'padel' && CFG.match !== 'libre';
   let juego = false, set = false, fin = false;
@@ -6690,11 +6785,13 @@ function frame(now) {
   const dt = clamp((now - last) / 1000, 0, 0.05); last = now;
   if (!menuOpen) update(dt);
   updateCam(menuOpen ? 0 : dt);
+  GRADA.actualiza(dt);
   renderer.render(scene, camera);
   drawPanel(); ayudaPista();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+GRADA.pinta(); cargaMarcas().then(GRADA.pinta);   // la pancarta, con las letras de las marcas en cuanto se carguen
 
 // Depuración desde la consola: PADEL.avanza(segundos)
 window.PADEL = {
@@ -6702,7 +6799,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
-  MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
+  GRADA, MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
