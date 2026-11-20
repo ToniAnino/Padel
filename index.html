@@ -597,7 +597,7 @@ for (const s of [-1, 1]) {
   }
 }
 // hueco de puerta: uno en cada lateral, justo a la altura de la red (sin malla hasta 2 m: la bola sale por ahí)
-const DOOR_HW = 0.6, DOOR_H = 2;   // media anchura y altura del hueco
+const DOOR_HW = 1.0, DOOR_H = 2.2;   // media anchura y altura del hueco (dos pasos de 1 m, uno a cada lado del poste de la red)
 const isDoor = (z, y) => y < DOOR_H && Math.abs(z) < DOOR_HW;
 for (const sx of [-1, 1]) {   // lateral malla 3 m, partida por las puertas
   for (const s of [-1, 1]) wall(6 - DOOR_HW, 3, sx * HW, 1.5, s * (DOOR_HW + 6) / 2, Math.PI / 2, meshMat(6 - DOOR_HW, 3));
@@ -626,6 +626,7 @@ const LAMPS = [];   // focos de las esquinas (se ocultan los que quedan entre la
 // ----- Modo detallado: estructura metálica, focos, suelo de césped y materiales de jugadores -----
 const courtFrame = new THREE.Group(); scene.add(courtFrame);
 const frameMat = new THREE.MeshStandardMaterial({ color: 0x14361f, roughness: 0.6, metalness: 0.4 });
+const puertaMat = new THREE.MeshStandardMaterial({ color: 0x1f4fb0, roughness: 0.7 });   // postes y dintel de las entradas
 {
   const addPost = (x, z) => {
     const h = Math.abs(z) >= SIDE_HIGH_Z || Math.abs(x) < HW ? WALL_H : 3;
@@ -634,10 +635,38 @@ const frameMat = new THREE.MeshStandardMaterial({ color: 0x14361f, roughness: 0.
   };
   for (const sx of [-HW, HW]) for (let z = -HL; z <= HL + 0.01; z += 2) if (Math.abs(z) > 0.01) addPost(sx, z);   // en z=0 está la puerta
   for (const x of [-2.5, 0, 2.5]) addPost(x, -HL);
-  for (const sx of [-HW, HW]) {   // marco de la puerta: dos postes y dintel
-    for (const s of [-1, 1]) addPost(sx, s * DOOR_HW);
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 2 * DOOR_HW), frameMat);
-    l.position.set(sx, DOOR_H, 0); courtFrame.add(l);
+  // entradas como en las pistas de competición: postes acolchados del color de la pista, dintel con publicidad
+  // y el poste de la red forrado de blanco
+  const dintelTex = (() => {
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128;
+    const c = cv.getContext('2d'), t = new THREE.CanvasTexture(cv);
+    const pinta = () => {   // se repinta cuando llegan las letras de Google Fonts
+      c.clearRect(0, 0, 1024, 128); c.fillStyle = '#fff'; c.fillRect(0, 0, 1024, 7); c.fillRect(0, 121, 1024, 7);
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      const marcas = [['KOVA', 'bold 84px "Russo One", sans-serif'], ['VEXA', '900 76px Orbitron, sans-serif'], ['NORDIK', '100px "Bebas Neue", sans-serif']];
+      marcas.forEach(([s, f], i) => { c.font = f; c.fillText(s, 171 + i * 341, 66); });
+      t.needsUpdate = true;
+    };
+    pinta(); document.fonts && Promise.all(['88px "Russo One"', '900 80px Orbitron', '100px "Bebas Neue"'].map(f => document.fonts.load(f).catch(() => {}))).then(pinta);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return t;
+  })();
+  const rotulo = new THREE.MeshBasicMaterial({ map: dintelTex, transparent: true, depthWrite: false });
+  const forroRed = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.75 });
+  const pW = 0.15, dH = 0.3, largo = 2 * DOOR_HW + 2 * pW;
+  for (const sx of [-HW, HW]) {
+    for (const s of [-1, 1]) {   // postes acolchados (hasta la malla de 3 m)
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3, pW), puertaMat);
+      m.position.set(sx, 1.5, s * (DOOR_HW + pW / 2)); m.castShadow = true; courtFrame.add(m);
+    }
+    const l = new THREE.Mesh(new THREE.BoxGeometry(0.18, dH, largo), puertaMat);   // dintel
+    l.position.set(sx, DOOR_H + dH / 2, 0); l.castShadow = true; courtFrame.add(l);
+    for (const cara of [-1, 1]) {   // rótulo por dentro y por fuera, que se lea de frente
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(largo, dH), rotulo);
+      r.position.set(sx + cara * 0.091, DOOR_H + dH / 2, 0); r.rotation.y = cara * Math.PI / 2; courtFrame.add(r);
+    }
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.15, 0.15), forroRed);   // forro del poste de la red
+    f.position.set(sx, 0.575, 0); f.castShadow = true; courtFrame.add(f);
   }   // en el fondo de cerca no, para no tapar a los nuestros
   const rail = (len, x, y, z, alongZ) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(alongZ ? 0.06 : len, 0.06, alongZ ? len : 0.06), frameMat);
@@ -2272,6 +2301,7 @@ function applyLook() {
     outer.material.color.set(0xffffff); outer.material.map = GRASS_TEX;   // césped alrededor del club
     scene.background.copy(HORIZONTE); scene.fog = NIEBLA;
     frameMat.color.set(CFG.look === 'verde' ? 0x14361f : 0x111111);
+    puertaMat.color.set(CFG.look === 'verde' ? 0x1d6b35 : 0x1f4fb0);
     for (const m of meshMats) m.color.set(0x000000);   // malla oscura
     glassMat.opacity = 0.13; net.material.color.set(0x000000);
   } else {
