@@ -108,6 +108,7 @@
     padding:9px 12px;font:inherit;font-size:15px;text-align:left;cursor:pointer}
   #menu .opts.row button{text-align:center;padding:9px 4px;font-size:14px}
   #menu .opts button span{display:block;margin-top:3px;font-size:12px;opacity:.7}
+  #menu .bandera{width:24px;height:16px;vertical-align:-3px;margin-right:7px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.25)}
   #menu .opts button.sel{background:#fff;color:#000;border-color:#fff}
   #menu .camWrap{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.8)}
   #menu.tpv .camWrap{display:none}
@@ -345,6 +346,11 @@
       <div style="font-size:12px;opacity:.65">Lo que compréis es de ese jugador y lo lleva puesto en todos los partidos; las bebidas y barritas, solo en el próximo. El dinero se gana en los torneos.</div><div id="tdList"></div>
       </div>
       <div class="mtab" data-tab="config">
+      <h2 data-ico="globo">Idioma · Language</h2>
+      <div class="opts row" id="idiomaOpts" data-k="idioma">
+        <button type="button" data-idioma="es" data-v="es"><svg class="bandera" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#c60b1e"/><rect y="5" width="30" height="10" fill="#ffc400"/></svg>Español</button>
+        <button type="button" data-idioma="en" data-v="en"><svg class="bandera" viewBox="0 0 60 30" aria-hidden="true"><clipPath id="ukc"><rect width="60" height="30"/></clipPath><g clip-path="url(#ukc)"><rect width="60" height="30" fill="#012169"/><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0L60 30M60 0L0 30" stroke="#c8102e" stroke-width="2.4"/><path d="M30 0V30M0 15H60" stroke="#fff" stroke-width="10"/><path d="M30 0V30M0 15H60" stroke="#c8102e" stroke-width="6"/></g></svg>English</button>
+      </div>
       <h2 data-ico="mando">Modo de juego</h2>
       <div class="opts" data-k="mode">
         <button data-v="manual"><b>1 · Tiempo real</b><span>El juego no se para: mueves a los jugadores y golpean solos. <span class="soloMovil">Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo</span><span class="soloPc">Si quieres, con el botón derecho del ratón marcas en el recuadro a dónde va la bola: 1 clic golpe, 2 globo</span></span></button>
@@ -446,6 +452,640 @@
 <script type="module">
 import * as THREE from 'three';
 const V3 = THREE.Vector3;
+// ================= Idioma (español / inglés) =================
+// En inglés se traduce todo lo que se ve con el diccionario EN (español → inglés): los textos de la página (también
+// los que se pintan después: un MutationObserver los traduce al aparecer) y lo que se dibuja en canvas (fillText,
+// strokeText y measureText, para que lo que se ajusta al ancho mida lo traducido). Cada texto se cambia entero si
+// coincide con una entrada; si no, se cambian dentro las frases que coincidan (de la más larga a la más corta), así
+// valen los textos que se montan con partes variables. Al cambiar de idioma se recarga la página.
+const IDIOMA = (() => { try { return localStorage.getItem('padel.idioma') === 'en' ? 'en' : 'es'; } catch (_) { return 'es'; } })();
+const EN = {
+  "Escalera: jugáis con vuestros dos jugadores. Retad a una de las 2 parejas de justo encima; si ganáis, os quedáis su puesto. Todos ganan experiencia (el que pierde, la mitad) y cada 3 partidos ganados aparece una pareja nueva.": "Ladder: you play with your two players. Challenge one of the 2 pairs just above you; if you win, you take their position. Everyone earns XP (the loser, half) and every 3 matches won a new pair appears.",
+  "A mitad de partido puedes cambiar sin perderlo la vista de la pista, las barras de la cámara, los gráficos, el tipo de trayectoria de la bola, el sonido y los consejos: abre el menú, cámbialo y el partido sigue donde estaba.": "In the middle of a match you can change, without losing it, the court view, the camera sliders, the graphics, the ball trail type, the sound and the tips: open the menu, change it and the match carries on where it was.",
+  "Escalera: jugáis con vuestros dos jugadores. Retad a una de las 2 parejas de justo encima; si ganáis, os quedáis su puesto. Todos ganan experiencia (el que pierde, la mitad) y cada": "Ladder: you play with your two players. Challenge one of the 2 pairs just above you; if you win, you take their position. Everyone earns XP (the loser, half) and every",
+  "Toca cualquier ficha para elegir jugador, también los rivales. Si no, los rivales se ajustan a vuestro nivel (con las flechas, más fáciles o más difíciles).": "Tap any card to pick a player, opponents too. Otherwise, the opponents adjust to your level (with the arrows, easier or harder).",
+  "Lo que compréis es de ese jugador y lo lleva puesto en todos los partidos; las bebidas y barritas, solo en el próximo. El dinero se gana en los torneos.": "Whatever you buy belongs to that player and they wear it in every match; drinks and bars only last for the next one. Money is earned in tournaments.",
+  "Golpeas con el móvil: TÚ se mueve solo hasta la bola y el juego espera a que hagas el golpe. Usa lo aprendido en el entrenamiento (pala.html).": "You swing with your phone: YOU move to the ball on your own and the game waits for you to make the shot. Use what you learned in training (pala.html).",
+  "Las bebidas y barritas de la tienda son baratas pero solo valen para el próximo partido: guárdalas para una semifinal o una final.": "Drinks and bars from the shop are cheap but only last for the next match: save them for a semi-final or a final.",
+  "En ordenador, con «Teclado y ratón» en Controles: W A S D o flechas para moverte y el ratón para apuntar (clic o espacio: globo).": "On a computer, with «Keyboard and mouse» in Controls: W A S D or arrow keys to move and the mouse to aim (click or space: lob).",
+  "En la escalera y en los torneos jugáis siempre con vuestros dos jugadores. Toca su ficha para ponerles nombre, cuerpo y aspecto.": "On the ladder and in tournaments you always play with your two players. Tap their card to set their name, body and looks.",
+  "Lo que sí empieza un partido nuevo es cambiar el modo de juego, la duración del partido o los jugadores (antes te lo pregunta).": "What does start a new match is changing the game mode, the match length or the players (it asks you first).",
+  "Torneos: apuntaos a uno de vuestro nivel. Eliminatoria de 8 parejas; campeón, finalista y tercero ganan dinero para la tienda.": "Tournaments: sign up for one at your level. Knockout of 8 pairs; champion, runner-up and third win money for the shop.",
+  "Si entre los dos queda un hueco grande, los rivales con buena «Visión de juego» lo ven y tiran por ahí: guardad la posición.": "If there's a big gap between you two, opponents with good «Game vision» see it and aim there: keep your positions.",
+  "Con la 3ª persona y «Teclado y ratón» (en Controles) te mueves con W A S D y apuntas con el ratón; clic o espacio: globo.": "With 3rd person and «Keyboard and mouse» (in Controls) you move with W A S D and aim with the mouse; click or space: lob.",
+  "Las palas redondas son de control (precisión, juego aéreo, colocación); las de diamante, de potencia (potencia y remate).": "Round rackets are for control (accuracy, aerial game, placement); diamond ones are for power (power and smash).",
+  "En tiempo real, haz clic con el botón derecho en el recuadro para golpear a ese sitio, y dos clics para tirar un globo.": "In real time, right-click in the box to hit to that spot, and double-click to play a lob.",
+  "En ordenador: con el ratón llevas a TÚ (botón derecho: a dónde va la bola) y con W A S D o las flechas, a COMPI.": "On a computer: the mouse moves YOU (right button: where the ball goes) and W A S D or the arrow keys move PARTNER.",
+  "Una bola alta y franca cerca de la red se remata; si te pilla en el fondo, mejor otro globo que un remate flojo.": "A high, easy ball near the net gets smashed; if it catches you at the back, better another lob than a weak smash.",
+  "Con la experiencia se sube de nivel y se ganan puntos para mejorar las barras: toca + en la ficha del jugador.": "With XP you level up and earn points to improve the bars: tap + on the player's card.",
+  "Torneo: jugáis con vuestros dos jugadores. Si perdéis, quedáis eliminados; los tres primeros se llevan premio.": "Tournament: you play with your two players. If you lose, you're knocked out; the top three get a prize.",
+  "Por los huecos de las puertas, junto a la red, la bola puede salir de la pista: ojo con los ángulos cruzados.": "Through the door openings, next to the net, the ball can leave the court: watch out for sharp cross-court angles.",
+  "En Configuración puedes cambiar la vista: «3ª persona» para llevar a un jugador y «3ª alterna» para los dos.": "In Settings you can change the view: «3rd person» to control one player and «3rd alternating» for both.",
+  "La pala mejora los golpes y las zapatillas el movimiento: las de élite son el 20 % del nivel de un jugador.": "The racket improves your shots and the shoes your movement: elite ones are 20 % of a player's level.",
+  "Si quieres, con el botón derecho del ratón marcas en el recuadro a dónde va la bola: 1 clic golpe, 2 globo": "If you like, right-click in the box to mark where the ball goes: 1 click shot, 2 lob",
+  "De volea se falla más si tu jugador tiene poco «Juego aéreo»; con mucho, hasta remata en vez de defender.": "Volleys miss more if your player has little «Aerial game»; with a lot, they even smash instead of defending.",
+  "Apuntar muy pegado a las líneas o a la pared lateral es arriesgado: un error de puntería la manda fuera.": "Aiming very close to the lines or the side wall is risky: a small aiming error sends it out.",
+  "En Configuración › Controles, «Sobre la pista» quita el panel de abajo y la pista ocupa toda la ventana.": "In Settings › Controls, «On the court» removes the bottom panel and the court fills the whole window.",
+  "Los torneos se juegan en pabellón, con las gradas llenas: el público se levanta y aplaude en cada punto.": "Tournaments are played in an arena with packed stands: the crowd stands up and cheers every point.",
+  "Si la bola va directa a la pared o a la reja sin botar antes, es mala: déjala pasar y el punto es tuyo.": "If the ball goes straight into the wall or the fence without bouncing first, it's out: let it go and the point is yours.",
+  "Los golpes forzados (bola rápida, baja o lejos del cuerpo) te harán fallar más, también a los mejores.": "Forced shots (fast, low or far from the body) make you miss more, even the best players.",
+  "En tiempo real, toca una vez en el recuadro para golpear a ese sitio y dos veces para tirar un globo.": "In real time, tap once in the box to hit to that spot and twice to play a lob.",
+  "Si dejas botar la bola y le das con tiempo, a buena altura, el golpe sale más preciso y fallas menos.": "If you let the ball bounce and hit it with time, at a good height, the shot is more accurate and you miss less.",
+  "Uno en la red y otro en el fondo deja un hueco en medio que los rivales buscan: subid o bajad juntos.": "One at the net and the other at the back leaves a gap in the middle that the opponents look for: move up or back together.",
+  "Al sacar, haz clic en la pista rival donde quieres que bote el saque; con dos clics, saque bombeado.": "When serving, click on the opponents' court where you want the serve to bounce; double-click for a lobbed serve.",
+  "En la red se cierran los ángulos: dos jugadores en la red son difíciles de superar salvo con globo.": "At the net the angles close: two players at the net are hard to beat except with a lob.",
+  "Un remate fuerte que va a llegar a la pared del fondo se puede coger de vuelta, después del rebote.": "A hard smash that's going to reach the back wall can be played on the way back, after the rebound.",
+  "Con poca resistencia, en los peloteos largos y al final del partido tu jugador se mueve más lento.": "With little stamina, your player moves slower in long rallies and at the end of the match.",
+  "Al sacar, toca en la pista rival donde quieres que bote el saque; con dos toques, saque bombeado.": "When serving, tap on the opponents' court where you want the serve to bounce; with two taps, a lobbed serve.",
+  "En el modo «Con pausa» el juego se para en cada golpe vuestro para que elijas a dónde va la bola.": "In «With pause» mode the game pauses on each of your shots so you can choose where the ball goes.",
+  "Toca «Ver el jugador en 3D» en una ficha para verlo entero, con su ropa y su material, y girarlo.": "Tap «View player in 3D» on a card to see them in full, with their clothes and gear, and turn them around.",
+  "Si los dos rivales están atrás, una bola corta junto a la red les obliga a correr hacia delante.": "If both opponents are at the back, a short ball near the net forces them to run forward.",
+  "En la escalera los rivales son la pareja a la que retáis (se elige en la lista de la escalera).": "On the ladder the opponents are the pair you challenge (chosen in the ladder list).",
+  "En 3ª persona, pon el dedo en cualquier sitio del panel y arrastra: funciona como un joystick.": "In 3rd person, put your finger anywhere on the panel and drag: it works like a joystick.",
+  "Arrastra a TÚ y a COMPI cada uno con un pulgar: cada dedo mueve al jugador libre más cercano.": "Drag YOU and PARTNER with one thumb each: each finger moves the nearest free player.",
+  "Si quieres, con el otro dedo marcas en el recuadro a dónde va la bola: 1 toque golpe, 2 globo": "If you like, use your other finger to mark in the box where the ball goes: 1 tap shot, 2 lob",
+  "En «Rápido» puedes elegir a cualquier rival tocando su ficha, o ajustarlos con las flechas.": "In «Quick» you can pick any opponent by tapping their card, or adjust them with the arrows.",
+  "Las bolas que te llegan a los pies o a bote pronto son difíciles de levantar: fallarás más.": "Balls that reach your feet or that you take on the half-volley are hard to lift: you'll miss more.",
+  "En los torneos los tres primeros ganan dinero, y cuanto más difícil el torneo, más premio.": "In tournaments the top three win money, and the harder the tournament, the bigger the prize.",
+  "Si vuestro nivel ya pasa del máximo de un torneo, apuntaos a uno más alto: dan más dinero.": "If your level is already over a tournament's maximum, sign up for a higher one: they pay more.",
+  "Los partidos de Escalera y de Torneos dan experiencia; los de Rápido son para practicar.": "Ladder and Tournament matches give XP; Quick matches are for practice.",
+  "Muévete con W A S D o las flechas · apunta con el ratón · clic o espacio pulsado: globo": "Move with W A S D or the arrow keys · aim with the mouse · click or hold space: lob",
+  "Un globo alto y profundo obliga a los rivales a dejar la red. Aprovecha para subir tú.": "A high, deep lob forces the opponents off the net. Use it to move up yourself.",
+  "Los rivales con poca «Visión de juego» no buscan huecos: casi siempre te la dan a ti.": "Opponents with little «Game vision» don't look for gaps: they almost always hit it to you.",
+  "Puedes entrenar una barra gastando experiencia: sube unos puntos durante 3 partidos.": "You can train a bar by spending XP: it goes up a few points for 3 matches.",
+  "Juega al rival más flojo de la pareja: le cuesta más devolver las bolas difíciles.": "Play to the weaker opponent: they struggle more to return difficult balls.",
+  "Cuando la bola bota y da en la reja, sale rara y más lenta: espérala un poco más.": "When the ball bounces and hits the fence, it comes off oddly and slower: wait for it a bit longer.",
+  "Arrastra a TÚ por vuestro campo con el ratón · COMPI con W A S D o las flechas": "Drag YOU around your side with the mouse · PARTNER with W A S D or the arrow keys",
+  "Lo que compráis en la tienda es de ese jugador: dáselo al que más lo necesite.": "What you buy in the shop belongs to that player: give it to whoever needs it most.",
+  "Toca un jugador para ver sus barras. Los que ya juegan en otro sitio no salen.": "Tap a player to see their bars. Those already playing elsewhere aren't shown.",
+  "Rivales elegidos a mano. Con las flechas vuelven a ajustarse a vuestro nivel.": "Opponents picked by hand. With the arrows they adjust to your level again.",
+  "El juego se para en cada golpe vuestro para que elijas a dónde va la bola": "The game pauses on each of your shots so you can choose where the ball goes",
+  "En un torneo también cobra el tercero: la pareja que cae en semifinales.": "In a tournament third place also gets paid: the pair that loses in the semi-finals.",
+  "Los grips, las muñequeras y las cintas son baratos y suman un poco más.": "Grips, wristbands and headbands are cheap and add a little more.",
+  "¿Empezar la escalera de nuevo? Se pierde el puesto (no la experiencia).": "Restart the ladder? You lose your position (not your XP).",
+  "y pon el código), activa los sensores y calibra de cara a la pantalla.": "and enter the code), turn on the sensors and calibrate facing the screen.",
+  "Llevas a TÚ con la cámara detrás; COMPI juega solo, como los rivales.": "You control YOU with the camera behind; PARTNER plays on their own, like the opponents.",
+  "Clic en la pista rival: a dónde va la bola · 1 clic golpe · 2 globo": "Click on the opponents' court: where the ball goes · 1 click shot · 2 lob",
+  "Cada 3 partidos ganados en la escalera aparece una pareja nueva.": "Every 3 matches won on the ladder, a new pair appears.",
+  "Guardado. Se aplica también en los partidos, a los dos equipos.": "Saved. It also applies in matches, to both teams.",
+  "Con el ratón llevas a TÚ y con W A S D o las flechas, a COMPI.": "The mouse moves YOU and W A S D or the arrow keys move PARTNER.",
+  "En los torneos los rivales son los que os tocan en el cuadro.": "In tournaments the opponents are whoever you draw in the bracket.",
+  "NOMBRE Y CUERPO (el cuerpo cambia algo las barras de partida)": "NAME AND BODY (the body slightly changes the starting bars)",
+  "Aquí el navegador no deja usar pantalla completa: pulsa F11.": "This browser doesn't allow full screen here: press F11.",
+  "Arrastra a TÚ con el ratón · COMPI con W A S D o las flechas": "Drag YOU with the mouse · PARTNER with W A S D or the arrow keys",
+  "El juego no se para: mueves a los jugadores y golpean solos.": "The game never stops: you move the players and they hit on their own.",
+  "Botón derecho: marca a dónde va · 1 clic golpe · 2 globo": "Right button: mark where it goes · 1 click shot · 2 lob",
+  "la cámara se pone detrás del que le va a llegar la bola.": "the camera goes behind whoever the ball is heading to.",
+  "desde lo verde · toca arriba dónde (2 toques: bombeado)": "from the green area · tap above where (2 taps: lobbed)",
+  "Quedáis las dos últimas parejas: el que gane, campeón.": "You're the last two pairs: whoever wins is champion.",
+  "Otro dedo: marca a dónde va · 1 toque golpe · 2 globo": "Other finger: mark where it goes · 1 tap shot · 2 lob",
+  "puntos para mejorar: toca + en la barra que quieras": "points to spend: tap + on the bar you want",
+  "punto para mejorar: toca + en la barra que quieras": "point to spend: tap + on the bar you want",
+  "BEBIDAS Y BARRITAS (solo para el próximo partido)": "DRINKS AND BARS (next match only)",
+  "Con lo que has cambiado empieza un partido nuevo.": "Your changes start a new match.",
+  "No se han podido cargar las librerías de conexión": "Couldn't load the connection libraries",
+  "Pala móvil conectada ✓ (pulsa para ver el código)": "Phone racket connected ✓ (tap to see the code)",
+  "1 CLIC EN LA PISTA RIVAL: GOLPE · 2 CLICS: GLOBO": "1 CLICK ON THE OPPONENTS' COURT: SHOT · 2 CLICKS: LOB",
+  "Siguen 4 parejas; el que pierda queda eliminado.": "4 pairs left; whoever loses is knocked out.",
+  "Siguen 8 parejas; el que pierda queda eliminado.": "8 pairs left; whoever loses is knocked out.",
+  "Elige a cualquier rival, del nivel que quieras.": "Pick any opponent, at whatever level you like.",
+  "Elige arriba la postura y arrastra los puntos:": "Pick the pose above and drag the points:",
+  "Eliminados en cuartos del Campeonato Regional.": "Knocked out in the quarter-finals of the Regional Championship.",
+  "Pasáis a la semifinal del Campeonato Regional.": "You're through to the semi-final of the Regional Championship.",
+  "3ª persona 1P: teclas mueven, el ratón apunta": "3rd person 1P: keys move, the mouse aims",
+  "CINTAS DEL PELO (aéreo, visión o resistencia)": "HEADBANDS (aerial, vision or stamina)",
+  "¿Os apuntáis al Campeonato Regional (gratis)?": "Sign up for the Regional Championship (free)?",
+  "Eliminados en cuartos del Torneo del Barrio.": "Knocked out in the quarter-finals of the Neighbourhood Tournament.",
+  "Joystick: pon el dedo en el panel y arrastra": "Joystick: put your finger on the panel and drag",
+  "Pasáis a la semifinal del Torneo del Barrio.": "You're through to the semi-final of the Neighbourhood Tournament.",
+  "Partido de entrenamiento: no da experiencia": "Practice match: no XP",
+  "¿Os apuntáis al Torneo del Barrio (gratis)?": "Sign up for the Neighbourhood Tournament (free)?",
+  "Eliminados en cuartos del Copa Provincial.": "Knocked out in the quarter-finals of the Provincial Cup.",
+  "Pasáis a la final del Campeonato Regional.": "You're through to the final of the Regional Championship.",
+  "Pasáis a la semifinal del Copa Provincial.": "You're through to the semi-final of the Provincial Cup.",
+  "borde de la pala (la gira sobre el mango).": "racket edge (turns it around the handle).",
+  "partidos ganados aparece una pareja nueva.": "matches won a new pair appears.",
+  "2 clics en la pista rival: saque bombeado": "2 clicks on the opponents' court: lobbed serve",
+  "MUÑEQUERAS (como el grip, con menos peso)": "WRISTBANDS (like the grip, but weaker)",
+  "tienen puntos para mejorar: toca su ficha": "have points to spend: tap their card",
+  "¿Abandonar el torneo? Se pierde la cuota.": "Leave the tournament? You lose the entry fee.",
+  "¿Os apuntáis al Copa Provincial (gratis)?": "Sign up for the Provincial Cup (free)?",
+  "Eliminados en cuartos del Open Comarcal.": "Knocked out in the quarter-finals of the County Open.",
+  "Pasáis a la final del Torneo del Barrio.": "You're through to the final of the Neighbourhood Tournament.",
+  "Pasáis a la semifinal del Open Comarcal.": "You're through to the semi-final of the County Open.",
+  "durante 3 partidos por 40 de experiencia": "for 3 matches, costs 40 XP",
+  "tiene puntos para mejorar: toca su ficha": "has points to spend: tap their card",
+  "Ajustes copiados: pégamelos en el chat.": "Settings copied: paste them to me in the chat.",
+  "Selecciona el texto de abajo y cópialo.": "Select the text below and copy it.",
+  "parejas; el que pierda queda eliminado.": "pairs left; whoever loses is knocked out.",
+  "¿Os apuntáis al Campeonato Regional por": "Sign up for the Regional Championship for",
+  "¿Os apuntáis al Open Comarcal (gratis)?": "Sign up for the County Open (free)?",
+  "Arrastra a TÚ y COMPI con los pulgares": "Drag YOU and PARTNER with your thumbs",
+  "Eliminados en cuartos del Gran Máster.": "Knocked out in the quarter-finals of the Grand Master.",
+  "No se ha podido cargar el modelo nuevo": "Couldn't load the new model",
+  "Pasáis a la final del Copa Provincial.": "You're through to the final of the Provincial Cup.",
+  "Pasáis a la semifinal del Gran Máster.": "You're through to the semi-final of the Grand Master.",
+  "TÚ con el ratón y COMPI con el teclado": "YOU with the mouse and PARTNER with the keyboard",
+  "Solo le vale para el próximo partido.": "It only lasts for the next match.",
+  "Subcampeones del Campeonato Regional.": "Runners-up in the Regional Championship.",
+  "¿Os apuntáis al Gran Máster (gratis)?": "Sign up for the Grand Master (free)?",
+  "¿Os apuntáis al Torneo del Barrio por": "Sign up for the Neighbourhood Tournament for",
+  "Pasáis a la final del Open Comarcal.": "You're through to the final of the County Open.",
+  "Necesitas 40 de experiencia (tienes": "You need 40 XP (you have",
+  "Subcampeones del Torneo del Barrio.": "Runners-up in the Neighbourhood Tournament.",
+  "Terceros en el Campeonato Regional.": "Third in the Regional Championship.",
+  "¡CAMPEONES DEL CAMPEONATO REGIONAL!": "CHAMPIONS OF THE REGIONAL CHAMPIONSHIP!",
+  "¿Os apuntáis al Copa Provincial por": "Sign up for the Provincial Cup for",
+  "1 TOQUE: GOLPE  ·  2 TOQUES: GLOBO": "1 TAP: SHOT  ·  2 TAPS: LOB",
+  "Aquí aparecen los ajustes copiados": "Copied settings appear here",
+  "Escanea el QR con el móvil (o abre": "Scan the QR code with your phone (or open",
+  "Pasáis a la final del Gran Máster.": "You're through to the final of the Grand Master.",
+  "ZAPATILLAS (mejoran el movimiento)": "SHOES (improve your movement)",
+  "puntos para mejorar: toca su ficha": "points to spend: tap their card",
+  "¡SOIS LOS NÚMERO 1 DE LA ESCALERA!": "YOU'RE NUMBER 1 ON THE LADDER!",
+  "Arrastra a los lados para girarlo": "Drag sideways to turn it",
+  "BOLA DIFÍCIL: EL GOLPE PUEDE IRSE": "TOUGH BALL: THE SHOT MAY GO WRONG",
+  "Ese texto no son ajustes válidos.": "That text isn't valid settings.",
+  "Subcampeones del Copa Provincial.": "Runners-up in the Provincial Cup.",
+  "Terceros en el Torneo del Barrio.": "Third in the Neighbourhood Tournament.",
+  "¡CAMPEONES DEL TORNEO DEL BARRIO!": "CHAMPIONS OF THE NEIGHBOURHOOD TOURNAMENT!",
+  "¿Os apuntáis al Open Comarcal por": "Sign up for the County Open for",
+  "partidos más de entrenamiento de": "more matches of training in",
+  "Se pierde el partido que llevas": "You'll lose the match in progress",
+  "Subcampeones del Open Comarcal.": "Runners-up in the County Open.",
+  "Terceros en el Copa Provincial.": "Third in the Provincial Cup.",
+  "partido más de entrenamiento de": "more match of training in",
+  "¡CAMPEONES DEL COPA PROVINCIAL!": "CHAMPIONS OF THE PROVINCIAL CUP!",
+  "¿Os apuntáis al Gran Máster por": "Sign up for the Grand Master for",
+  "Os falta dinero para la cuota": "You don't have enough money for the entry fee",
+  "Subcampeones del Gran Máster.": "Runners-up in the Grand Master.",
+  "Terceros en el Open Comarcal.": "Third in the County Open.",
+  "¡CAMPEONES DEL OPEN COMARCAL!": "CHAMPIONS OF THE COUNTY OPEN!",
+  "A 6 PUNTOS (2 DE DIFERENCIA)": "TO 6 POINTS (WIN BY 2)",
+  "Empezar la escalera de nuevo": "Restart the ladder",
+  "Nueva pareja en la escalera:": "New pair on the ladder:",
+  "✕ Salir de pantalla completa": "✕ Exit full screen",
+  "Conectar el móvil como pala": "Use your phone as a racket",
+  "GRIPS (un poco en un golpe)": "GRIPS (a little on one shot)",
+  "Móvil conectado y calibrado": "Phone connected and calibrated",
+  "Terceros en el Gran Máster.": "Third in the Grand Master.",
+  "termina el entrenamiento de": "finishes training in",
+  "¡CAMPEONES DEL GRAN MÁSTER!": "CHAMPIONS OF THE GRAND MASTER!",
+  "Derecha grabada (de vídeo)": "Recorded forehand (from video)",
+  "PALAS (mejoran los golpes)": "RACKETS (improve your shots)",
+  "Volver al aspecto original": "Back to the original look",
+  "la tiene para el próximo ✓": "has it for the next match ✓",
+  "¿Empezar un partido nuevo?": "Start a new match?",
+  "Eliminados en cuartos del": "Knocked out in the quarter-finals of the",
+  "No hay nada que deshacer.": "Nothing to undo.",
+  "Remate grabado (de vídeo)": "Recorded smash (from video)",
+  "¡YA HABÉIS SIDO NÚMERO 1!": "YOU'VE ALREADY BEEN NUMBER 1!",
+  "EN EL LADO DEL COMPAÑERO": "IN THE WRONG BOX",
+  "RED · SE REPITE EL SAQUE": "LET · SERVE AGAIN",
+  "defensivo, muchos globos": "defensive, lots of lobs",
+  "el saque da al compañero": "serve hits the partner",
+  "solo con el modelo nuevo": "new model only",
+  "Fotograma siguiente (→)": "Next frame (→)",
+  "PAREJA NUEVA AL PRÓXIMO": "NEW PAIR AFTER THE NEXT WIN",
+  "toca la pared sin botar": "hits the wall before bouncing",
+  "APUNTAOS A OTRO TORNEO": "SIGN UP FOR ANOTHER TOURNAMENT",
+  "Distancia de la cámara": "Camera distance",
+  "Fotograma anterior (←)": "Previous frame (←)",
+  "PAREJA NUEVA DENTRO DE": "NEW PAIR IN",
+  "TOCA EN LA PISTA DÓNDE": "TAP WHERE ON THE COURT",
+  "de experiencia (tienes": "XP (you have",
+  "Giro de cadera y pies": "Hip and foot turn",
+  "Golpe alto de derecha": "High forehand",
+  "¡GOLPEA CON EL MÓVIL!": "SWING YOUR PHONE!",
+  "APUNTAOS A UN TORNEO": "SIGN UP FOR A TOURNAMENT",
+  "Barrita de proteínas": "Protein bar",
+  "Ver el jugador en 3D": "View player in 3D",
+  "barrita de proteínas": "protein bar",
+  "con los dos pulgares": "with both thumbs",
+  "el recuadro de abajo": "the box below",
+  "Abandonar el torneo": "Leave the tournament",
+  "Barrita de cereales": "Cereal bar",
+  "CAMPEONATO REGIONAL": "REGIONAL CHAMPIONSHIP",
+  "Campeonato Regional": "Regional Championship",
+  "Cargando el modelo…": "Loading the model…",
+  "DELANTE DE LA LÍNEA": "SHORT OF THE LINE",
+  "Golpe alto de revés": "High backhand",
+  "Seguís en el puesto": "You stay in position",
+  "barrita de cereales": "cereal bar",
+  "rivales de 72 a 110": "opponents 72–110",
+  "Ángulo de la cámara": "Camera angle",
+  "⛶ Pantalla completa": "⛶ Full screen",
+  "Esperando al móvil": "Waiting for the phone",
+  "agresivo, a la red": "aggressive, goes to the net",
+  "fuera por el fondo": "out over the back",
+  "le da en el cuerpo": "hits a player",
+  "posturas cargadas.": "poses loaded.",
+  "rivales de 24 a 42": "opponents 24–42",
+  "rivales de 34 a 52": "opponents 34–52",
+  "rivales de 46 a 66": "opponents 46–66",
+  "rivales de 58 a 82": "opponents 58–82",
+  "Bebida energética": "Energy drink",
+  "CONTINUAR PARTIDA": "CONTINUE MATCH",
+  "Idioma · Language": "Language",
+  "Momento del golpe": "Shot timing",
+  "Muñequeras Agarre": "Tack Wristbands",
+  "Muñequeras Remate": "Smash Wristbands",
+  "PARTIDOS GANADOS:": "MATCHES WON:",
+  "Reiniciar partido": "Restart match",
+  "Restaurar postura": "Reset pose",
+  "Sí, partido nuevo": "Yes, new match",
+  "TORNEO DEL BARRIO": "NEIGHBOURHOOD TOURNAMENT",
+  "Torneo del Barrio": "Neighbourhood Tournament",
+  "Vista de la pista": "Court view",
+  "bebida energética": "energy drink",
+  "punta de la pala,": "racket tip,",
+  "quedan 2 partidos": "2 matches left",
+  "quedan 3 partidos": "3 matches left",
+  "✕ Salir de golpes": "✕ Exit shots",
+  "Bebida isotónica": "Isotonic drink",
+  "CUARTOS DE FINAL": "QUARTER-FINALS",
+  "Cuartos de final": "Quarter-finals",
+  "Defensa de pared": "Wall defence",
+  "Giro de la pista": "Court rotation",
+  "Globo de derecha": "Forehand lob",
+  "LOS OTROS CRUCES": "THE OTHER MATCHES",
+  "Llevas a los dos": "You control both",
+  "Muñequeras Saque": "Serve Wristbands",
+  "Muñequeras Tacto": "Touch Wristbands",
+  "Muñequeras Volea": "Volley Wristbands",
+  "Pádel (15-30-40)": "Padel (15-30-40)",
+  "Sin nivel máximo": "No max level",
+  "Subcampeones del": "Runners-up in the",
+  "Volea de derecha": "Forehand volley",
+  "Zoom de la pista": "Court zoom",
+  "bebida isotónica": "isotonic drink",
+  "mano de la pala,": "racket hand,",
+  "ya ha gastado su": "has used up their",
+  "¡PARTIDO GANADO!": "MATCH WON!",
+  "1 · Tiempo real": "1 · Real time",
+  "3ª alterna (2P)": "3rd alternating (2P)",
+  "3ª persona (1P)": "3rd person (1P)",
+  "Buena compañera": "Team player",
+  "COPA PROVINCIAL": "PROVINCIAL CUP",
+  "Color accesorio": "Accessory colour",
+  "Copa Provincial": "Provincial Cup",
+  "Elige una barra": "Pick a bar",
+  "GLOBO (DEFENSA)": "LOB (DEFENCE)",
+  "Giro de hombros": "Shoulder turn",
+  "Giro de la pala": "Racket rotation",
+  "Iniciación Soft": "Starter Soft",
+  "Juego en equipo": "Teamwork",
+  "Más difíciles ▶": "Harder ▶",
+  "Móvil conectado": "Phone connected",
+  "PARTIDO PERDIDO": "MATCH LOST",
+  "Pausa (espacio)": "Pause (space)",
+  "Restaurar golpe": "Reset shot",
+  "Subís al puesto": "You move up to position",
+  "Teclado y ratón": "Keyboard and mouse",
+  "VUESTRO PARTIDO": "YOUR MATCH",
+  "Visión de juego": "Game vision",
+  "de la escalera.": "on the ladder.",
+  "pasa del máximo": "is over the maximum",
+  "queda 1 partido": "1 match left",
+  "¡ELIGE DESTINO!": "PICK A TARGET!",
+  "¡JUEGO VUESTRO!": "YOUR GAME!",
+  "¡PUNTO VUESTRO!": "YOUR POINT!",
+  "¿Os apuntáis al": "Sign up for the",
+  "Buen compañero": "Team player",
+  "Copiar ajustes": "Copy settings",
+  "DE EXPERIENCIA": "XP",
+  "Gel de glucosa": "Glucose gel",
+  "Globo de revés": "Backhand lob",
+  "Muñequeras Pro": "Pro Wristbands",
+  "SAQUE BOMBEADO": "LOBBED SERVE",
+  "Sobre la pista": "On the court",
+  "Sí, apuntarnos": "Yes, sign us up",
+  "Terceros en el": "Third in the",
+  "Todos seguidos": "All in a row",
+  "Volea de revés": "Backhand volley",
+  "de experiencia": "XP",
+  "falta calibrar": "needs calibrating",
+  "gel de glucosa": "glucose gel",
+  "no le has dado": "you missed it",
+  "pantalla ancha": "wide screen",
+  "resto sin bote": "return before the bounce",
+  "todos seguidos": "all in a row",
+  "¡CAMPEONES DEL": "CHAMPIONS OF THE",
+  "2 · Con pausa": "2 · With pause",
+  "CLUB DE PÁDEL": "PADEL CLUB",
+  "Caída de pala": "Racket drop",
+  "Club Potencia": "Club Power",
+  "Configuración": "Settings",
+  "EL OTRO CRUCE": "THE OTHER MATCH",
+  "ENTRENAMIENTO": "TRAINING",
+  "Modo de juego": "Game mode",
+  "OPEN COMARCAL": "COUNTY OPEN",
+  "Open Comarcal": "County Open",
+  "PARTIDO NUEVO": "NEW MATCH",
+  "Partida nueva": "New match",
+  "Que las lleve": "Give them to",
+  "Sí, abandonar": "Yes, leave",
+  "Vuestro nivel": "Your level",
+  "golpe forzado": "forced shot",
+  "segundo saque": "second serve",
+  "¡SET VUESTRO!": "YOUR SET!",
+  "Élite Carbono": "Elite Carbon",
+  "◀ Más fáciles": "◀ Easier",
+  "Cargar texto": "Load text",
+  "Cinta Visión": "Vision Headband",
+  "Comprar para": "Buy for",
+  "Derecha baja": "Low forehand",
+  "Nivel máximo": "Max level",
+  "Otro consejo": "Another tip",
+  "Pro Diamante": "Pro Diamond",
+  "Que la lleve": "Give it to",
+  "Que lo lleve": "Give it to",
+  "Su izquierda": "Their left",
+  "cuota gratis": "free entry",
+  "partidos por": "matches for",
+  "sube a nivel": "reaches level",
+  "▶ Ver golpes": "▶ View shots",
+  "AL DE ATRÁS": "TO THE ONE AT THE BACK",
+  "Cinta Aérea": "Aerial Headband",
+  "Cinta Fondo": "Baseline Headband",
+  "Competición": "Competition",
+  "Conectando…": "Connecting…",
+  "GRAN MÁSTER": "GRAND MASTER",
+  "Gran Máster": "Grand Master",
+  "Grip Agarre": "Tack Grip",
+  "Grip Remate": "Smash Grip",
+  "JUEGO RIVAL": "OPPONENTS' GAME",
+  "Juego aéreo": "Aerial game",
+  "Muy difícil": "Very hard",
+  "PUNTO RIVAL": "OPPONENTS' POINT",
+  "Pasáis a la": "You go through to the",
+  "Pista verde": "Green court",
+  "Preparación": "Preparation",
+  "Preparando…": "Preparing…",
+  "Pro Redonda": "Pro Round",
+  "RESTA COMPI": "PARTNER RETURNS",
+  "RESTA RIVAL": "RIVAL RETURNS",
+  "Resistencia": "Stamina",
+  "Sí, comprar": "Yes, buy",
+  "Sí, empezar": "Yes, restart",
+  "TIEMPO REAL": "REAL TIME",
+  "Trayectoria": "Ball trail",
+  "Zapatillas:": "Shoes:",
+  "doble falta": "double fault",
+  "equilibrado": "balanced",
+  "las lleva ✓": "is using them ✓",
+  "mano libre,": "free hand,",
+  "A 4 JUEGOS": "TO 4 GAMES",
+  "A 6 PUNTOS": "TO 6 POINTS",
+  "Colocación": "Placement",
+  "Color pelo": "Hair colour",
+  "Complexión": "Build",
+  "DEJA BOTAR": "LET IT BOUNCE",
+  "EN DIRECTO": "LIVE",
+  "Entrenando": "Training",
+  "Grip Saque": "Serve Grip",
+  "Grip Tacto": "Touch Grip",
+  "Grip Volea": "Volley Grip",
+  "Incansable": "Tireless",
+  "Muñequeras": "Wristbands",
+  "Pala móvil": "Phone racket",
+  "Pista azul": "Blue court",
+  "Rematadora": "Smasher",
+  "Revés bajo": "Low backhand",
+  "SACA COMPI": "PARTNER SERVES",
+  "SACA RIVAL": "RIVAL SERVES",
+  "Saca COMPI": "PARTNER serves",
+  "Sin mangas": "Sleeveless",
+  "Su derecha": "Their right",
+  "Zapatillas": "Shoes",
+  "doble bote": "double bounce",
+  "la lleva ✓": "is using it ✓",
+  "lo lleva ✓": "is using it ✓",
+  "rivales de": "opponents",
+  "Élite Aero": "Elite Aero",
+  "APUNTARSE": "SIGN UP",
+  "Acompañar": "Follow-through",
+  "CON PAUSA": "WITH PAUSE",
+  "CONTINUAR": "CONTINUE",
+  "Cargando…": "Loading…",
+  "Cinta Pro": "Pro Headband",
+  "Con panel": "With panel",
+  "Controles": "Controls",
+  "Estratega": "Strategist",
+  "Muy fácil": "Very easy",
+  "Necesitas": "You need",
+  "Precisión": "Accuracy",
+  "Recorrido": "Swing",
+  "Rematador": "Smasher",
+  "SEMIFINAL": "SEMI-FINAL",
+  "SET RIVAL": "OPPONENTS' SET",
+  "Semifinal": "Semi-final",
+  "Sin final": "Endless",
+  "Velocidad": "Speed",
+  "Voleadora": "Volleyer",
+  "defensivo": "defensive",
+  "semifinal": "semi-final",
+  "¡A POR 3!": "GOING FOR 3!",
+  "¡A POR 4!": "GOING FOR 4!",
+  "✎ Ajustar": "✎ Adjust",
+  "(gratis)": "(free)",
+  "2º SAQUE": "2ND SERVE",
+  "4 juegos": "4 games",
+  "6 puntos": "6 points",
+  "AL HUECO": "INTO THE GAP",
+  "BOMBEADO": "LOBBED",
+  "Camiseta": "Shirt",
+  "Cancelar": "Cancel",
+  "Completa": "Complete",
+  "Completo": "Complete",
+  "Consejos": "Tips",
+  "Deshacer": "Undo",
+  "ESCALERA": "LADDER",
+  "Escalera": "Ladder",
+  "Gráficos": "Graphics",
+  "Igualado": "Even",
+  "Marcador": "Scoring",
+  "NOSOTROS": "US",
+  "Pantalón": "Shorts",
+  "Pegadora": "Big hitter",
+  "Potencia": "Power",
+  "Premios:": "Prizes:",
+  "RESTA TÚ": "YOU RETURN",
+  "Reflejos": "Reflexes",
+  "Sencillo": "Simple",
+  "TU COMPI": "YOUR PARTNER",
+  "VOSOTROS": "YOU",
+  "Voleador": "Volleyer",
+  "Vosotros": "You",
+  "agresivo": "aggressive",
+  "ya tiene": "already has",
+  "¿Comprar": "Buy",
+  "(puesto": "(position",
+  "ASPECTO": "LOOKS",
+  "CORTADO": "SLICE",
+  "CÁMARA:": "CAMERA:",
+  "DINERO:": "MONEY:",
+  "Delgada": "Slim",
+  "Delgado": "Slim",
+  "Derecha": "Forehand",
+  "Difícil": "Hard",
+  "Estilo:": "Style:",
+  "Impacto": "Impact",
+  "LIFTADO": "TOPSPIN",
+  "Ninguna": "None",
+  "Partido": "Match",
+  "Pegador": "Big hitter",
+  "Premio:": "Prize:",
+  "RETADOS": "CHALLENGED",
+  "RIVALES": "OPPONENTS",
+  "SACA TÚ": "YOU SERVE",
+  "Saca TÚ": "YOU serve",
+  "TORNEOS": "TOURNAMENTS",
+  "Torneos": "Tournaments",
+  "básicas": "basic",
+  "delgada": "slim",
+  "delgado": "slim",
+  "durante": "for",
+  "¡FALLO!": "MISS!",
+  "¡POR 3!": "OUT BY 3!",
+  "¡POR 4!": "OUT BY 4!",
+  "Altura": "Height",
+  "Bajada": "Downswing",
+  "CONTRA": "VS",
+  "Cabeza": "Head",
+  "Cerrar": "Close",
+  "Coleta": "Ponytail",
+  "Cortas": "Short",
+  "Detrás": "Behind",
+  "ELEGIR": "PICK",
+  "Estela": "Trail",
+  "Frente": "Front",
+  "Fuerte": "Strong",
+  "Giro ⟲": "Rotate ⟲",
+  "Hombre": "Man",
+  "JUEGOS": "GAMES",
+  "Juegos": "Games",
+  "Mangas": "Sleeves",
+  "Melena": "Long",
+  "Nombre": "Name",
+  "PUNTOS": "POINTS",
+  "Puntos": "Points",
+  "REMATE": "SMASH",
+  "Rapado": "Buzz cut",
+  "Remate": "Smash",
+  "Rizado": "Curly",
+  "Rápida": "Quick",
+  "Rápido": "Quick",
+  "Sonido": "Sound",
+  "TORNEO": "TOURNAMENT",
+  "Tienda": "Shop",
+  "Torneo": "Tournament",
+  "Trofeo": "Trophy",
+  "Visera": "Visor",
+  "básica": "basic",
+  "codos,": "elbows,",
+  "entera": "full",
+  "fuerte": "strong",
+  "gratis": "free",
+  "hombre": "man",
+  "¡MATE!": "SMASH!",
+  "Barba": "Beard",
+  "COMPI": "PARTNER",
+  "Calvo": "Bald",
+  "Cerca": "Near",
+  "Cinta": "Headband",
+  "Corto": "Short",
+  "DRIVE": "FOREHAND",
+  "FALTA": "FAULT",
+  "FUERA": "OUT",
+  "Falda": "Skirt",
+  "Fácil": "Easy",
+  "GLOBO": "LOB",
+  "GOLPE": "SHOT",
+  "Gafas": "Glasses",
+  "Golpe": "Shot",
+  "Gorra": "Cap",
+  "JUGAR": "PLAY",
+  "Juego": "Play",
+  "Lejos": "Far",
+  "MALLA": "FENCE",
+  "Mujer": "Woman",
+  "Nivel": "Level",
+  "Pala:": "Racket:",
+  "PÁDEL": "PADEL",
+  "Pádel": "Padel",
+  "RETAR": "CHALLENGE",
+  "REVÉS": "BACKHAND",
+  "Revés": "Backhand",
+  "SIGUE": "KEEP",
+  "Saque": "Serve",
+  "cuota": "entry fee",
+  "fuera": "out",
+  "mujer": "woman",
+  "recta": "straight",
+  "Alta": "High",
+  "Baja": "Low",
+  "Café": "Coffee",
+  "Menú": "Menu",
+  "Moño": "Bun",
+  "Muro": "Wall",
+  "Nada": "Nothing",
+  "Para": "For",
+  "Pelo": "Hair",
+  "Piel": "Skin",
+  "Sexo": "Sex",
+  "café": "coffee",
+  "tope": "max",
+  "1.º": "1st",
+  "2.º": "2nd",
+  "3.º": "3rd",
+  "RED": "NET",
+  "red": "net",
+  "IG": "40",
+  "Nv": "Lv",
+  "Sí": "Yes",
+  "TÚ": "YOU",
+  "V": "AD"
+};
+const tr = (() => {
+  if (IDIOMA !== 'en') return s => s;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const claves = Object.keys(EN).sort((a, b) => b.length - a.length);
+  const re = claves.length ? new RegExp('(?<![\\p{L}\\p{N}])(?:' + claves.map(esc).join('|') + ')(?![\\p{L}\\p{N}])', 'gu') : null;
+  const cache = new Map();
+  return s => {
+    if (typeof s !== 'string' || !re || !/[\p{L}]/u.test(s)) return s;
+    let r = cache.get(s); if (r !== undefined) return r;
+    const t = s.trim();
+    r = EN[t] !== undefined ? s.replace(t, EN[t]) : s.replace(re, m => EN[m] ?? m);
+    if (cache.size > 8000) cache.clear();
+    cache.set(s, r); return r;
+  };
+})();
+if (IDIOMA === 'en') {
+  for (const f of ['fillText', 'strokeText', 'measureText']) {
+    const o = CanvasRenderingContext2D.prototype[f];
+    CanvasRenderingContext2D.prototype[f] = function (t, ...a) { return o.call(this, tr(String(t)), ...a); };
+  }
+  const trNodo = n => {
+    if (n.nodeType === 3) { const v = n.nodeValue, t = tr(v); if (t !== v) n.nodeValue = t; return; }
+    if (n.nodeType !== 1 || n.tagName === 'SCRIPT' || n.tagName === 'STYLE') return;
+    for (const at of ['title', 'aria-label', 'placeholder']) { const v = n.getAttribute(at); if (v) { const t = tr(v); if (t !== v) n.setAttribute(at, t); } }
+    for (const c of n.childNodes) trNodo(c);
+  };
+  const arranca = () => {
+    document.documentElement.lang = 'en'; document.title = tr(document.title); trNodo(document.body);
+    new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') trNodo(m.target); else for (const n of m.addedNodes) trNodo(n); } })
+      .observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  if (document.body) arranca(); else addEventListener('DOMContentLoaded', arranca);
+}
+const Y_ = IDIOMA === 'en' ? ' & ' : ' y ';   // (para unir dos nombres)
+// botones del idioma (en Configuración): se guarda y se recarga
+document.querySelectorAll('#idiomaOpts [data-idioma]').forEach(b => {
+  b.classList.toggle('sel', b.dataset.idioma === IDIOMA);
+  b.addEventListener('click', () => { if (b.dataset.idioma === IDIOMA) return; try { localStorage.setItem('padel.idioma', b.dataset.idioma); } catch (_) {} location.reload(); });
+});
 const UP = new V3(0, 1, 0);
 const DEG = Math.PI / 180;
 
@@ -489,6 +1129,7 @@ const US = 0, RIVAL = 1;
 const CFG = { mode: 'manual', trail: 'estela', look: 'azul', level: 51, rivalStyle: 'hibrido', scoring: 'simple', sound: 'si', tips: 'si', match: '3', tipo: 'rapido', us: ['p1', 'p2'], riv: null, camAng: 38, camZoom: 0, camYaw: 0, camScale: 0, view: 'normal', modelo: 'nuevo', ctrl: 'panel' };
 // clave nueva al cambiar los valores por defecto: así se aplican también en los móviles que ya tenían ajustes guardados
 try { Object.assign(CFG, JSON.parse(localStorage.getItem('padel.cfg2') || '{}')); } catch (_) {}
+CFG.idioma = IDIOMA;   // (la opción del menú; el idioma se guarda aparte, en padel.idioma)
 CFG.modelo = 'nuevo';   // (el muñeco de piezas ya no se elige: siempre el modelo nuevo; en el aspecto sencillo siguen las piezas)
 if (CFG.match === '1' || CFG.match === '5p') CFG.match = '6p';   // los antiguos «1 set» y «5 puntos» son ahora el partido a 6 puntos
 if (CFG.match === '3') CFG.match = '4j';                          // y el de «3 sets», el de 4 juegos
@@ -1596,6 +2237,7 @@ const ICONOS = {
   pareja: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.2c2.9.3 5 2.5 5 5.8"/>',
   rivales: '<g transform="rotate(-35 12 13)"><ellipse cx="12" cy="7.5" rx="4" ry="4.8"/><path d="M12 12.3v8.5"/></g><g transform="rotate(35 12 13)"><ellipse cx="12" cy="7.5" rx="4" ry="4.8"/><path d="M12 12.3v8.5"/></g>',
   tienda: '<path d="M4 4h16l1.5 5H2.5z"/><path d="M2.5 9a3.2 3.2 0 0 0 6.3 0 3.2 3.2 0 0 0 6.4 0 3.2 3.2 0 0 0 6.3 0"/><path d="M4 12.5V20h16v-7.5"/><path d="M10 20v-4.5h4V20"/>',
+  globo: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.2 3.2 3.2 14.8 0 18M12 3c-3.2 3.2-3.2 14.8 0 18"/>',
   engranaje: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/><circle cx="12" cy="12" r="6.5"/>',
   copa: '<path d="M8 4h8v5.5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.8 2.8 0 0 0 3 4.3M16 6h2.5a2.8 2.8 0 0 1-3 4.3"/><path d="M12 13.5V17M8.5 20.5h7M10 17h4v3.5h-4z"/>',
   rayo: '<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/>',
@@ -1975,7 +2617,7 @@ try {
     q.delete('dinero'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
   }
 } catch (_) {}
-const euros = n => n.toLocaleString('es-ES') + ' €';
+const euros = n => n.toLocaleString(IDIOMA === 'en' ? 'en-GB' : 'es-ES') + ' €';
 function materialDe(p) {
   if (p.propio) { const l = BOLSA.lleva[p.id] || {}; return TIPOS_MAT.map(t => { const it = itemDe(l[t]); return it && it.tipo === t ? it : null; }).filter(Boolean); }
   const b = p.base, nv = b >= 85 ? 3 : b >= 70 ? 2 : b >= 55 ? 1 : b >= 40 ? 0 : -1;
@@ -5248,7 +5890,7 @@ function nuevaPareja() {
   let i = ESC.ladder.findIndex(e => (e === 'US' ? pairMed(idsPropios()) : pairMed(e)) < m);
   if (i < 0) i = ESC.ladder.length;
   ESC.ladder.splice(i, 0, par);
-  return 'Nueva pareja en la escalera: ' + a.n.split(' ')[0] + ' y ' + b.n.split(' ')[0] + ' (puesto ' + (i + 1) + ')';
+  return 'Nueva pareja en la escalera: ' + a.n.split(' ')[0] + Y_ + b.n.split(' ')[0] + ' (puesto ' + (i + 1) + ')';
 }
 function escOnMatchEnd(ganado) {
   S.escTxt = '';
@@ -5274,10 +5916,10 @@ function paintLadder() {
   const R = retables(), nv = id => { const l = progOf(id).lvl; return l > 1 ? ' <small>Nv ' + l + '</small>' : ''; };
   const faltan = NUEVOS_CADA - ESC.ganados % NUEVOS_CADA;
   el.innerHTML = '<div class="ltit">' + ico('escalera') + 'ESCALERA' + (ESC.campeones ? ' · ¡YA HABÉIS SIDO NÚMERO 1!' : '') + '</div>' + ESC.ladder.map((e, i) => {
-    if (e === 'US') return `<div class="lrow us"><span class="lpos">${i + 1}</span><span class="lnm"><b>VOSOTROS</b> · ${CFG.us.map(id => byId(id).n.split(' ')[0]).join(' y ')}</span><span class="lmed">${Math.round(pairMed(CFG.us))}</span></div>`;
+    if (e === 'US') return `<div class="lrow us"><span class="lpos">${i + 1}</span><span class="lnm"><b>VOSOTROS</b> · ${CFG.us.map(id => byId(id).n.split(' ')[0]).join(Y_)}</span><span class="lmed">${Math.round(pairMed(CFG.us))}</span></div>`;
     const reto = R.some(p => p === e), sel = samePair(e, CFG.riv);
     return `<div class="lrow${sel && reto ? ' reto' : ''}"><span class="lpos">${i + 1}</span><img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">
-      <span class="lnm">${e.map(id => byId(id).n.split(' ')[0] + nv(id)).join(' y ')}</span><span class="lmed">${Math.round(pairMed(e))}</span>
+      <span class="lnm">${e.map(id => byId(id).n.split(' ')[0] + nv(id)).join(Y_)}</span><span class="lmed">${Math.round(pairMed(e))}</span>
       ${reto ? `<button class="retar${sel ? ' sel' : ''}" data-i="${i}">${sel ? 'RETADOS' : 'RETAR'}</button>` : ''}</div>`;
   }).join('') + `<div class="ltit" style="margin-top:8px">PARTIDOS GANADOS: ${ESC.ganados} · PAREJA NUEVA ${faltan === 1 ? 'AL PRÓXIMO' : 'DENTRO DE ' + faltan}</div>
   <button class="ed" id="escReset" style="margin-top:4px">Empezar la escalera de nuevo</button>`;
@@ -5310,7 +5952,7 @@ if (TOR && !torValido(TOR)) TOR = null;
 const saveTor = () => { try { localStorage.setItem(TOR_KEY, JSON.stringify(TOR)); } catch (_) {} };
 const torDe = id => TORNEOS.find(x => x.id === id);
 const enTorneo = () => CFG.tipo === 'torneo' && !!TOR;
-const nombresPar = e => e === 'US' ? 'VOSOTROS' : e.map(id => byId(id).n.split(' ')[0]).join(' y ');
+const nombresPar = e => e === 'US' ? 'VOSOTROS' : e.map(id => byId(id).n.split(' ')[0]).join(Y_);
 const medEntrada = e => e === 'US' ? pairMed(idsPropios()) : pairMed(e);
 // por qué no os podéis apuntar (o '' si sí)
 function noApuntar(t) {
@@ -5374,7 +6016,7 @@ function torOnMatchEnd(ganado) {
   TOR = null; try { localStorage.removeItem(TOR_KEY); } catch (_) {}
 }
 function paintTorneo(el) {
-  const fila = (e, cls) => `<div class="lrow${e === 'US' ? ' us' : ''}${cls || ''}">${e === 'US' ? '' : `<img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">`}<span class="lnm">${e === 'US' ? '<b>VOSOTROS</b> · ' + CFG.us.map(id => byId(id).n.split(' ')[0]).join(' y ') : nombresPar(e)}</span><span class="lmed">${Math.round(medEntrada(e))}</span></div>`;
+  const fila = (e, cls) => `<div class="lrow${e === 'US' ? ' us' : ''}${cls || ''}">${e === 'US' ? '' : `<img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">`}<span class="lnm">${e === 'US' ? '<b>VOSOTROS</b> · ' + CFG.us.map(id => byId(id).n.split(' ')[0]).join(Y_) : nombresPar(e)}</span><span class="lmed">${Math.round(medEntrada(e))}</span></div>`;
   const cab = '';   // (el dinero ya se ve en la pestaña Tienda)
   if (!TOR) {
     el.innerHTML = cab + '<div class="ltit">' + ico('copa') + 'TORNEOS</div>' + TORNEOS.map(t => {
@@ -5449,14 +6091,14 @@ document.getElementById('tdList').addEventListener('click', e => {
   const b = e.target.closest('.tb'); if (!b || b.disabled) return;
   const pid = b.dataset.p, it = itemDe(b.dataset.i), p = byId(pid);
   if (b.dataset.a === 'tomar') {   // bebida o barrita: vale solo para el próximo partido de ese jugador
-    askConfirm('¿Comprar ' + it.n.toLowerCase() + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '? Solo le vale para el próximo partido.', 'Sí, comprar', () => {
+    askConfirm(IDIOMA === 'en' ? 'Buy ' + tr(it.n).toLowerCase() + ' for ' + p.n.split(' ')[0] + ' for ' + euros(it.pr) + '? It only lasts for the next match.' : '¿Comprar ' + it.n.toLowerCase() + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '? Solo le vale para el próximo partido.', 'Sí, comprar', () => {
       if (BOLSA.dinero < it.pr || consumoDe(p)) return;
       BOLSA.dinero -= it.pr; BOLSA.toma[pid] = it.id; saveBolsa(); refreshStats(p); paintTienda();
     });
     return;
   }
   if (b.dataset.a === 'comprar') {
-    askConfirm('¿Comprar ' + it.n + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '?', 'Sí, comprar', () => {
+    askConfirm(IDIOMA === 'en' ? 'Buy ' + tr(it.n) + ' for ' + p.n.split(' ')[0] + ' for ' + euros(it.pr) + '?' : '¿Comprar ' + it.n + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '?', 'Sí, comprar', () => {
       if (BOLSA.dinero < it.pr) return;
       BOLSA.dinero -= it.pr; (BOLSA.tiene[pid] ??= []).push(it.id);
       ponMaterial(pid, it.id); paintTienda();
@@ -7535,10 +8177,10 @@ function paintPlay() {
     res.className = ganado ? '' : 'lost';
     const pend = CFG.us.filter(id => byId(id).propio && progOf(id).pts > 0).map(id => byId(id).n.split(' ')[0]);
     res.innerHTML = (ganado ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO') + '<small>' + (CFG.match === '6p' ? S.score.join('-') : S.sets.map(s => s.join('-')).join('  ')) + '</small>'
-      + ((S.compitio ?? compite()) ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(' y ') + ' +' + (S.xpRivMatch || 0) + '</small>'
+      + ((S.compitio ?? compite()) ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(Y_) + ' +' + (S.xpRivMatch || 0) + '</small>'
                    : '<small>Partido de entrenamiento: no da experiencia</small>')
       + (S.subeTxt ? '<small class="mej">' + S.subeTxt + '</small>' : '')
-      + (pend.length ? '<small class="mej">' + pend.join(' y ') + ' ' + (pend.length > 1 ? 'tienen' : 'tiene') + ' puntos para mejorar: toca su ficha</small>' : '')
+      + (pend.length ? '<small class="mej">' + pend.join(Y_) + ' ' + (pend.length > 1 ? 'tienen' : 'tiene') + ' puntos para mejorar: toca su ficha</small>' : '')
       + (S.escTxt ? '<small class="mej">' + S.escTxt + '</small>' : '')
       + (S.torTxt ? '<small class="mej">' + S.torTxt + '</small>' : '')
       + (S.trainTxt ? '<small class="mej">' + S.trainTxt + '</small>' : '');
