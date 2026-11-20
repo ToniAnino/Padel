@@ -635,13 +635,13 @@ const puertaMat = new THREE.MeshStandardMaterial({ color: 0x1f4fb0, roughness: 0
   // entradas como en las pistas de competición: postes acolchados del color de la pista, dintel con publicidad
   // y el poste de la red forrado de blanco
   const dintelTex = (() => {
-    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128;
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 90;
     const c = cv.getContext('2d'), t = new THREE.CanvasTexture(cv);
     const pinta = () => {   // se repinta cuando llegan las letras de Google Fonts
-      c.clearRect(0, 0, 1024, 128); c.fillStyle = '#fff'; c.fillRect(0, 0, 1024, 7); c.fillRect(0, 121, 1024, 7);
+      c.clearRect(0, 0, 1024, 90); c.fillStyle = '#fff'; c.fillRect(0, 0, 1024, 5); c.fillRect(0, 85, 1024, 5);
       c.textAlign = 'center'; c.textBaseline = 'middle';
-      const marcas = [['KOVA', 'bold 84px "Russo One", sans-serif'], ['VEXA', '900 76px Orbitron, sans-serif'], ['NORDIK', '100px "Bebas Neue", sans-serif']];
-      marcas.forEach(([s, f], i) => { c.font = f; c.fillText(s, 171 + i * 341, 66); });
+      const marcas = [['KOVA', 'bold 60px "Russo One", sans-serif'], ['VEXA', '900 54px Orbitron, sans-serif'], ['NORDIK', '72px "Bebas Neue", sans-serif']];
+      marcas.forEach(([s, f], i) => { c.font = f; c.fillText(s, 171 + i * 341, 47); });
       t.needsUpdate = true;
     };
     pinta(); document.fonts && Promise.all(['88px "Russo One"', '900 80px Orbitron', '100px "Bebas Neue"'].map(f => document.fonts.load(f).catch(() => {}))).then(pinta);
@@ -650,20 +650,28 @@ const puertaMat = new THREE.MeshStandardMaterial({ color: 0x1f4fb0, roughness: 0
   })();
   const rotulo = new THREE.MeshBasicMaterial({ map: dintelTex, transparent: true, depthWrite: false });
   const forroRed = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.75 });
-  const pW = 0.15, dH = 0.3, largo = 2 * DOOR_HW + 2 * pW;
+  // (acolchado de goma redondeado, como en las pistas de verdad: protege al entrar y salir de la pista)
+  const pR = 0.085, dH = 0.32, dW = 0.2, dRad = 0.08, largo = 2 * DOOR_HW + 2 * pR;
+  const dintelGeo = (() => {   // perfil de rectángulo con las esquinas muy redondeadas, extruido a lo largo del dintel
+    const s = new THREE.Shape(), w = dW / 2, h = dH / 2, r = dRad;
+    s.moveTo(-w + r, -h); s.lineTo(w - r, -h); s.quadraticCurveTo(w, -h, w, -h + r); s.lineTo(w, h - r); s.quadraticCurveTo(w, h, w - r, h);
+    s.lineTo(-w + r, h); s.quadraticCurveTo(-w, h, -w, h - r); s.lineTo(-w, -h + r); s.quadraticCurveTo(-w, -h, -w + r, -h);
+    const g = new THREE.ExtrudeGeometry(s, { depth: largo, bevelEnabled: false, curveSegments: 8 });
+    g.translate(0, 0, -largo / 2); g.computeVertexNormals(); return g;
+  })();
   for (const sx of [-HW, HW]) {
-    for (const s of [-1, 1]) {   // postes acolchados (hasta la malla de 3 m)
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3, pW), puertaMat);
-      m.position.set(sx, 1.5, s * (DOOR_HW + pW / 2)); m.castShadow = true; courtFrame.add(m);
+    for (const s of [-1, 1]) {   // postes de goma (hasta la malla de 3 m), redondos y con la punta redonda
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry(pR, 3, 6, 16), puertaMat);
+      m.position.set(sx, 1.5, s * (DOOR_HW + pR)); m.castShadow = true; courtFrame.add(m);
     }
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.18, dH, largo), puertaMat);   // dintel
+    const l = new THREE.Mesh(dintelGeo, puertaMat);   // dintel
     l.position.set(sx, DOOR_H + dH / 2, 0); l.castShadow = true; courtFrame.add(l);
-    for (const cara of [-1, 1]) {   // rótulo por dentro y por fuera, que se lea de frente
-      const r = new THREE.Mesh(new THREE.PlaneGeometry(largo, dH), rotulo);
-      r.position.set(sx + cara * 0.091, DOOR_H + dH / 2, 0); r.rotation.y = cara * Math.PI / 2; courtFrame.add(r);
+    for (const cara of [-1, 1]) {   // rótulo en la parte plana, por dentro y por fuera, que se lea de frente
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(largo - 2 * pR, dH - 2 * dRad + 0.04), rotulo);
+      r.position.set(sx + cara * (dW / 2 + 0.002), DOOR_H + dH / 2, 0); r.rotation.y = cara * Math.PI / 2; courtFrame.add(r);
     }
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.15, 0.15), forroRed);   // forro del poste de la red
-    f.position.set(sx, 0.575, 0); f.castShadow = true; courtFrame.add(f);
+    const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 1.0, 6, 16), forroRed);   // forro de goma del poste de la red
+    f.position.set(sx, 0.5, 0); f.castShadow = true; courtFrame.add(f);
   }   // en el fondo de cerca no, para no tapar a los nuestros
   const rail = (len, x, y, z, alongZ) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(alongZ ? 0.06 : len, 0.06, alongZ ? len : 0.06), frameMat);
