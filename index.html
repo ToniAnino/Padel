@@ -718,6 +718,7 @@ const TURF = { azul: turfTex('#2563b8'), verde: turfTex('#3f8f3a') };
 // red y un cielo de anochecer con niebla a lo lejos.
 const entorno = new THREE.Group(); scene.add(entorno);
 const clubG = new THREE.Group(); entorno.add(clubG);   // lo que solo es del club (en los torneos se juega en un pabellón)
+const BANCOS = [];   // bancos junto a la red (ponPalasBancos les apoya una pala)
 const VECINA = {};   // suelo de la pista vecina (tex: azul y verde)
 const lienzo = (w, h, pinta) => { const c = document.createElement('canvas'); c.width = w; c.height = h; pinta(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 const ruido = (g, w, h, n, a) => { for (let i = 0; i < n; i++) { const l = Math.random() < 0.5 ? 255 : 0; g.fillStyle = `rgba(${l},${l},${l},${a * Math.random()})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } };
@@ -808,22 +809,58 @@ GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(6
   club.position.set(0, 2.5, -APRON_L / 2 - 17); clubG.add(club);   // (lejos: con la cámara baja deja ver árboles y cielo)
   const tejado = new THREE.Mesh(new THREE.BoxGeometry(27.5, 0.35, 8.4), new THREE.MeshStandardMaterial({ color: 0x5a3d33, roughness: 0.8 }));
   tejado.position.set(0, 5.15, club.position.z); clubG.add(tejado);
-  // bancos junto a la red, a los dos lados de la pista, con una bolsa de pádel y botellas de agua
-  const madera = new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.8 }), hierro = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.5, metalness: 0.5 });
+  // bancos junto a la red, a los dos lados de la pista (en ejes del banco: x a lo largo, +z hacia la pista): patas de
+  // tubo de aluminio, asiento acolchado y respaldo del color de la pista, todo con los cantos redondeados; encima, una
+  // bolsa térmica de pádel con su franja y sus asas, una toalla colgada del respaldo y botellas de agua (la pala
+  // apoyada se pone más abajo, en ponPalasBancos, cuando ya están las palas)
+  const cajaR = (w, h, d, r) => {   // caja con los cantos redondeados (rectángulo redondeado extruido con bisel)
+    const s = new THREE.Shape(), x = w / 2 - r, y = h / 2 - r;
+    s.moveTo(-x, -h / 2); s.lineTo(x, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -y); s.lineTo(w / 2, y); s.quadraticCurveTo(w / 2, h / 2, x, h / 2);
+    s.lineTo(-x, h / 2); s.quadraticCurveTo(-w / 2, h / 2, -w / 2, y); s.lineTo(-w / 2, -y); s.quadraticCurveTo(-w / 2, -h / 2, -x, -h / 2);
+    const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.001, d - 2 * r), bevelEnabled: true, bevelSize: r * 0.9, bevelThickness: r, bevelSegments: 3, curveSegments: 4 });
+    g.translate(0, 0, -(d - 2 * r) / 2); g.computeVertexNormals(); return g;
+  };
+  const alu = new THREE.MeshStandardMaterial({ color: 0xb8bec8, roughness: 0.35, metalness: 0.8 });
+  const cojin = new THREE.MeshStandardMaterial({ color: 0x1f2430, roughness: 0.75 });
+  BANCOS.length = 0;
   for (const sx of [-1, 1]) {
     const b = new THREE.Group(); b.position.set(sx * (HW + 1.35), 0, sx * 2.2); b.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
-    const asiento = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.42), madera); asiento.position.y = 0.45;
-    const respaldo = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.32, 0.05), madera); respaldo.position.set(0, 0.68, -0.2); respaldo.rotation.x = -0.15;
-    b.add(asiento, respaldo);
-    for (const px of [-0.8, 0.8]) { const pata = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.4), hierro); pata.position.set(px, 0.22, 0); b.add(pata); }
-    const bolsa = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.6, 4, 10), new THREE.MeshStandardMaterial({ color: sx > 0 ? 0xd8343e : 0x1e3a8a, roughness: 0.7 }));
-    bolsa.rotation.z = Math.PI / 2; bolsa.position.set(-0.35, 0.63, 0.02); b.add(bolsa);
-    for (const bx of [0.35, 0.5]) {
-      const bot = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.75, roughness: 0.2 }));
-      bot.position.set(bx, 0.59, 0.05); b.add(bot);
+    const L = 1.8;
+    for (const px of [-L / 2 + 0.08, L / 2 - 0.08]) {   // los dos costados de tubo: patas, travesaño y brazo
+      for (const pz of [-0.17, 0.17]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 10), alu); p.position.set(px, 0.21, pz); p.castShadow = true; b.add(p); }
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.36, 8), alu); t.rotation.x = Math.PI / 2; t.position.set(px, 0.1, 0); b.add(t);
+      const sube = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.44, 10), alu); sube.position.set(px, 0.64, -0.2); sube.rotation.x = -0.15; b.add(sube);
     }
-    entorno.add(b);
+    const largo = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, L - 0.1, 10), alu); largo.rotation.z = Math.PI / 2; largo.position.set(0, 0.42, 0.17); b.add(largo);
+    const asiento = new THREE.Mesh(cajaR(L, 0.42, 0.075, 0.03), cojin); asiento.rotation.x = -Math.PI / 2; asiento.position.set(0, 0.46, 0); asiento.castShadow = asiento.receiveShadow = true; b.add(asiento);
+    const respaldo = new THREE.Mesh(cajaR(L, 0.36, 0.06, 0.025), puertaMat); respaldo.position.set(0, 0.72, -0.215); respaldo.rotation.x = -0.15; respaldo.castShadow = true; b.add(respaldo);
+    // bolsa térmica: cuerpo redondeado, franja de otro color, cremallera y dos asas
+    const colB = sx > 0 ? 0xd8343e : 0x1e3a8a, colF = sx > 0 ? 0x111827 : 0xf4f4f4;
+    const bolsa = new THREE.Group(); bolsa.position.set(-0.42, 0.497 + 0.15, 0.02);
+    const cuerpo = new THREE.Mesh(cajaR(0.74, 0.3, 0.3, 0.09), new THREE.MeshStandardMaterial({ color: colB, roughness: 0.6 })); cuerpo.castShadow = true;
+    const franja = new THREE.Mesh(cajaR(0.18, 0.305, 0.305, 0.09), new THREE.MeshStandardMaterial({ color: colF, roughness: 0.6 })); franja.position.x = 0.16;
+    const crem = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.008, 0.012), new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 0.5 })); crem.position.y = 0.151;
+    bolsa.add(cuerpo, franja, crem);
+    for (const hz of [-0.07, 0.07]) { const asa = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.008, 6, 14, Math.PI), new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 0.6 })); asa.position.set(0, 0.15, hz); bolsa.add(asa); }
+    b.add(bolsa);
+    // toalla colgada del respaldo: por delante, por arriba y por detrás
+    const tela = new THREE.MeshStandardMaterial({ color: sx > 0 ? 0xf4f4f4 : 0xfacc15, roughness: 0.95 });
+    const del = new THREE.Mesh(cajaR(0.3, 0.26, 0.014, 0.006), tela); del.position.set(0.55, 0.78, -0.165); del.rotation.x = -0.15; b.add(del);
+    const arr = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 12, 1, true, 0, Math.PI), tela); arr.material.side = THREE.DoubleSide; arr.rotation.z = Math.PI / 2; arr.position.set(0.55, 0.905, -0.235); b.add(arr);
+    const det = new THREE.Mesh(cajaR(0.3, 0.2, 0.014, 0.006), tela); det.position.set(0.55, 0.81, -0.285); det.rotation.x = -0.15; b.add(det);
+    // botellas: cuerpo transparente, etiqueta y tapón
+    const vidrio = new THREE.MeshStandardMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.1 });
+    [[0.12, 0.06, 0x16a34a], [0.24, 0.1, 0x0ea5e9]].forEach(([bx, bz, ce]) => {
+      const bt = new THREE.Group(); bt.position.set(bx, 0.497, bz);
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.2, 14), vidrio); c.position.y = 0.1;
+      const cu = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.032, 0.04, 14), vidrio); cu.position.y = 0.22;
+      const et = new THREE.Mesh(new THREE.CylinderGeometry(0.0365, 0.0365, 0.07, 14), new THREE.MeshStandardMaterial({ color: ce, roughness: 0.5 })); et.position.y = 0.09;
+      const ta = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.028, 12), new THREE.MeshStandardMaterial({ color: ce, roughness: 0.4 })); ta.position.y = 0.254;
+      bt.add(c, cu, et, ta); b.add(bt);
+    });
+    entorno.add(b); BANCOS.push(b);
   }
+
 }
 // gradas: 8 filas de hormigón con asientos, paredes a los lados y detrás, y delante una pancarta con las marcas.
 // La de la izquierda está siempre (la del club); en los torneos hay además una a la derecha y otra en el fondo de
@@ -1774,6 +1811,16 @@ function zapaMats(it) {
   const lado = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }), m = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
   return GEAR_MATS[it.id] = [lado, m(emp)];   // (lados, resto: empeine, puntera y talón)
 }
+// una pala apoyada en la parte de delante de cada banco (de las básicas, con su dibujo)
+(function ponPalasBancos() {
+  BANCOS.forEach((b, i) => {
+    const m = palaMats({ id: i ? 'pB3' : 'pB1' }), g = new THREE.Group();
+    const cab = new THREE.Mesh(m.geo, m.face); cab.castShadow = true;
+    const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.019, 0.14, 12), m.grip); mango.position.y = 0.07;
+    g.add(cab, mango); g.position.set(0.8, 0, 0.36); g.rotation.set(-0.38, 0.25, 0.05);
+    b.add(g);
+  });
+})();
 const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' })),
   ...GRIPS.map(x => ({ ...x, tipo: 'grip' })), ...MUNES.map(x => ({ ...x, tipo: 'mun' })), ...CINTAS.map(x => ({ ...x, tipo: 'cin' })),
   ...CONSUMIBLES.map(x => ({ ...x, tipo: 'cons' }))];
@@ -1847,7 +1894,7 @@ try { NUEVOS = JSON.parse(localStorage.getItem(NUEVOS_KEY) || '[]'); } catch (_)
 if (!Array.isArray(NUEVOS)) NUEVOS = [];
 for (const d of NUEVOS) if (d && d.id && PERFILES[d.perf]) ROSTER.push({ ...d, acc: { ...(d.acc || {}) }, nuevo: true });
 function prepPlayer(p) {
-  p.st0 = buildStats(p); p.st = { ...p.st0 }; refreshStats(p); applyLookOv(p);
+  p.st0 = buildStats(p); p.st = Object.assign(p.st || {}, p.st0); refreshStats(p); applyLookOv(p);   // (el mismo objeto: el jugador en la pista lo tiene enlazado)
   p.tag = PERFILES[p.perf].tag[p.s === 'm' ? 1 : 0];
 }
 for (const p of ROSTER) prepPlayer(p);
@@ -3590,6 +3637,7 @@ function endPoint(winner, reason) {
     torOnMatchEnd(winner === US);
     S.trainTxt = [trainTick(), consumoTick()].filter(Boolean).join(' · ');   // los entrenamientos cuentan un partido más; las bebidas y barritas se gastan
     // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
+    S.compitio = compite();   // (el cartel del final lo mira luego, aunque en el menú se cambie el tipo de partido)
     const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
     S.bannerPend = { at: S.timer - RETRASO_CARTEL, args: [winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + xpTxt, winner === US ? 'gana' : 'riv', 1.4] };
     fillBigScore(winner, juego); S.bigAt = S.timer - RETRASO_CARTEL - 1.4;
@@ -7338,7 +7386,7 @@ function paintPlay() {
     res.className = ganado ? '' : 'lost';
     const pend = CFG.us.filter(id => byId(id).propio && progOf(id).pts > 0).map(id => byId(id).n.split(' ')[0]);
     res.innerHTML = (ganado ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO') + '<small>' + (CFG.match === '6p' ? S.score.join('-') : S.sets.map(s => s.join('-')).join('  ')) + '</small>'
-      + (compite() ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(' y ') + ' +' + (S.xpRivMatch || 0) + '</small>'
+      + ((S.compitio ?? compite()) ? '<small>Vosotros +' + (S.xpMatch || 0) + ' de experiencia · ' + (S.xpRivIds || CFG.riv).map(id => byId(id).n.split(' ')[0]).join(' y ') + ' +' + (S.xpRivMatch || 0) + '</small>'
                    : '<small>Partido de entrenamiento: no da experiencia</small>')
       + (S.subeTxt ? '<small class="mej">' + S.subeTxt + '</small>' : '')
       + (pend.length ? '<small class="mej">' + pend.join(' y ') + ' ' + (pend.length > 1 ? 'tienen' : 'tiene') + ' puntos para mejorar: toca su ficha</small>' : '')
