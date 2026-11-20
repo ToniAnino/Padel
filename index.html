@@ -870,7 +870,7 @@ const GRADA = (() => {
     for (const im of [tronco, cabeza, muslo, pierna, brazo]) im.instanceMatrix.needsUpdate = true;
   }
   // al acabar un punto: la mayoría se levanta un momento (cada uno a su tiempo)
-  function celebra() { for (const p of gente) { p.t0 = reloj + Math.random() * 0.4; p.dur = 1.2 + Math.random() * 1.0; p.sube = Math.random() < 0.7 ? 1 : 0.15; } }
+  function celebra() { if (grupo.visible) sfx('aplauso', 10, null); for (const p of gente) { p.t0 = reloj + Math.random() * 0.4; p.dur = 1.2 + Math.random() * 1.0; p.sube = Math.random() < 0.7 ? 1 : 0.15; } }
   const API = { pinta, actualiza, celebra, gente, forzar: false };
   return API;
 })();
@@ -2924,28 +2924,109 @@ function audioOn() {   // el navegador solo deja sonar tras un toque del usuario
   if (CFG.sound === 'no') return;
   try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch (_) { AC = null; }
 }
-let noiseBuf = null;
-function sfx(kind, speed = 10) {
-  if (!AC || CFG.sound === 'no' || !kind || AC.state !== 'running') return;
-  const t = AC.currentTime, vol = clamp(0.25 + speed / 40, 0.2, 0.9);
-  if (!noiseBuf) {
-    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.2, AC.sampleRate);
-    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+// Cada sonido se monta con lo que suena de verdad: un chasquido de contacto (ruido muy corto), las
+// resonancias del objeto (senos amortiguados: la bola presurizada, el núcleo de la pala, el panel de
+// cristal, los alambres de la malla) y un poco de eco de pabellón. Va a la izquierda o a la derecha
+// según dónde esté la bola respecto a la cámara y baja con la distancia.
+let noiseBuf = null, SND = null;
+function sndBus() {
+  if (SND) return SND;
+  const sr = AC.sampleRate;
+  noiseBuf = AC.createBuffer(1, sr * 2, sr);
+  { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  // eco: respuesta de una sala grande hecha con ruido que se apaga (dos canales distintos = amplitud)
+  const ir = AC.createBuffer(2, sr * 1.6, sr);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    for (let i = 0; i < d.length; i++) { const x = i / sr; d[i] = (Math.random() * 2 - 1) * Math.exp(-x * 4.2) * (x < 0.012 ? x / 0.012 : 1); }
   }
-  // cada sonido: un golpe de ruido filtrado + un tono corto que cae
-  const P = { golpe: [1300, 520, 0.07, 1.0], bote: [600, 180, 0.05, 0.45], cristal: [2600, 900, 0.09, 0.5],
-              malla: [1700, 300, 0.08, 0.35], red: [400, 120, 0.08, 0.4] }[kind];
-  if (!P) return;
-  const [fNoise, fTone, dur, gain] = P;
-  const g = AC.createGain(); g.connect(AC.destination);
-  g.gain.setValueAtTime(gain * vol * 0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  const n = AC.createBufferSource(); n.buffer = noiseBuf;
-  const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fNoise; bp.Q.value = 1.4;
-  n.connect(bp); bp.connect(g); n.start(t); n.stop(t + dur);
-  const o = AC.createOscillator(); o.type = 'triangle';
-  o.frequency.setValueAtTime(fTone, t); o.frequency.exponentialRampToValueAtTime(fTone * 0.5, t + dur);
-  const og = AC.createGain(); og.gain.setValueAtTime(gain * vol * 0.35, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(og); og.connect(AC.destination); o.start(t); o.stop(t + dur);
+  // recorte suave de los picos (el compresor de Web Audio se come los golpes cortos)
+  const comp = AC.createWaveShaper(); comp.curve = Float32Array.from({ length: 1025 }, (_, i) => { const x = i / 512 - 1; return Math.abs(x) < 0.7 ? x : Math.sign(x) * (0.7 + 0.3 * Math.tanh((Math.abs(x) - 0.7) / 0.3)); });
+  const master = AC.createGain(); master.gain.value = 0.6; master.connect(comp); comp.connect(AC.destination);
+  const rev = AC.createConvolver(); rev.buffer = ir;
+  const revLP = AC.createBiquadFilter(); revLP.type = 'lowpass'; revLP.frequency.value = 3800;
+  const revG = AC.createGain(); revG.gain.value = 0.22;
+  rev.connect(revLP); revLP.connect(revG); revG.connect(master);
+  return (SND = { master, rev });
+}
+// salida de un sonido: panorama + distancia, en seco y al eco
+function sndSalida(t, pos, gain, eco = 1) {
+  const B = sndBus(), g = AC.createGain(); g.gain.value = gain;
+  let pan = 0, dist = 8;
+  if (pos) {
+    const rel = new THREE.Vector3(pos.x, pos.y, pos.z).applyMatrix4(camera.matrixWorldInverse);
+    dist = Math.max(2, rel.length()); pan = clamp(rel.x / Math.max(3, -rel.z + 3), -0.85, 0.85);
+  }
+  g.gain.value = gain * clamp(14 / dist, 0.55, 1.2);
+  let out = g;
+  if (AC.createStereoPanner) { const p = AC.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+  out.connect(B.master);
+  const s = AC.createGain(); s.gain.value = eco * clamp(dist / 10, 0.5, 1.3); out.connect(s); s.connect(B.rev);
+  return g;
+}
+// ruido filtrado con envolvente (ataque casi instantáneo y caída exponencial)
+function sndRuido(dst, t, { tipo = 'bandpass', f = 1000, q = 1, dur = 0.05, g = 1, ataque = 0.001, f2 = null }) {
+  const n = AC.createBufferSource(); n.buffer = noiseBuf; n.loop = true;
+  const fl =AC.createBiquadFilter(); fl.type = tipo; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
+  if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  if (tipo === 'bandpass') g *= 3 * Math.sqrt(q);   // la banda estrecha deja pasar poca energía del ruido
+  const e = AC.createGain(); e.gain.setValueAtTime(0.0001, t); e.gain.linearRampToValueAtTime(g, t + ataque);
+  e.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  n.connect(fl); fl.connect(e); e.connect(dst);
+  n.start(t, Math.random() * 1.5); n.stop(t + dur + 0.02);
+}
+// modo de vibración: seno amortiguado (con una pizca de caída de tono, como al soltar la tensión)
+function sndModo(dst, t, f, dur, g, { caida = 0.97, tipo = 'sine' } = {}) {
+  const o = AC.createOscillator(); o.type = tipo;
+  o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * caida, t + dur);
+  const e = AC.createGain(); e.gain.setValueAtTime(0.0001, t); e.gain.linearRampToValueAtTime(g, t + 0.0015);
+  e.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(e); e.connect(dst); o.start(t); o.stop(t + dur + 0.02);
+}
+function sfx(kind, speed = 10, pos = ball && ball.p) {
+  if (!AC || CFG.sound === 'no' || !kind || (AC.state !== 'running' && !(window.OfflineAudioContext && AC instanceof OfflineAudioContext))) return;
+  const t = AC.currentTime + 0.005, f = clamp(speed / 25, 0.1, 1.3), vr = 1 + (Math.random() - 0.5) * 0.08;   // fuerza 0..1,3 y algo de variación
+  if (kind === 'golpe') {        // «poc» seco: núcleo de goma EVA + bola; cuanto más fuerte, más brillante
+    const d = sndSalida(t, pos, 0.55 + 0.5 * f, 0.9);
+    sndRuido(d, t, { tipo: 'highpass', f: 2500 + 2500 * f, q: 0.7, dur: 0.006 + 0.004 * f, g: 0.9 });
+    sndRuido(d, t, { f: 1300 * vr, q: 2.2, dur: 0.028, g: 0.55 + 0.3 * f });
+    sndModo(d, t, 1080 * vr, 0.032 + 0.018 * f, 0.5);          // pala
+    sndModo(d, t, 1720 * vr, 0.022, 0.28);                     // bola
+    sndModo(d, t, 2650 * vr, 0.012, 0.14 * f);
+    sndModo(d, t, 240 * vr, 0.03, 0.22 * f, { caida: 0.8 });    // cuerpo del golpe
+  } else if (kind === 'bote') {   // «tup» sordo sobre césped con arena
+    const d = sndSalida(t, pos, 0.7 + 0.7 * f, 0.7);
+    sndRuido(d, t, { tipo: 'lowpass', f: 1400 + 1200 * f, q: 0.8, dur: 0.035, g: 0.7 });
+    sndModo(d, t, 520 * vr, 0.03, 0.45, { caida: 0.85 });
+    sndModo(d, t, 1650 * vr, 0.015, 0.18 * f);
+    sndRuido(d, t + 0.004, { tipo: 'highpass', f: 5000, q: 0.5, dur: 0.03, g: 0.08 });   // la arena
+  } else if (kind === 'cristal') {  // golpe grave del panel templado + el tac de la bola, con algo de cola
+    const d = sndSalida(t, pos, 0.7 + 0.6 * f, 1.3);
+    sndRuido(d, t, { tipo: 'bandpass', f: 1800 * vr, q: 1.2, dur: 0.02, g: 0.6 });
+    sndModo(d, t, 1650 * vr, 0.02, 0.3);
+    sndModo(d, t, 118 * vr, 0.16, 0.6, { caida: 0.92 });       // el panel entero
+    sndModo(d, t, 205 * vr, 0.11, 0.35, { caida: 0.95 });
+    sndModo(d, t, 390 * vr, 0.07, 0.22);
+    sndModo(d, t, 3100 * vr, 0.09, 0.03 + 0.03 * f);           // un leve tintineo del vidrio
+  } else if (kind === 'malla') {    // la rejilla vibra: resonancias metálicas que traquetean
+    const d = sndSalida(t, pos, 0.8 + 0.9 * f, 1.1);
+    sndRuido(d, t, { tipo: 'bandpass', f: 1500, q: 1, dur: 0.02, g: 0.5 });
+    sndModo(d, t, 160 * vr, 0.06, 0.3, { caida: 0.9 });
+    for (const [fr, du, gg] of [[1870, 0.22, 0.12], [2930, 0.18, 0.1], [4410, 0.14, 0.07], [3570, 0.2, 0.06]]) sndModo(d, t, fr * vr, du, gg, { caida: 0.995 });
+    for (let i = 0; i < 6; i++) sndRuido(d, t + 0.012 + i * (0.018 + Math.random() * 0.02), { f: 2400 + Math.random() * 2600, q: 6, dur: 0.02, g: 0.18 * Math.exp(-i * 0.45) });
+  } else if (kind === 'red') {      // la bola se mete en la red: roce blando y la cinta que se mueve
+    const d = sndSalida(t, pos, 1.1, 0.6);
+    sndRuido(d, t, { tipo: 'bandpass', f: 900, q: 0.7, dur: 0.12, g: 0.45, ataque: 0.008, f2: 400 });
+    sndModo(d, t, 95, 0.12, 0.2, { caida: 0.8 });
+    sndRuido(d, t + 0.02, { tipo: 'highpass', f: 3500, q: 0.5, dur: 0.06, g: 0.06 });
+  } else if (kind === 'aplauso') {  // aplausos del público de la grada: muchas palmadas sueltas que se van apagando
+    const d = sndSalida(t, { x: -(HW + 6), y: 2.5, z: 0 }, 2, 1.2), N = 140;
+    for (let i = 0; i < N; i++) {
+      const tt = t + Math.pow(Math.random(), 1.6) * 2.4, a = Math.exp(-(tt - t) * 1.1);
+      sndRuido(d, tt, { f: 1100 + Math.random() * 1600, q: 1.5 + Math.random(), dur: 0.012 + Math.random() * 0.012, g: 0.22 * a });
+    }
+    sndRuido(d, t, { tipo: 'bandpass', f: 600, q: 0.6, dur: 2.2, g: 0.06, ataque: 0.3 });   // murmullo debajo («¡uuuh!»)
+  }
 }
 
 function doHit(pl, tx, tz, type, netH, libre = false) {
@@ -6799,6 +6880,7 @@ window.PADEL = {
   pala, palaRecibe, palaLee, endPoint, ROSTER, progOf, calidadGolpe, get TOR() { return TOR; }, BOLSA, TORNEOS, apuntarse, get ESC() { return ESC; },
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
+  sfx, set audioCtx(v) { AC = v; SND = null; }, get audioCtx() { return AC; },
   GRADA, MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
