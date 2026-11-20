@@ -773,42 +773,109 @@ GRASS_TEX.wrapS = GRASS_TEX.wrapT = THREE.RepeatWrapping; GRASS_TEX.repeat.set(6
   const postIM = new THREE.InstancedMesh(postGeo, postMat, posts.length), m4 = new THREE.Matrix4();
   posts.forEach(([x, z, h], i) => postIM.setMatrixAt(i, m4.compose(new V3(x, h / 2, z), new THREE.Quaternion(), new V3(1, h, 1))));
   clubG.add(postIM);
-  // setos alrededor de las baldosas (bolas aplastadas, en una sola malla)
-  const setos = [], hedgeR = 0.62;
-  for (let x = -APRON_W / 2 - 0.9; x <= APRON_W / 2 + 0.9; x += 1.0) for (const s of [-1, 1]) setos.push([x, s * (APRON_L / 2 + 0.9)]);
-  for (let z = -APRON_L / 2; z <= APRON_L / 2; z += 1.0) for (const s of [-1, 1]) setos.push([s * (APRON_W / 2 + 0.9), z]);
-  const hedgeIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(hedgeR, 1), new THREE.MeshStandardMaterial({ color: 0x24502a, roughness: 1, flatShading: true }), setos.length);
-  setos.forEach(([x, z], i) => { const k = 0.85 + Math.random() * 0.35; hedgeIM.setMatrixAt(i, m4.compose(new V3(x, 0.45 * k, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.random() * 6, 0)), new V3(k, 0.85 * k, k))); });
-  clubG.add(hedgeIM);
-  // árboles: lejos de la pista y nunca entre la cámara (detrás de vuestro fondo, en alto) y el juego
+  // textura de hojas: muchas manchitas de verdes distintos sobre un fondo oscuro (setos y copas)
+  const pintaHojas = (g, x0, y0, w, h, n, osc = 0) => {
+    for (let i = 0; i < n; i++) {
+      const x = x0 + Math.random() * w, y = y0 + Math.random() * h, l = 14 + Math.random() * 22 - osc * 8 + (1 - (y - y0) / h) * 6;
+      g.fillStyle = `hsl(${92 + Math.random() * 30},${32 + Math.random() * 22}%,${Math.max(6, l)}%)`;
+      g.beginPath(); g.ellipse(x, y, 2 + Math.random() * 4, 1.5 + Math.random() * 2.5, Math.random() * 3, 0, 7); g.fill();
+    }
+  };
+  const HOJAS = lienzo(256, 256, (g, w, h) => { g.fillStyle = '#16301a'; g.fillRect(0, 0, w, h); pintaHojas(g, 0, 0, w, h, 5200); });
+  HOJAS.wrapS = HOJAS.wrapT = THREE.RepeatWrapping;
+  // setos: un seto continuo por cada lado, de 1 m de alto, con el contorno irregular (los vértices se mueven un poco
+  // con ondas de distinta escala) y la parte de arriba redondeada
+  const seto = (largo, x, z, giro) => {
+    const g = new THREE.BoxGeometry(largo, 1.0, 0.8, Math.ceil(largo * 3), 6, 4), P = g.attributes.position, uv = g.attributes.uv;
+    for (let i = 0; i < P.count; i++) {
+      let px = P.getX(i), py = P.getY(i), pz = P.getZ(i);
+      const r = 0.05 * Math.sin(px * 3.1 + pz * 5) + 0.035 * Math.sin(px * 7.3 + py * 6) + 0.025 * Math.sin(px * 13 + pz * 11);
+      if (py > 0.3) { const t = (py - 0.3) / 0.2; pz *= 1 - 0.28 * t; py -= 0.06 * t * (1 - Math.abs(pz) / 0.4); }   // arriba, redondeado
+      P.setXYZ(i, px, py + r * 0.6, pz + Math.sign(pz) * r);
+      uv.setXY(i, uv.getX(i) * largo / 1.5, uv.getY(i));
+    }
+    g.computeVertexNormals(); g.translate(0, 0.5, 0);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: HOJAS, roughness: 1 }));
+    m.position.set(x, 0, z); m.rotation.y = giro; m.receiveShadow = true; clubG.add(m);
+  };
+  for (const s of [-1, 1]) {
+    seto(APRON_W + 2.6, 0, s * (APRON_L / 2 + 0.9), 0);
+    seto(APRON_L + 0.9, s * (APRON_W / 2 + 0.9), 0, Math.PI / 2);
+  }
+  // árboles: dos planos cruzados con el dibujo de un árbol (tronco, ramas y copa de hojas, más oscura por abajo y
+  // por un lado), tres formas (redondo, alto y ancho); lejos de la pista y nunca entre la cámara y el juego
+  const dibujaArbol = forma => lienzo(256, 512, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const cx = w / 2, base = h - 4, alto = forma === 1 ? 0.62 : 0.45;
+    g.strokeStyle = '#3d2b1d'; g.lineCap = 'round';
+    g.lineWidth = 16; g.beginPath(); g.moveTo(cx, base); g.lineTo(cx + 4, h * (1 - alto)); g.stroke();   // tronco
+    g.lineWidth = 6;
+    for (let i = 0; i < 5; i++) { const y = h * (1 - alto * (0.55 + 0.1 * i)), s = i % 2 ? 1 : -1; g.beginPath(); g.moveTo(cx, y); g.lineTo(cx + s * (40 + 10 * i), y - 50); g.stroke(); }
+    // copa: muchos grupos de hojas dentro de una elipse (según la forma)
+    const [rx, ry, cy] = forma === 1 ? [62, 190, h * 0.4] : forma === 2 ? [118, 120, h * 0.38] : [100, 140, h * 0.36];
+    for (let k = 0; k < 70; k++) {
+      const a = Math.random() * 6.283, d = Math.sqrt(Math.random()), x = cx + Math.cos(a) * rx * d, y = cy + Math.sin(a) * ry * d, r = 18 + Math.random() * 26;
+      const osc = Math.max(0, (y - cy) / ry) * 0.8 + Math.max(0, (x - cx) / rx) * 0.4;   // más oscura abajo y a un lado
+      g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
+      g.fillStyle = `hsl(${100 + Math.random() * 20},38%,${14 - osc * 5}%)`; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+      pintaHojas(g, x - r, y - r, 2 * r, 2 * r, 160, osc); g.restore();
+    }
+  });
+  const cruz = (w, h) => {   // dos planos cruzados, con la base en el suelo
+    const a = new THREE.PlaneGeometry(w, h), b = new THREE.PlaneGeometry(w, h); b.rotateY(Math.PI / 2);
+    const g = new THREE.BufferGeometry(), pa = a.attributes.position.array, pb = b.attributes.position.array;
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...pa, ...pb], 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute([...a.attributes.normal.array, ...b.attributes.normal.array], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([...a.attributes.uv.array, ...b.attributes.uv.array], 2));
+    g.setIndex([...a.index.array, ...Array.from(b.index.array, i => i + a.attributes.position.count)]); g.translate(0, h / 2, 0);
+    return g;
+  };
   const arboles = [];
-  for (let i = 0; arboles.length < 46 && i < 400; i++) {
+  for (let i = 0; arboles.length < 52 && i < 500; i++) {
     const x = (Math.random() - 0.5) * 110, z = (Math.random() - 0.5) * 110;
     if (Math.abs(x) < APRON_W / 2 + 4 && Math.abs(z) < APRON_L / 2 + 4) continue;   // ni sobre las baldosas
     if (z > 0 && Math.abs(x) < 26) continue;                                           // ni por delante de la cámara
-    arboles.push([x, z, 0.8 + Math.random() * 0.6]);
+    arboles.push([x, z, 0.8 + Math.random() * 0.6, i % 3]);
   }
-  const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.24, 1, 7), new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 }), arboles.length);
-  const crownIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0x2b5a30, roughness: 1, flatShading: true }), arboles.length * 2);
-  arboles.forEach(([x, z, k], i) => {
-    trunkIM.setMatrixAt(i, m4.compose(new V3(x, 1.6 * k, z), new THREE.Quaternion(), new V3(k, 3.2 * k, k)));
-    crownIM.setMatrixAt(2 * i, m4.compose(new V3(x, 4.2 * k, z), new THREE.Quaternion(), new V3(2.1 * k, 2.3 * k, 2.1 * k)));
-    crownIM.setMatrixAt(2 * i + 1, m4.compose(new V3(x + 0.6 * k, 5.4 * k, z - 0.3 * k), new THREE.Quaternion(), new V3(1.4 * k, 1.5 * k, 1.4 * k)));
+  for (let f = 0; f < 3; f++) {
+    const lista = arboles.filter(a => a[3] === f); if (!lista.length) continue;
+    const im = new THREE.InstancedMesh(cruz(5, 10), new THREE.MeshStandardMaterial({ map: dibujaArbol(f), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }), lista.length);
+    lista.forEach(([x, z, k], i) => im.setMatrixAt(i, m4.compose(new V3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.random() * 3, 0)), new V3(k, k, k))));
+    clubG.add(im);
+  }
+  // edificio del club al fondo: dos plantas, cristaleras abajo y ventanas con marco arriba (encendidas), el rótulo,
+  // la entrada con marquesina y la azotea con su pretil
+  const fachada = lienzo(1024, 256, (g, w, h) => {
+    g.fillStyle = '#e6e1d8'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#d3cdc2'; g.fillRect(0, 118, w, 10); g.fillRect(0, 0, w, 8);   // franjas
+    g.fillStyle = '#1f2937'; g.font = '44px "Bebas Neue", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('CLUB DE PÁDEL', w / 2, 30);
+    const ventana = (x, y, ww, hh, on) => {
+      g.fillStyle = '#5b6573'; g.fillRect(x - 3, y - 3, ww + 6, hh + 6);
+      const gr = g.createLinearGradient(x, y, x + ww, y + hh);
+      gr.addColorStop(0, on ? '#ffe2a6' : '#2c3644'); gr.addColorStop(1, on ? '#d99a4e' : '#4b5a6e'); g.fillStyle = gr; g.fillRect(x, y, ww, hh);
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(x, y + hh); g.lineTo(x + ww * 0.35, y); g.lineTo(x + ww * 0.5, y); g.lineTo(x + ww * 0.15, y + hh); g.fill();
+      g.fillStyle = '#5b6573'; g.fillRect(x + ww / 2 - 1.5, y, 3, hh);
+    };
+    for (let x = 30; x < w - 60; x += 74) if (Math.abs(x + 22 - w / 2) > 40) ventana(x, 56, 46, 50, Math.random() < 0.7);   // planta de arriba
+    for (let x = 22; x < w - 90; x += 132) if (Math.abs(x + 50 - w / 2) > 80) ventana(x, 146, 104, 96, Math.random() < 0.85);   // cristaleras de abajo
+    g.fillStyle = '#5b6573'; g.fillRect(w / 2 - 46, 140, 92, 116); g.fillStyle = '#9fb7c9'; g.fillRect(w / 2 - 40, 146, 38, 110); g.fillRect(w / 2 + 2, 146, 38, 110);   // puerta
+    g.fillStyle = '#b7b0a4'; g.fillRect(0, h - 6, w, 6);
   });
-  for (let i = 0; i < arboles.length * 2; i++) crownIM.setColorAt(i, new THREE.Color().setHSL(0.3 + Math.random() * 0.05, 0.38, 0.2 + Math.random() * 0.08));
-  clubG.add(trunkIM, crownIM);
-  // edificio del club al fondo, con las ventanas encendidas
-  const ventanas = lienzo(512, 128, (g, w, h) => {
-    g.fillStyle = '#cfc6b8'; g.fillRect(0, 0, w, h);
-    for (let x = 16; x < w - 30; x += 46) { const on = Math.random() < 0.75; g.fillStyle = on ? '#ffd98a' : '#3a3f4a'; g.fillRect(x, 34, 30, 52); }
-    g.fillStyle = '#8f8678'; g.fillRect(0, h - 10, w, 10);
-  });
-  const club = new THREE.Mesh(new THREE.BoxGeometry(26, 5, 7), [new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.9 }),
-    new THREE.MeshStandardMaterial({ color: 0x5a3d33, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0x777777 }),
-    new THREE.MeshStandardMaterial({ map: ventanas, emissive: 0xffffff, emissiveMap: ventanas, emissiveIntensity: 0.35, roughness: 0.9 }), new THREE.MeshStandardMaterial({ color: 0xcfc6b8 })]);
-  club.position.set(0, 2.5, -APRON_L / 2 - 17); clubG.add(club);   // (lejos: con la cámara baja deja ver árboles y cielo)
-  const tejado = new THREE.Mesh(new THREE.BoxGeometry(27.5, 0.35, 8.4), new THREE.MeshStandardMaterial({ color: 0x5a3d33, roughness: 0.8 }));
-  tejado.position.set(0, 5.15, club.position.z); clubG.add(tejado);
+  const lado = lienzo(256, 256, (g, w, h) => { g.fillStyle = '#e1dbd1'; g.fillRect(0, 0, w, h); g.fillStyle = '#d3cdc2'; g.fillRect(0, 118, w, 10); g.fillStyle = '#3a4554'; for (const x of [50, 150]) { g.fillRect(x, 56, 46, 50); g.fillRect(x, 150, 46, 60); } });
+  const pared = new THREE.MeshStandardMaterial({ map: lado, roughness: 0.9 });
+  const ZC = -APRON_L / 2 - 17;
+  const club = new THREE.Mesh(new THREE.BoxGeometry(26, 6, 8), [pared, pared, new THREE.MeshStandardMaterial({ color: 0xbdb6aa, roughness: 0.9 }), pared,
+    new THREE.MeshStandardMaterial({ map: fachada, emissive: 0xffffff, emissiveMap: fachada, emissiveIntensity: 0.22, roughness: 0.6 }), pared]);
+  club.position.set(0, 3, ZC); clubG.add(club);   // (lejos: con la cámara baja deja ver árboles y cielo)
+  const gris = new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 0.8 });
+  const tejado = new THREE.Mesh(new THREE.BoxGeometry(26.6, 0.3, 8.6), gris); tejado.position.set(0, 6.15, ZC); clubG.add(tejado);
+  for (const [w, d, x, z] of [[26.6, 0.15, 0, ZC + 4.25], [26.6, 0.15, 0, ZC - 4.25], [0.15, 8.6, 13.25, ZC], [0.15, 8.6, -13.25, ZC]]) {   // pretil
+    const p = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, d), gris); p.position.set(x, 6.5, z); clubG.add(p);
+  }
+  const marq = new THREE.Mesh(new THREE.BoxGeometry(5, 0.14, 1.8), new THREE.MeshStandardMaterial({ color: 0x2f3640, roughness: 0.5, metalness: 0.4 }));
+  marq.position.set(0, 3.05, ZC + 4.9); clubG.add(marq);
+  for (const x of [-2.3, 2.3]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3, 8), marq.material); p.position.set(x, 1.5, ZC + 5.7); clubG.add(p); }
   // bancos junto a la red, a los dos lados de la pista (en ejes del banco: x a lo largo, +z hacia la pista): patas de
   // tubo de aluminio, asiento acolchado y respaldo del color de la pista, todo con los cantos redondeados; encima, una
   // bolsa térmica de pádel con su franja y sus asas, una toalla colgada del respaldo y botellas de agua (la pala
