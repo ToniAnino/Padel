@@ -20,4 +20,12 @@ Chico (modelos/chico.json + chico.png): figura de los jugadores hombres con «Mo
   en metros, hueso 'root', normales suaves y la mano derecha cerrada en puño (herramientas/mano.js, cierraMano).
 - La textura se tiñe en el juego por jugador (TINTE en index.html): piel, pelo, camiseta y calzona con bandas laterales,
   cuello, zapatillas y la marca (KOVA, VEXA, NORDIK, ZELO, BALTIX, ORIX, SORA o TRIX, cada una con su letra de Google Fonts).
-- Las fuentes originales (Chica.glb, chico.glb, chico_mixamo.fbx/.zip e imágenes) se quedan fuera del repositorio.
+- Las fuentes originales (Chica.glb, ChicaBlanco.glb, chico.glb, chico_mixamo.fbx/.zip, chica_mixamo.fbx/.zip e imágenes)
+  se quedan fuera del repositorio.
+
+Chica (modelos/chica.json + chica.png): figura de las jugadoras con «Modelo nuevo», hecha igual que el chico
+(TRELLIS + Mixamo) a partir de ChicaBlanco.glb (ropa blanca, coleta).
+- Para Mixamo: glb -> OBJ + MTL + PNG a 170 cm (herramientas/glb2obj.ps1), en un zip (chica_mixamo.zip).
+- Se convierte con construye(url, cierraMano, { nudillo: 9.7, radio: 1.5, palma: 1.15 }, 'chica'): mano más pequeña.
+- En el juego: perfil 'chica' del tinte (coleta, ojos, banda lateral por posición), brazos alargados al largo de los del
+  chico, cinta que pasa por debajo de la coleta y muñequeras algo más cortas.

@@ -1,4 +1,4 @@
-// FBX de Mixamo (chico) -> glTF en .json con el formato del juego (como hombre.json):
+// FBX de Mixamo (chico o chica) -> glTF en .json con el formato del juego (como hombre.json):
 // huesos con los nombres del modelo del juego, en metros, con hueso 'root', la mano derecha cerrada y normales suaves.
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -12,7 +12,7 @@ const MAPA = { Hips: 'pelvis', Spine: 'spine_01', Spine1: 'spine_02', Spine2: 's
   RightUpLeg: 'thigh_r', RightLeg: 'calf_r', RightFoot: 'foot_r', RightToeBase: 'ball_r',
   HeadTop_End: 'head_end', LeftToe_End: 'toe_end_l', RightToe_End: 'toe_end_r' };
 
-export async function construye(url, cierraMano, opMano) {
+export async function construye(url, cierraMano, opMano, nombre = 'chico') {
   const o = new FBXLoader().parse(await (await fetch(url, { cache: 'no-store' })).arrayBuffer(), '');
   o.updateMatrixWorld(true);
   let m; o.traverse(x => { if (x.isSkinnedMesh) m = x; });
@@ -35,12 +35,12 @@ export async function construye(url, cierraMano, opMano) {
   const si = g.attributes.skinIndex;
   for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) si.setComponent(i, k, si.getComponent(i, k) + 1);
   // 5. malla nueva enlazada al esqueleto en la postura en T
-  const mat = new THREE.MeshStandardMaterial({ name: 'Chico', roughness: .8, metalness: 0 });
-  const nm = new THREE.SkinnedMesh(g, mat); nm.name = 'chico';
+  const mat = new THREE.MeshStandardMaterial({ name: nombre[0].toUpperCase() + nombre.slice(1), roughness: .8, metalness: 0 });
+  const nm = new THREE.SkinnedMesh(g, mat); nm.name = nombre;
   o.remove(m); o.add(nm);
   o.updateMatrixWorld(true);
   nm.bind(new THREE.Skeleton(huesos), nm.matrixWorld);
-  o.name = 'chico';
+  o.name = nombre;
   const json = await new GLTFExporter().parseAsync(o, { binary: false, onlyVisible: false });
   return { json, mano, verts: g.attributes.position.count, huesos: huesos.map(b => b.name) };
 }
