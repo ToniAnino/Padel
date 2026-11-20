@@ -4982,7 +4982,9 @@ function clasificaChica(r, g, b, x, y, z) {
   const blanco = s < .16 && v > .55;
   const pielClara = calido && s > .15 && v > .5;
   // la coleta cuelga por detrás, por encima de los omóplatos
-  if (z < Z.coletaZ && y > Z.coleta && ax < .08 && s > .18 && !pielClara) return R.PELO;   // (la camiseta en sombra es gris)
+  // (la camiseta en sombra es gris; por debajo de la nuca, la coleta cuelga más atrás que el cuello)
+  if (z < (y < Z.menton ? Z.coletaNuca : Z.coletaZ) && y > Z.coleta && ax < .08 && s > .18 && !pielClara) return R.PELO;
+  if (z < Z.coletaFondo && y > Z.coleta && ax < .06) return R.PELO;   // (la punta, más clara: tan atrás no hay camiseta)
   if (y > Z.cuello && ax < .12) {
     if (blanco && y < Z.cuello + .03) return R.CAM;                // cuello de la camiseta por detrás
     if (y > Z.frente || (z < -.02 && y > Z.menton) || (ax > .045 && y > Z.sienes)) return R.PELO;  // coronilla, nuca y sienes (los brillos del pelo no son piel)
@@ -4990,7 +4992,7 @@ function clasificaChica(r, g, b, x, y, z) {
     if (cara && y > Z.frente) return R.PELO;                       // nacimiento del pelo
     if (pielClara) return R.PIEL;
     if (cara && y < Z.cejas && y > Z.boca) return R.OJO;           // ojos, cejas, nariz y boca
-    if (y < Z.menton && z > -.03) return R.PIEL;                   // mandíbula y cuello
+    if (y < Z.menton && z > Z.coletaNuca) return R.PIEL;           // mandíbula y cuello (también la nuca en sombra)
     return R.PELO;
   }
   return clasificaChico(r, g, b, x, y, z);
@@ -5055,6 +5057,83 @@ function preparaTinte(mesh, nombre = 'chica') {
       if (kv >= 0) { cp[k] = reg[kv]; for (let i = 0; i < 3; i++) { pos[3 * k + i] = pos[3 * kv + i]; nrm[3 * k + i] = nrm[3 * kv + i]; } }
     }
     reg.set(cp);
+  }
+  // escote liso: el borde piel/camiseta del atlas sale dentado (píxel a píxel y con el borde irregular de TRELLIS).
+  // Alrededor del cuello se saca la altura del escote en cada dirección, se suaviza, y desde esa línea se decide qué es
+  // piel y qué tela; dCuello (lo que queda por debajo de la línea) da el ribete del cuello, también liso
+  const dCuello = new Float32Array(W * H).fill(NaN); let cPielCuello = null;
+  {
+    const esTela = r => r === R.CAM || r === R.CAM_BL || r === R.CAM_AC, zona = r => r === R.PIEL || esTela(r);
+    let x0 = 9, x1 = -9, z0 = 9, z1 = -9;
+    for (let k = 0; k < W * H; k++) {
+      if (!esTela(reg[k])) continue;
+      const x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2];
+      if (y < Z.cuello - .04 || y > Z.cuello + .01 || Math.abs(x) > .07) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+    }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, N = 48, RZ = .1, y0 = Z.cuello - .07, y1 = Z.cuello + .04;
+    const bin = k => { const a = Math.atan2(pos[3 * k] - cx, pos[3 * k + 2] - cz); return ((Math.round(a / (2 * Math.PI) * N) % N) + N) % N; };
+    const enZona = k => { const x = pos[3 * k] - cx, y = pos[3 * k + 1], z = pos[3 * k + 2] - cz; return zona(reg[k]) && y > y0 && y < y1 && x * x + z * z < RZ * RZ; };
+    const ys = Array.from({ length: N }, () => []), med = { [R.PIEL]: [0, 0, 0, 0], tela: [0, 0, 0, 0] };
+    for (let k = 0; k < W * H; k++) {
+      if (!enZona(k)) continue;
+      const t = esTela(reg[k]); if (t) ys[bin(k)].push(pos[3 * k + 1]);
+      const m = t ? med.tela : med[R.PIEL]; for (let i = 0; i < 3; i++) m[i] += D[4 * k + i]; m[3]++;
+    }
+    let yb = ys.map(a => { if (a.length < 5) return NaN; a.sort((p, q) => p - q); return a[Math.floor(a.length * .92)]; });
+    for (let i = 0; i < N; i++) if (isNaN(yb[i])) { let d = 1; while (d < N / 2 && isNaN(yb[(i + d) % N]) && isNaN(yb[(i - d + N) % N])) d++; const a = yb[(i + d) % N], b = yb[(i - d + N) % N]; yb[i] = isNaN(a) ? b : isNaN(b) ? a : (a + b) / 2; }
+    if (!yb.some(isNaN)) {
+      // mediana (quita picos) y media (suaviza), en círculo
+      yb = yb.map((_, i) => [-2, -1, 0, 1, 2].map(d => yb[(i + d + N) % N]).sort((p, q) => p - q)[2]);
+      for (let pase = 0; pase < 2; pase++) yb = yb.map((_, i) => [-2, -1, 0, 1, 2].reduce((s, d) => s + yb[(i + d + N) % N], 0) / 5);
+      const cPiel = med[R.PIEL].slice(0, 3).map(v => v / Math.max(1, med[R.PIEL][3])), cTela = med.tela.slice(0, 3).map(v => v / Math.max(1, med.tela[3]));
+      // (entre direcciones se interpola: si no, se verían escalones de 7,5°)
+      const enLinea = (v, k) => { const a = Math.atan2(pos[3 * k] - cx, pos[3 * k + 2] - cz) / (2 * Math.PI) * N, i0 = Math.floor(a), f = a - i0; return v[((i0 % N) + N) % N] * (1 - f) + v[(((i0 + 1) % N) + N) % N] * f; };
+      const rho = k => Math.hypot(pos[3 * k] - cx, pos[3 * k + 2] - cz);
+      // lo separada del eje que va la línea del escote en cada dirección: el ribete se mide sobre la tela (en el hombro,
+      // que baja casi plano, medido solo en altura salía ancho y con picos)
+      const rs = Array.from({ length: N }, () => []);
+      for (let k = 0; k < W * H; k++) { if (!enZona(k) || !esTela(reg[k])) continue; const d = enLinea(yb, k) - pos[3 * k + 1]; if (d >= 0 && d < .006) rs[bin(k)].push(rho(k)); }
+      let rb = rs.map(a => { if (!a.length) return NaN; a.sort((p, q) => p - q); return a[a.length >> 1]; });
+      for (let i = 0; i < N; i++) if (isNaN(rb[i])) { let d = 1; while (d < N / 2 && isNaN(rb[(i + d) % N]) && isNaN(rb[(i - d + N) % N])) d++; const a = rb[(i + d) % N], b = rb[(i - d + N) % N]; rb[i] = isNaN(a) ? b : isNaN(b) ? a : (a + b) / 2; }
+      for (let pase = 0; pase < 2; pase++) rb = rb.map((_, i) => [-2, -1, 0, 1, 2].reduce((s, d) => s + rb[(i + d + N) % N], 0) / 5);
+      for (let k = 0; k < W * H; k++) {
+        if (!enZona(k)) continue;
+        const h = enLinea(yb, k), y = pos[3 * k + 1];
+        if (y > h + .025 || y < h - .05) continue;
+        const piel = y > h, era = reg[k] === R.PIEL;
+        if (piel) {   // la piel justo encima del escote, lisa: la textura trae ahí la sombra y el borde del cuello original
+          const t = era ? Math.min(1, Math.max(0, (y - h - .012) / .01)) : 0;
+          reg[k] = R.PIEL; for (let i = 0; i < 3; i++) D[4 * k + i] = D[4 * k + i] * t + cPiel[i] * (1 - t);
+        } else if (era) { reg[k] = R.CAM; for (let i = 0; i < 3; i++) D[4 * k + i] = cTela[i]; }
+        // (> 0, tela, a lo largo de la tela; < 0, piel: en el borde se funden, ver aplica)
+        dCuello[k] = piel || rb.some(isNaN) ? h - y : Math.hypot(h - y, Math.max(0, rho(k) - enLinea(rb, k)));
+      }
+      cPielCuello = cPiel;
+    }
+  }
+  // islas: un trozo pequeño de piel rodeado de pelo (brillos del pelo) o de pelo rodeado de piel o tela (la nuca en
+  // sombra) pasa a ser lo de alrededor
+  if (PF.islas) {
+    const vis = new Uint8Array(W * H), cola = new Int32Array(W * H);
+    for (let k0 = 0; k0 < W * H; k0++) {
+      const r0 = reg[k0]; if (vis[k0] || (r0 !== R.PIEL && r0 !== R.PELO) || pos[3 * k0 + 1] < Z.cuello - .05) continue;
+      let n = 0, ini = 0; cola[n++] = k0; vis[k0] = 1; const borde = {};
+      while (ini < n && n <= PF.islas) {
+        const k = cola[ini++], px = k % W;
+        for (const kk of [px > 0 ? k - 1 : -1, px < W - 1 ? k + 1 : -1, k - W, k + W]) {
+          if (kk < 0 || kk >= W * H) continue;
+          const r = reg[kk]; if (!r) continue;
+          if (r === r0) { if (!vis[kk]) { vis[kk] = 1; cola[n++] = kk; } } else borde[r] = (borde[r] || 0) + 1;
+        }
+      }
+      if (n > PF.islas) continue;
+      let tot = 0, mx = 0, rm = 0; for (const r in borde) { tot += borde[r]; if (borde[r] > mx) { mx = borde[r]; rm = +r; } }
+      // (pelo → piel solo en la nuca: en el atlas, una tira de pelo puede caer junto a piel de otra parte del cuerpo)
+      const nuca = pos[3 * k0 + 1] < Z.menton && pos[3 * k0 + 2] < 0;
+      const otro = r0 === R.PIEL ? rm === R.PELO : nuca && rm !== R.PELO && rm !== R.OJO;
+      if (otro && mx > tot * .7) for (let i = 0; i < n; i++) reg[cola[i]] = rm === R.PIEL || rm === R.PELO ? rm : R.CAM;
+    }
   }
   // pelo degradado (rapado): mezcla gradual entre piel y pelo según lo oscuro que sea, sin manchas
   const wPelo = new Float32Array(W * H).fill(-1);
@@ -5182,6 +5261,21 @@ function preparaTinte(mesh, nombre = 'chica') {
   }
   const hex = h => { const n = new THREE.Color(h).getHex(); return [n >> 16, (n >> 8) & 255, n & 255]; };   // (en sRGB, como los píxeles)
 
+  // luz del pelo suavizada (media 5x5 de los píxeles de pelo de alrededor), para que un mechón suelto no salga como mancha
+  let _LP = null;
+  function luzPelo() {
+    if (_LP) return _LP;
+    _LP = new Float32Array(W * H);
+    const lum = k => .299 * D[4 * k] + .587 * D[4 * k + 1] + .114 * D[4 * k + 2];
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const k = py * W + px; if (reg[k] !== R.PELO) continue;
+      let s = 0, n = 0;
+      for (let dy = -2; dy <= 2; dy++) { const yy = py + dy; if (yy < 0 || yy >= H) continue;
+        for (let dx = -2; dx <= 2; dx++) { const xx = px + dx; if (xx < 0 || xx >= W) continue; const kk = yy * W + xx; if (reg[kk] === R.PELO) { s += lum(kk); n++; } } }
+      _LP[k] = s / n;
+    }
+    return _LP;
+  }
   // o: { camiseta, acento, calzona, calzonaAcento, piel, pelo, zapatillas, cinta, munequeras, ojos }
   function aplica(o = {}) {
     const im = ox.createImageData(W, H), S = im.data;
@@ -5201,6 +5295,10 @@ function preparaTinte(mesh, nombre = 'chica') {
     const B1 = hex(o.calzona || '#1e3a8a'), B2 = hex((dibC && dibC.color) || o.acento || '#ffffff');
     // diseños por capas (equipación de pádel): color base + bandas, ribetes, hombros, letras, símbolos
     const dzCam = o.disenoCamiseta && prepDiseno(o.disenoCamiseta), dzCal = o.disenoCalzona && prepDiseno(o.disenoCalzona);
+    // pelo: luz suavizada y contraste según lo claro del color: el castaño original tiene mechones muy oscuros junto a
+    // brillos, y en un pelo claro (rubio) eso sale a manchas; el oscuro conserva casi todo el contraste
+    const LP = luzPelo(), cP = T[R.PELO], kP = cP ? 1 - .65 * (.299 * cP[0] + .587 * cP[1] + .114 * cP[2]) / 255 : 1;
+    const fPelo = k => Math.max(.3, 1 + (Math.min(LP[k] / ref[R.PELO], 1.15) - 1) * kP);   // (los brillos sueltos salían como calvas)
     for (let k = 0; k < W * H; k++) {
       const r = reg[k], j = 4 * k;
       const dz = zonaCam.has(r) ? dzCam : zonaCal.has(r) ? dzCal : null;
@@ -5220,7 +5318,7 @@ function preparaTinte(mesh, nombre = 'chica') {
       }
       if (T[r]) {
         const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
-        const f = Math.min(L / ref[r], r == R.PELO ? 1.3 : 1.6);   // (en el pelo, los brillos sueltos de la textura salen como calvas)
+        const f = r == R.PELO ? fPelo(k) : Math.min(L / ref[r], 1.6);
         const c = T[r];
         S[j] = Math.min(255, c[0] * f); S[j + 1] = Math.min(255, c[1] * f); S[j + 2] = Math.min(255, c[2] * f);
       } else if (Pp[r]) {
@@ -5228,12 +5326,22 @@ function preparaTinte(mesh, nombre = 'chica') {
         S[j] = Math.min(255, D[j] * p[0]); S[j + 1] = Math.min(255, D[j + 1] * p[1]); S[j + 2] = Math.min(255, D[j + 2] * p[2]);
       }
     }
+    // borde del escote: piel y camiseta se funden en 3 mm (si no, se ve el escalón de los píxeles de la textura)
+    if (dzCam && cPielCuello) {
+      const pk = Pp[R.PIEL] || [1, 1, 1], sk0 = cPielCuello.map((v, i) => Math.min(255, v * pk[i]));
+      for (let k = 0; k < W * H; k++) {
+        const d = dCuello[k]; if (!(Math.abs(d) < .0015)) continue;
+        const j = 4 * k, t = suaveC(d, .003), cl = evalDiseno(dzCam, k, true), f = sombra[k] || 1;
+        const sk = reg[k] === R.PIEL ? [S[j], S[j + 1], S[j + 2]] : sk0;
+        for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, sk[i] * (1 - t) + cl[i] * f * t);
+      }
+    }
     // pelo degradado: mezcla del tinte de piel y del de pelo
     if (PF.peloSuave && (Pp[R.PIEL] || T[R.PELO])) {
       for (let k = 0; k < W * H; k++) {
         const w = wPelo[k]; if (w < 0) continue;
         const j = 4 * k, L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
-        const p = Pp[R.PIEL], c = T[R.PELO], f = Math.min(L / ref[R.PELO], 1.6);
+        const p = Pp[R.PIEL], c = T[R.PELO], f = LP[k] ? fPelo(k) : Math.min(L / ref[R.PELO], 1.6);
         for (let i = 0; i < 3; i++) {
           const piel = p ? D[j + i] * p[i] : D[j + i], pelo = c ? c[i] * f : D[j + i];
           S[j + i] = Math.min(255, piel * (1 - w) + pelo * w);
@@ -5357,6 +5465,7 @@ function preparaTinte(mesh, nombre = 'chica') {
           m = suaveC(Z.lateral * (p.ancho || .18) / .14 - Math.abs(z - zc), .003); break;
         }
         case 'ribetes': {
+          if (!isNaN(dCuello[k])) { if (p.solo !== 'punos') m = suaveC((p.grosor || 2) * .0045 - dCuello[k], .0012); break; }   // (cuello liso)
           const b = borde[k]; if (b > (p.grosor || 2)) break;
           if (p.solo === 'cuello' && enBrazo) break;
           if (p.solo === 'punos' && !enBrazo) break;
@@ -5436,8 +5545,8 @@ function clasificaChico(r, g, b, x, y, z) {
 
 const PERFILES = {
   chica: { Z: { cuello: .325, bajo: .025, calzona: -.088, calcetin: -.36, zapatilla: -.425, manga: .11, brazo: .15, muneca: .30, suela: .014, lateral: .022,
-    coleta: .29, coletaZ: -.04, frente: .452, sienes: .428, cejas: .422, boca: .348, menton: .36 },
-    clasifica: clasificaChica, ojos: [{ x: -.0285, y: .402 }, { x: .0275, y: .402 }], ojoR: .0052, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true } },
+    coleta: .265, coletaZ: -.04, coletaNuca: -.055, coletaFondo: -.065, frente: .452, sienes: .428, cejas: .422, boca: .348, menton: .36 },
+    clasifica: clasificaChica, ojos: [{ x: -.0285, y: .402 }, { x: .0275, y: .402 }], ojoR: .0052, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true }, islas: 400 },
   chico: { Z: { cuello: .33, bajo: .012, calzona: -.15, calcetin: -.345, zapatilla: -.41, manga: .165, hombro: .125, muneca: .40, suela: .014 },
     clasifica: clasificaChico, ojos: [{ x: -.0205, y: .4245 }, { x: .0185, y: .4245 }], ojoR: .0052, tapa: [.0135, .0068, .0052, .0105], igualaPiernas: true,
     peloSuave: { desde: .36, vPiel: .6, vPelo: .4 } },
