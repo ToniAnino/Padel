@@ -6279,11 +6279,18 @@ function aroGrueso(bajo, alto, fuera, grosor) {
     const OT = T.clone().addScaledVector(D, grosor).addScaledVector(eje, -m), OB = B.clone().addScaledVector(D, grosor).addScaledVector(eje, m);
     for (const p of [B, T, OT, OB]) v.push(p.x, p.y, p.z);
   }
-  for (let k = 0; k < n - 1; k++) for (let r = 0; r < 4; r++) {
-    const a = 4 * k + r, b = 4 * k + (r + 1) % 4, c = 4 * (k + 1) + r, d = 4 * (k + 1) + (r + 1) % 4;
-    idx.push(a, b, c, b, d, c);
+  const uv = [];   // (u alrededor, empezando delante; v de abajo arriba en la cara de fuera, donde va el logo)
+  for (let k = 0; k < n; k++) uv.push(k / (n - 1), 0, k / (n - 1), 0, k / (n - 1), 1, k / (n - 1), 0);
+  const geo = new THREE.BufferGeometry();
+  for (let r = 0; r < 4; r++) {   // una cara tras otra: dentro, canto de arriba, fuera (grupo 1, el del logo) y canto de abajo
+    const ini = idx.length;
+    for (let k = 0; k < n - 1; k++) {
+      const a = 4 * k + r, b = 4 * k + (r + 1) % 4, c = 4 * (k + 1) + r, d = 4 * (k + 1) + (r + 1) % 4;
+      idx.push(a, b, c, b, d, c);
+    }
+    geo.addGroup(ini, idx.length - ini, r === 2 ? 1 : 0);
   }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
   return geo;
 }
 function munequeraAjustada(geo0, R, lado, d0 = -0.085, d1 = -0.01) {
@@ -6551,9 +6558,30 @@ function quitaModelo(pl, det = true) {
 // setProfile las vuelven a poner como para el muñeco, así que se repite tras ellos)
 const _dobleCara = new WeakMap();
 const dobleCara = m => { let d = _dobleCara.get(m); if (!d) { d = m.clone(); d.side = THREE.DoubleSide; _dobleCara.set(m, d); } return d; };
+// cinta y muñequeras: [su color, la cara de fuera con el logo de su marca] (el logo delante: en la frente y encima de
+// la muñeca), en blanco o en oscuro según lo que contraste
+const _conLogo = new Map();
+function conLogo(base, p, tipo) {
+  const mc = marcaDe(p), k = base.uuid + mc.t + tipo;
+  let m = _conLogo.get(k);
+  if (!m) {
+    const W = tipo === 'cinta' ? 1024 : 384, H = tipo === 'cinta' ? 72 : 144, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d'), c = base.color, lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+    g.fillStyle = '#' + c.getHexString(); g.fillRect(0, 0, W, H);
+    g.fillStyle = lum > 0.55 ? '#111827' : '#f8fafc'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = (mc.e || '') + ' ' + Math.round((tipo === 'cinta' ? 0.62 : 0.34) * H) + 'px "' + mc.f + '", sans-serif';
+    const ancho = tipo === 'cinta' ? W * 0.11 : W * 0.3;
+    for (const x of [0, W]) g.fillText(mc.t, x, H / 2 + 2, ancho);   // (centrado en u = 0: la mitad en cada borde del lienzo)
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    const ml = dobleCara(base).clone(); ml.map = t; ml.color = new THREE.Color(0xffffff);
+    m = [dobleCara(base), ml]; _conLogo.set(k, m);
+  }
+  return m;
+}
+const solo1 = m => Array.isArray(m) ? m[0] : m;
 function ajustaPiezas(pl) {
   // muñequeras: las del muñeco no van en el modelo; si el jugador las lleva, se encienden las del modelo, con su color
-  if (pl.wrists[0].visible && pl.rig && pl.rig.munecas) for (const m of pl.rig.munecas) { m.visible = true; m.material = dobleCara(pl.wrists[0].material); }
+  if (pl.wrists[0].visible && pl.rig && pl.rig.munecas) for (const m of pl.rig.munecas) { m.visible = true; m.material = pl.prof ? conLogo(pl.wrists[0].material, pl.prof, 'mun') : dobleCara(pl.wrists[0].material); }
   for (const m of piezasMuneco(pl)) m.visible = false;
   pl.hair.visible = false;
   if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
@@ -6564,12 +6592,12 @@ function ajustaPiezas(pl) {
     // (a los hombres, sin gorra: con su pelo la copa sale abultada por delante)
     const a = (pl.prof && pl.prof.acc) || {}, gorra = a.gorra && !(pl.prof && pl.prof.s === 'h'), col = gorra ? a.gorra : a.visera;
     pl.rig.visera.visible = !!col; pl.rig.copa.visible = !!gorra;
-    if (col) pl.rig.visera.material = pl.rig.copa.material = (pl.rig.cinta && pl.rig.cinta.visible) ? pl.rig.cinta.material : dobleCara(pl.brim.material);   // (del color de su cinta)
+    if (col) pl.rig.visera.material = pl.rig.copa.material = (pl.rig.cinta && pl.rig.cinta.visible) ? solo1(pl.rig.cinta.material) : dobleCara(pl.brim.material);   // (del color de su cinta)
     pl.brim.visible = pl.cap.visible = false;
     if (gorra && pl.rig.cinta) pl.rig.cinta.visible = false;   // (con gorra no se ve la cinta)
   }
   if (ch && pl.headband.visible) {   // la cinta del muñeco no le encaja: se usa la suya, con el mismo color
-    const c = pl.rig.cinta; if (c) { c.visible = true; c.material = dobleCara(pl.headband.material); }
+    const c = pl.rig.cinta; if (c) { c.visible = true; c.material = pl.prof ? conLogo(pl.headband.material, pl.prof, 'cinta') : dobleCara(pl.headband.material); }
     pl.headband.visible = false;
   }
   for (const z of pl.shoes) { z.visible = !ch; z.scale.set(1.04, 0.95, 0.96); }   // (a la medida del pie del modelo)
