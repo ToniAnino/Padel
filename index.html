@@ -317,7 +317,7 @@
       <div id="result"></div>
       <div id="menuTip" role="button" title="Otro consejo"></div>
       <div id="mtabs">
-        <button data-t="jugar" data-ico="jugadores"><span class="lbl">Jugadores</span></button>
+        <button data-t="jugar" data-ico="mando"><span class="lbl">Juego</span></button>
         <button data-t="tienda" data-ico="tienda"><span class="lbl">Tienda</span></button>
         <button data-t="config" data-ico="engranaje"><span class="lbl">Configuración</span></button>
       </div>
@@ -7132,7 +7132,7 @@ function closeMenu() {
   last = performance.now();
 }
 if (ORDENADOR) document.getElementById('teclasTxt').style.display = '';
-// Menú en tres pestañas (Jugadores / Tienda / Configuración); se recuerda la última abierta en este navegador
+// Menú en tres pestañas (Juego / Tienda / Configuración); se recuerda la última abierta en este navegador
 function ponPestana(t, repinta = true) {
   if (!document.querySelector(`#menu .mtab[data-tab="${t}"]`)) t = 'jugar';
   if (t === 'tienda') paintTienda();
