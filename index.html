@@ -388,6 +388,7 @@
       <div class="opts row soloPc" data-k="ctrl">
         <button data-v="panel">Con panel<span>el recuadro de abajo</span></button>
         <button data-v="pista">Sobre la pista<span>pantalla ancha</span></button>
+        <button data-v="teclado">Teclado y ratón<span>3ª persona 1P: teclas mueven, el ratón apunta</span></button>
       </div>
       <h2 data-ico="camara">Vista de la pista</h2>
       <div class="opts row" data-k="view" style="margin-bottom:8px">
@@ -2356,7 +2357,7 @@ function ring(color) {
   m.rotation.x = -Math.PI / 2; m.position.y = 0.012; m.visible = false; scene.add(m);
   return m;
 }
-const bounceRing = ring(0xffffff), targetRing = ring(0xff4757);
+const bounceRing = ring(0xffffff), targetRing = ring(0xff4757), miraRing = ring(0xffd23f);   // (miraRing: la mira del ratón)
 const hitterRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40),
   new THREE.MeshBasicMaterial({ color: 0x2f7bff, transparent: true, opacity: 0.85, depthWrite: false }));
 hitterRing.rotation.x = -Math.PI / 2; hitterRing.visible = false; scene.add(hitterRing);
@@ -3881,12 +3882,37 @@ function sueloBajo(e) {
 }
 // Controles sobre la pista (ordenador, sin el panel): arrastrando con el botón izquierdo por vuestro campo, TÚ va ahí
 // (a cualquier sitio de vuestro lado, también al de COMPI); COMPI sigue con el teclado
-const pistaOn = () => ORDENADOR && CFG.ctrl === 'pista';
+const pistaOn = () => ORDENADOR && (CFG.ctrl === 'pista' || CFG.ctrl === 'teclado');   // (teclado y ratón: también sin el panel)
+// Teclado y ratón (3ª persona 1P, en ordenador): W A S D o las flechas mueven a TÚ y el ratón apunta sin hacer clic:
+// la bola va a donde esté el puntero sobre la pista rival (aro amarillo); con el botón izquierdo o el espacio pulsados
+// en el momento del golpe, globo. Sacar, como siempre: clic en la pista rival (dos clics, bombeado).
+const tecladoOn = () => ORDENADOR && CFG.ctrl === 'teclado' && unoSolo() && !palaOn();
+const raton = { x: null, y: null, boton: false, espacio: false };
+window.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { raton.x = e.clientX; raton.y = e.clientY; } });
+window.addEventListener('pointerup', e => { if (e.button === 0) raton.boton = false; });
+window.addEventListener('blur', () => { raton.boton = raton.espacio = false; });
+function ratonApunta() {
+  const on = tecladoOn() && raton.x !== null && S.phase === 'play' && CFG.mode === 'manual' && !menuOpen;
+  miraRing.visible = on;
+  if (!on) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  _ndc.set((raton.x - r.left) / r.width * 2 - 1, -(raton.y - r.top) / r.height * 2 + 1);
+  _ray.setFromCamera(_ndc, camera);
+  // por encima del horizonte (no toca el suelo): un punto lejos en esa dirección, que se queda al fondo
+  if (!_ray.ray.intersectPlane(_ground, _gp)) _gp.copy(_ray.ray.origin).addScaledVector(_ray.ray.direction, 40);
+  const x = clamp(_gp.x, -4.6, 4.6), z = clamp(_gp.z, -9.4, -1), globo = raton.boton || raton.espacio;
+  S.aim = { x, z, type: globo ? 'lob' : 'drive', t: performance.now() / 1000 };
+  miraRing.position.set(x, 0.014, z); miraRing.scale.setScalar(globo ? 2.4 : 1.5);   // (de lejos el aro normal se ve poco; el globo, más grande)
+}
 const enNuestroCampo = p => ({ x: clamp(p.x, -4.7, 4.7), z: clamp(p.z, 0.6, 9.6) });   // (como el recuadro del panel)
 let arrastraPista = null;
-function aplicaCtrl() { document.getElementById('app').classList.toggle('ancho', pistaOn()); resize(); }
+function aplicaCtrl() { document.getElementById('app').classList.toggle('ancho', pistaOn()); renderer.domElement.style.cursor = tecladoOn() ? 'crosshair' : ''; resize(); }
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (menuOpen || !sueloBajo(e)) return;
+  if (menuOpen) return;
+  // con teclado y ratón, el clic izquierdo mantenido es globo (no se lleva al jugador con el ratón)
+  if (tecladoOn() && e.button === 0 && S.phase === 'play' && !ourServeTurn()) { e.preventDefault(); raton.boton = true; audioOn(); return; }
+  if (!sueloBajo(e)) return;
+  if (tecladoOn() && _gp.z > 0) return;
   if (pistaOn() && e.button === 0 && _gp.z > 0 && S.phase !== 'pause' && !palaOn()) {
     e.preventDefault(); try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
     const o = unoSolo() ? ctrlP() : ours[0];
@@ -3928,6 +3954,10 @@ function ayudaPista() {
       const half = S.serveRight ? 1 : -1;
       zonaSaque.scale.set(HW, HL - SERVICE_LINE, 1); zonaSaque.position.set(half * HW / 2, 0.012, (SERVICE_LINE + HL) / 2); zonaSaque.visible = true;
       html = '2 clics en la pista rival: saque bombeado';   // (el aviso de abajo ya dice quién saca y que se toque dónde)
+    } else if (tecladoOn() && S.phase === 'serve' && S.score[0] + S.score[1] === 0) {
+      html = 'Muévete con W A S D o las flechas · apunta con el ratón · clic o espacio pulsado: globo';
+    } else if (tecladoOn()) {
+      html = '';
     } else if (S.phase === 'serve' && S.score[0] + S.score[1] === 0 && !arrastraPista) {
       html = 'Arrastra a TÚ por vuestro campo con el ratón · COMPI con W A S D o las flechas';
     } else if (CFG.mode === 'manual' && S.phase === 'play' && !S.aim && S.rallyHits < 3) {
@@ -4157,11 +4187,12 @@ const keysDown = new Set();
 let keysWas = false;
 const teclasActivas = () => !menuOpen && !picker.classList.contains('open') && !document.getElementById('confirm').classList.contains('open');
 window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && tecladoOn() && teclasActivas()) { raton.espacio = true; e.preventDefault(); return; }   // globo
   const d = KEY_DIR[e.code];
   if (!d || !teclasActivas() || e.ctrlKey || e.metaKey || e.altKey) return;
   keysDown.add(e.code); e.preventDefault();   // (las flechas no desplazan la página)
 });
-window.addEventListener('keyup', e => { keysDown.delete(e.code); });
+window.addEventListener('keyup', e => { keysDown.delete(e.code); if (e.code === 'Space') raton.espacio = false; });
 window.addEventListener('blur', () => keysDown.clear());   // al cambiar de ventana no se queda una tecla "pulsada"
 function keysMove() {
   if (palaOn()) return;   // con la pala, los dos se mueven solos
@@ -4359,7 +4390,7 @@ function update(dt) {
     }
   } else {
     if (S.ctrlT > 0 && (S.ctrlT -= dt) <= 0 && S.phase === 'play' && S.lastHitter === RIVAL) pickCtrl();   // (mientras, la máquina ya lo mueve hacia la bola)
-    keysMove(); joyMove(); ourAIMove(dt);
+    keysMove(); joyMove(); ratonApunta(); ourAIMove(dt);
     for (const o of ours) movePlayer(o, dt, ourSpeed(o) * (o.joyF ?? 1));
     for (const r of rivals) movePlayer(r, dt, aiSpeed(r));
     if (S.phase === 'serve') {
@@ -4609,7 +4640,7 @@ function paintMenu() {
   for (const g of menuEl.querySelectorAll('.opts'))
     for (const b of g.querySelectorAll('button')) b.classList.toggle('sel', CFG[g.dataset.k] === b.dataset.v);
   menuEl.classList.toggle('tpv', terceraP()); menuEl.classList.toggle('tp1', unoSolo());
-  document.getElementById('vistaTxt').textContent = CFG.view === 'tp' ? 'Llevas a TÚ con la cámara detrás; COMPI juega solo, como los rivales.'
+  document.getElementById('vistaTxt').textContent = CFG.view === 'tp' ? 'Llevas a TÚ con la cámara detrás; COMPI juega solo, como los rivales.' + (ORDENADOR ? ' En ordenador, con «Teclado y ratón» en Controles: W A S D o flechas para moverte y el ratón para apuntar (clic o espacio: globo).' : '')
     : CFG.view === 'tpx' ? 'Llevas a los dos (ratón y teclado, o los dos pulgares); la cámara se pone detrás del que le va a llegar la bola.' : '';
   document.getElementById('camAng').value = CFG.camAng; document.getElementById('camZoom').value = CFG.camZoom || 0; document.getElementById('camYaw').value = CFG.camYaw || 0; document.getElementById('camScale').value = CFG.camScale || 0;
 
@@ -6823,7 +6854,7 @@ menuEl.addEventListener('click', e => {
   }
   // la escalera se juega a partido con final (si estaba «Sin final», a 6 puntos)
   if ((CFG.tipo === 'escalera' || CFG.tipo === 'torneo') && CFG.match === 'libre') { CFG.match = '6p'; CFG.scoring = 'simple'; }
-  if (k === 'view') resize();
+  if (k === 'view') { resize(); aplicaCtrl(); }
   if (k === 'ctrl') aplicaCtrl();
   saveCfg(); paintMenu(); paintPlay();
   applyLook(); updateHud(); renderer.render(scene, camera);   // se ve el cambio detrás del menú
