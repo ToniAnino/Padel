@@ -2269,6 +2269,7 @@ class Player {
   // y rodillas recogidas en el salto. Todo en coordenadas locales (+z adelante, -x derecha).
   // Postura según lo que está pasando (lean: tronco hacia delante en rad; crouch: cuánto baja la cadera; stance: media apertura de pies)
   posture(low, st, run, dirz) {
+    if (this.gesto && this.gesto.k === 'reposo') return { lean: 0.03, crouch: 0, stance: 0.13 };   // (en el visor: de pie, tranquilo)
     const enJuego = S.phase === 'play' || S.phase === 'pause' || this.enDemo;
     const saque = S.phase === 'serve' || S.phase === 'refault';
     let lean, crouch, stance;
@@ -2500,7 +2501,7 @@ class Player {
     const ge = this.gesto;
     if (ge) {
       ge.t += dt;
-      if (ge.t > ge.dur || swinging || S.phase === 'play' || S.phase === 'serve') this.gesto = null;
+      if (!ge.fijo && (ge.t > ge.dur || swinging || S.phase === 'play' || S.phase === 'serve')) this.gesto = null;
       else if (ge.k === 'puño') {      // puño arriba, con un par de sacudidas
         R = new V3(-0.24, 1.98 + 0.07 * Math.sin(Math.min(ge.t, 0.9) * 14), 0.14); hR = new V3(-1, -0.2, -0.3);
       } else if (ge.k === 'brazos') {  // los dos brazos arriba
@@ -2509,6 +2510,9 @@ class Player {
         R = new V3(-0.1, 1.76, 0.06); L = new V3(0.1, 1.76, 0.06); hR = new V3(-1, 0.4, 0.3); hL = new V3(1, 0.4, 0.3);
       } else if (ge.k === 'jarras') {  // en jarras, mirando al suelo
         R = new V3(-0.21, 0.98, -0.02); L = new V3(0.21, 0.98, -0.02); hR = new V3(-1, 0, -0.6); hL = new V3(1, 0, -0.6);
+      } else if (ge.k === 'reposo') {  // visor: de pie, la pala colgando en la mano derecha, respirando despacio
+        const b = 0.012 * Math.sin(ge.t * 1.7), m = 0.02 * Math.sin(ge.t * 0.6);
+        R = new V3(-0.25, 0.8 + b, 0.1 + m); L = new V3(0.24, 0.79 + b, 0.02); hR = new V3(-1, 0.1, -0.3); hL = new V3(1, 0.1, -0.3);
       }
     }
     // suavizado para que no haya saltos al cambiar de postura (en el golpe, muy rápido; tras la terminación vuelve más despacio)
@@ -2531,6 +2535,7 @@ class Player {
     // pala: el mango como marca la postura del golpe; en espera, casi vertical delante del pecho
     tmpV2.subVectors(hand, elbowR).normalize().add(new V3(0, 2.8, 0)).normalize();
     if (swinging) tmpV2.copy(mango); else tmpV2.lerp(mango, this.ready).normalize();
+    if (this.gesto && this.gesto.k === 'reposo') tmpV2.copy(_vReposo).normalize();   // (en reposo, la pala colgando hacia el suelo, algo adelantada)
     // cara de la pala: la de la postura; en el impacto, hacia donde sale la bola (y el mango de través a esa dirección para
     // que le dé de lleno). Después, el giro añadido a mano, y nunca media vuelta de un fotograma al siguiente
     let nCara = aDir(K.n); if (!swinging) nCara = new V3(1, 0, 0).lerp(nCara, this.ready);
@@ -3134,6 +3139,7 @@ function whoServes() {
   return { team: (S.saqueIni + turn) % 2, idx: Math.floor(turn / 2) % 2, right: n % 2 === 0 };
 }
 // bola en la mano del que saca, delante de él (sigue al vuestro mientras se coloca)
+const _vReposo = new V3(-0.12, -1, 0.32);
 const _vBola = new V3(), _vBola2 = new V3(), _vArriba = new V3();   // (bola en la mano del modelo al sacar)
 function placeServeBall() {
   // delante del cuerpo y hacia la red (según hacia dónde está girado el que saca), a la altura de la cadera
@@ -7120,6 +7126,7 @@ function abrirVisor(p) {
     if (!V.drag) { V.rot += V.vel + (V.demo ? 0 : 0.35 * dt); V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
     if (!V.demo) pl.g.rotation.y = V.rot; else camEstudio();
     if (V.demo) demoGolpes(pl, dt);
+    else if (pl.gesto && pl.gesto.k === 'reposo') { pl.updateLegs(dt); pl.updateArms(dt); if (pl.rig) poseModelo(pl); }   // (respira)
     V.r.render(V.sc, V.cam);
     V.raf = requestAnimationFrame(paso);
   };
@@ -7136,7 +7143,8 @@ for (const ev of ['pointerup', 'pointercancel']) visor.cv.addEventListener(ev, (
 document.getElementById('vsClose').addEventListener('click', () => { if (visor.demo) saleEstudio(); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); visor.el.classList.remove('open'); cancelAnimationFrame(visor.raf); });
 // postura de espera, quieto
 function visorQuieto(pl) {
-  pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null; pl.gesto = null;
+  pl.ready = 0; pl.swingT = -1; pl.finishT = -1; pl.runAmt = 0; pl.jumpBend = 0; pl.contact = null; pl.hR = null;
+  pl.gesto = { k: 'reposo', t: 0, dur: Infinity, fijo: true };   // (postura de reposo, no la de esperar la bola)
   pl.g.position.set(0, 0, 0); pl.lastPos.set(0, 0, 0); pl.head.rotation.set(0, 0, 0);
   pl.transfer = 0; pl.twist = 0; pl.footW = null; pl.off = 0; pl.enDemo = false; pl.mangoS = null;
   pl.updateLegs(0); pl.updateArms(0);
