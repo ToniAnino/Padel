@@ -905,7 +905,8 @@ const GRADA = (() => {
     for (const s of [-1, 1]) { const l = new THREE.Mesh(ladoGeo, hormigon); l.position.z = s > 0 ? LZ / 2 : -LZ / 2 - 0.25; G.add(l); }
     const pg = new THREE.PlaneGeometry(LZ, 1.15), uv = pg.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * LZ / 21);   // (la pancarta se pintó para 21 m: se repite, no se estira)
-    const pan = new THREE.Mesh(pg, panMat); pan.rotation.y = Math.PI / 2; pan.position.set(X0 + 0.01, 0.575, 0); G.add(pan);
+    const pan = new THREE.Mesh(pg, panMat); pan.rotation.y = Math.PI / 2; pan.position.set(X0 + 0.42, 0.575, 0); G.add(pan);   // (separada de la primera fila: las piernas de los sentados delante quedan detrás)
+    const panAtras = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ color: 0x0b0d12, roughness: 0.9, side: THREE.BackSide })); panAtras.rotation.y = Math.PI / 2; panAtras.position.copy(pan.position); G.add(panAtras);
     // asientos (con pasillo en el centro)
     const sitios = [];
     for (let k = 0; k < FILAS; k++) for (let z = -LZ / 2 + 0.45; z <= LZ / 2 - 0.4; z += 0.55) if (Math.abs(z) > 0.6) sitios.push([xFila(k) + 0.08, top(k), z, k]);
@@ -942,43 +943,94 @@ const GRADA = (() => {
   let p3d = null, p3dPedido = false;
   const pubMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
   pubMat.onBeforeCompile = sh => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float zona;\nattribute vec3 iPiel, iCam, iPan, iPelo;\nvarying vec3 vPub;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPub = zona < .5 ? iPiel : zona < 1.5 ? iCam : zona < 2.5 ? iPan : zona < 3.5 ? iPelo : zona < 4.5 ? vec3(.86) : zona < 5.5 ? vec3(.8) : iPiel * .5;');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float zona;\nattribute vec3 iPiel, iCam, iPan, iPelo, iVar;\nvarying vec3 vPub;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPub = zona < .5 ? iPiel : zona < 1.5 ? iCam : zona < 2.5 ? iPan : zona < 3.5 ? iPelo : zona < 4.5 ? vec3(.86) : zona < 5.5 ? vec3(.8) : zona < 6.5 ? iPiel * .5 : zona < 7.5 ? mix(iPiel, iPan, iVar.x) : mix(iPiel, iCam, iVar.y);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPub;')
       .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= vPub;');
   };
-  function horneaPublico(F, pose, Simplifica, mergeVertices) {
+  // posturas (el modelo mira a +z, su izquierda en +x; [hueso, hijo, dirección, ¿uno solo?]); las de pie son las de
+  // celebrar
+  const POSTURAS = {
+    regazo:  [['thigh', 'calf', [.12, -.12, 1]], ['calf', 'foot', [.04, -1, .1]], ['upperarm', 'lowerarm', [.2, -1, .28]], ['lowerarm', 'hand', [-.2, -.3, 1]]],
+    cruzado: [['thigh', 'calf', [.1, -.1, 1]], ['calf', 'foot', [.02, -1, .14]], ['upperarm', 'lowerarm', [.16, -.95, .26]], ['lowerarm', 'hand', [-1, .12, .3]]],
+    codos:   [['spine_01', 'neck_01', [0, .82, .57], 1], ['thigh', 'calf', [.16, -.12, 1]], ['calf', 'foot', [.06, -1, .02]], ['upperarm', 'lowerarm', [.12, -.62, .78]], ['lowerarm', 'hand', [-.25, .45, .85]]],
+    arriba:  [['upperarm', 'lowerarm', [.32, .94, .08]], ['lowerarm', 'hand', [.12, 1, .12]]],
+    aplaude: [['upperarm', 'lowerarm', [.18, -.35, .92]], ['lowerarm', 'hand', [-.62, .55, .55]]],
+  };
+  const SENTADAS = ['regazo', 'cruzado', 'codos'], DE_PIE = ['arriba', 'aplaude'];
+  // la figura se simplifica una vez, en reposo, guardando en cada vértice cuál era en el modelo (en uv.y; el
+  // simplificador quita vértices pero no mueve los que quedan); luego se pone en cada postura con su esqueleto
+  function basePublico(F, Simplifica, mergeVertices) {
     const sc = MOD.SU.clone(F.sc); sc.updateMatrixWorld(true);
     let sk = null; const B = {}; sc.traverse(o => { if (o.isSkinnedMesh) sk = o; if (o.isBone) B[o.name] = o; });
-    const POSE = pose === 'sentado' ? [['thigh', [.12, -.12, 1]], ['calf', [.04, -1, .1]], ['upperarm', [.2, -1, .28]], ['lowerarm', [-.2, -.3, 1]]]
-      : [['upperarm', [.32, .94, .08]], ['lowerarm', [.12, 1, .12]]];
-    const HIJO = { thigh: 'calf', calf: 'foot', upperarm: 'lowerarm', lowerarm: 'hand' }, a = new V3(), b = new V3(), qq = new THREE.Quaternion(), pq = new THREE.Quaternion();
-    for (const [n, d] of POSE) for (const l of ['l', 'r']) {   // cada hueso apuntando hacia donde toca (el modelo mira a +z, su izquierda en +x)
-      const hb = B[n + '_' + l], hj = B[HIJO[n] + '_' + l]; if (!hb || !hj) continue;
-      sc.updateMatrixWorld(true); hb.getWorldPosition(a); hj.getWorldPosition(b);
-      const s = l === 'l' ? 1 : -1; qq.setFromUnitVectors(b.sub(a).normalize(), new V3(d[0] * s, d[1], d[2]).normalize());
-      const nw = qq.multiply(hb.getWorldQuaternion(new THREE.Quaternion())); hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(nw));
-    }
-    sc.updateMatrixWorld(true); sk.skeleton.update();
+    sk.skeleton.update();
     const g0 = sk.geometry, P0 = g0.attributes.position, UV = g0.attributes.uv, n = P0.count, T = F.tinte, v = new V3();
-    // (códigos de las zonas del tinte, R de TINTE; aquí R es el radio de la bola): 1 piel, 2 pelo, 3-4 camiseta, 5-6 calzona, 7 blanco, 8 zapatilla, 9 cinta, 10 muñequera, 11 ojos, 12 calzona, 13 camiseta, 14 calcetín, 15 suela
-    const ZN = [0, 0, 3, 1, 1, 2, 2, 1, 4, 3, 0, 6, 2, 1, 5, 4];
+    // (códigos de las zonas del tinte, R de TINTE; aquí R es el radio de la bola): 1 piel, 2 pelo, 3-4 camiseta, 5-6
+    // calzona, 7 blanco, 8 zapatilla, 9 cinta, 10 muñequera, 11 ojos, 12 calzona, 13 camiseta, 14 calcetín, 15 suela
+    const ZN = [0, 0, 3, 1, 1, 2, 2, 1, 4, 3, 0, 0, 2, 1, 5, 4];   // (los ojos, como piel: al simplificar quedaban manchas oscuras en la cara)
     const out = new Float32Array(n * 3), zuv = new Float32Array(n * 2);
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(P0, i); sk.applyBoneTransform(i, v); v.applyMatrix4(sk.matrixWorld); out.set([v.x, v.y, v.z], 3 * i);
       const px = Math.min(T.W - 1, Math.max(0, Math.floor(UV.getX(i) * T.W))), py = Math.min(T.H - 1, Math.max(0, Math.floor((1 - UV.getY(i)) * T.H)));
-      zuv[2 * i] = (ZN[T.reg[py * T.W + px]] ?? 0) / 8;   // (la zona va en uv: el simplificador de three.js no lleva bien los colores)
+      zuv[2 * i] = ZN[T.reg[py * T.W + px]] ?? 0; zuv[2 * i + 1] = i;   // (zona y vértice del modelo, en uv: el simplificador de three.js no lleva bien los colores)
     }
     let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(out, 3)); g.setAttribute('uv', new THREE.BufferAttribute(zuv, 2)); g.setIndex(g0.index.clone());
     const nv = mergeVertices(g).attributes.position.count;
-    g = new Simplifica().modify(g, Math.floor(nv * (ORDENADOR ? 0.72 : 0.84)));
-    g.computeVertexNormals(); g = g.toNonIndexed();
-    const zu = g.attributes.uv, zona = new Float32Array(zu.count);   // una zona por triángulo (la que tengan más vértices)
-    for (let i = 0; i < zu.count; i += 3) { const z = [0, 1, 2].map(j => Math.round(zu.getX(i + j) * 8)), m = z[0] === z[1] || z[0] === z[2] ? z[0] : z[1]; zona[i] = zona[i + 1] = zona[i + 2] = m; }
-    g.deleteAttribute('uv'); g.setAttribute('zona', new THREE.BufferAttribute(zona, 1));
+    g = new Simplifica().modify(g, Math.floor(nv * (ORDENADOR ? 0.62 : 0.82))).toNonIndexed();
+    // una zona por triángulo; la piel de piernas (7) y brazos (8) aparte, para el pantalón largo y la manga larga; en el
+    // escote, lo que tenga algo de camiseta por debajo del cuello es camiseta (si no, salía en picos, como una estrella)
+    const zu = g.attributes.uv, nT = zu.count / 3, zona = new Float32Array(zu.count), orig = new Uint32Array(zu.count);
+    // (el vértice del modelo se busca por su posición, que el simplificador no cambia; lo que lleva en uv lo mezcla)
+    const clave = (x, y, z) => Math.round(x * 1e5) + "," + Math.round(y * 1e5) + "," + Math.round(z * 1e5), porPos = new Map();
+    for (let i = 0; i < n; i++) { const k = clave(out[3 * i], out[3 * i + 1], out[3 * i + 2]); if (!porPos.has(k)) porPos.set(k, i); }
+    let fallos = 0; const PGs = g.attributes.position, deVert = j => {
+      const x = PGs.getX(j), y = PGs.getY(j), z = PGs.getZ(j), k = porPos.get(clave(x, y, z)); if (k !== undefined) return k;
+      fallos++; let best = 0, bd = Infinity;   // (si no está exacto, el más cercano)
+      for (let i = 0; i < n; i++) { const d = (out[3 * i] - x) ** 2 + (out[3 * i + 1] - y) ** 2 + (out[3 * i + 2] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+      porPos.set(clave(x, y, z), best); return best;
+    };
+    const neck = B.neck_01.getWorldPosition(new V3()).y - 0.035, SI = g0.attributes.skinIndex, SW = g0.attributes.skinWeight, huesos = sk.skeleton.bones;
+    const hueso = i => { let m = 0, w = -1; for (let c = 0; c < 4; c++) { const ww = SW.getComponent(i, c); if (ww > w) { w = ww; m = SI.getComponent(i, c); } } return huesos[m].name; };
+    const PG = g.attributes.position, HD = B.Head.getWorldPosition(new V3()), fem = F.nombre === "chica";
+    let yTop = -9; for (let i = 0; i < n; i++) if (out[3 * i + 1] > yTop) yTop = out[3 * i + 1];
+    const ht = yTop - HD.y;   // (cabeza: pelo arriba y detrás, cara y orejas piel, por la forma; el borde del pelo de la textura salía a manchas)
+    const esPelo = (x, y, z) => { const dy = y - HD.y, dz = z - HD.z; return dy > 0.7 * ht || (dz < -0.02 && dy > 0.25 * ht) || (fem && dz < -0.06 && dy > -0.1) || (Math.abs(x - HD.x) > 0.075 && dy > 0.5 * ht && dz < 0.03); };
+    for (let t = 0; t < nT; t++) {
+      const o = [0, 1, 2].map(j => deVert(3 * t + j)), z = o.map(i => zuv[2 * i]);
+      const xC = (PG.getX(3 * t) + PG.getX(3 * t + 1) + PG.getX(3 * t + 2)) / 3, yC = (PG.getY(3 * t) + PG.getY(3 * t + 1) + PG.getY(3 * t + 2)) / 3, zC = (PG.getZ(3 * t) + PG.getZ(3 * t + 1) + PG.getZ(3 * t + 2)) / 3;
+      // (la zona, la del punto del modelo más cercano al centro del triángulo: con las esquinas, los triángulos grandes
+      // del cuello al pecho salían de piel, en picos como una estrella)
+      let best = 0, bd = Infinity; for (let i = 0; i < n; i++) { const d = (out[3 * i] - xC) ** 2 + (out[3 * i + 1] - yC) ** 2 + (out[3 * i + 2] - zC) ** 2; if (d < bd) { bd = d; best = i; } }
+      let m = zuv[2 * best];
+      if (z.includes(1) && z.includes(0) && yC < neck && yC > neck - 0.25) m = 1;
+      if ((m === 0 || m === 3) && yC > HD.y) m = esPelo(xC, yC, zC) ? 3 : 0;
+      if (m === 0) { const h = hueso(best); if (/thigh|calf/.test(h)) m = 7; else if (/upperarm|lowerarm/.test(h)) m = 8; }
+      for (let j = 0; j < 3; j++) { zona[3 * t + j] = m; orig[3 * t + j] = o[j]; }
+    }
+    return { sc, sk, B, zona, orig, P0 };
+  }
+  function posturaPublico(base, nombre) {
+    const { sc, sk, B, zona, orig, P0 } = base, a = new V3(), b = new V3(), qq = new THREE.Quaternion(), pq = new THREE.Quaternion();
+    for (const bn of Object.values(B)) if (bn.userData.q0) bn.quaternion.copy(bn.userData.q0); else bn.userData.q0 = bn.quaternion.clone();   // (de reposo cada vez)
+    for (const [n, h, d, uno] of POSTURAS[nombre]) for (const l of uno ? [''] : ['_l', '_r']) {
+      const hb = B[n + l], hj = B[h + l]; if (!hb || !hj) continue;
+      sc.updateMatrixWorld(true); hb.getWorldPosition(a); hj.getWorldPosition(b);
+      const s = l === '_r' ? -1 : 1; qq.setFromUnitVectors(b.sub(a).normalize(), new V3(d[0] * s, d[1], d[2]).normalize());
+      const nw = qq.multiply(hb.getWorldQuaternion(new THREE.Quaternion())); hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(nw));
+    }
+    sc.updateMatrixWorld(true); sk.skeleton.update();
+    // (con índice, para que la luz salga suave; luego un vértice por esquina, para la zona de cada triángulo)
+    const uniq = new Map(), idx = [], pl = [], v = new V3();
+    for (const o of orig) {
+      let k = uniq.get(o);
+      if (k === undefined) { k = uniq.size; uniq.set(o, k); v.fromBufferAttribute(P0, o); sk.applyBoneTransform(o, v); v.applyMatrix4(sk.matrixWorld); pl.push(v.x, v.y, v.z); }
+      idx.push(k);
+    }
+    let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pl, 3)); g.setIndex(idx);
+    g.computeVertexNormals(); g = g.toNonIndexed(); g.setAttribute('zona', new THREE.BufferAttribute(zona, 1));
     // origen: sentado, en las caderas; de pie, en el suelo bajo ellas; y mirando a +x (hacia la pista en la grada)
     B.pelvis.getWorldPosition(a); g.computeBoundingBox();
-    g.translate(-a.x, pose === 'sentado' ? -a.y : -g.boundingBox.min.y, -a.z); g.rotateY(Math.PI / 2);
+    g.translate(-a.x, SENTADAS.includes(nombre) ? -a.y : -g.boundingBox.min.y, -a.z); g.rotateY(Math.PI / 2);
     return g;
   }
   async function preparaP3D() {
@@ -988,26 +1040,40 @@ const GRADA = (() => {
     if (!(MOD.src.c && MOD.src.c.tinte && MOD.src.f && MOD.src.f.tinte)) { p3dPedido = false; return; }
     const [{ SimplifyModifier }, { mergeVertices }] = await Promise.all([import('three/addons/modifiers/SimplifyModifier.js'), import('three/addons/utils/BufferGeometryUtils.js')]);
     const geo = {};
-    for (const [sx, F] of [['h', MOD.src.c], ['m', MOD.src.f]]) for (const pose of ['sentado', 'pie']) geo[sx + pose] = horneaPublico(F, pose, SimplifyModifier, mergeVertices);
+    for (const [sx, F] of [['h', MOD.src.c], ['m', MOD.src.f]]) {
+      const base = basePublico(F, SimplifyModifier, mergeVertices);
+      for (const ps of [...SENTADAS, ...DE_PIE]) { geo[sx + ps] = posturaPublico(base, ps); await new Promise(r => setTimeout(r, 0)); }
+    }
     const PELOS = [0x1a1410, 0x2b1d14, 0x4a3020, 0x6b4a2a, 0xb08a4a, 0x8a8a8a, 0x111111];
-    const ROPA3 = [...ROPA, 0x2e7d32, 0x0f766e, 0x9f1239, 0x1e40af, 0xf4f4f4, 0x111827];
+    const ROPA3 = [...ROPA, 0x2e7d32, 0x0f766e, 0x9f1239, 0x1e40af, 0xf4f4f4, 0x111827, 0x7f1d1d, 0x365314];
+    const PANT3 = [...PANT, 0x1e3a8a, 0x78716c, 0x0c0a09, 0x6b7280];
     const res = [];
     for (const T of tribunas) {
       const grupos = {};
-      for (const p of T.gente) (grupos[p.sx ??= Math.random() < 0.5 ? 'h' : 'm'] ??= []).push(p);
+      for (const p of T.gente) {
+        p.sx ??= Math.random() < 0.5 ? 'h' : 'm';
+        p.ps = SENTADAS[Math.random() < 0.5 ? 0 : Math.random() < 0.6 ? 1 : 2]; p.pp = DE_PIE[Math.random() < 0.6 ? 0 : 1];
+        (grupos[p.sx] ??= []).push(p);
+      }
       const ims = [];
       for (const sx in grupos) {
-        const L = grupos[sx], N = L.length, cols = { iPiel: new Float32Array(3 * N), iCam: new Float32Array(3 * N), iPan: new Float32Array(3 * N), iPelo: new Float32Array(3 * N) };
+        const L = grupos[sx], N = L.length, cols = { iPiel: new Float32Array(3 * N), iCam: new Float32Array(3 * N), iPan: new Float32Array(3 * N), iPelo: new Float32Array(3 * N), iVar: new Float32Array(3 * N) };
         L.forEach((p, i) => {
           const pon3 = (k, h) => { col.set(h); cols[k].set([col.r, col.g, col.b], 3 * i); };
           pon3('iPiel', PIEL[Math.random() * PIEL.length | 0]); pon3('iCam', ROPA3[Math.random() * ROPA3.length | 0]);
-          pon3('iPan', PANT[Math.random() * PANT.length | 0]); pon3('iPelo', PELOS[Math.random() * PELOS.length | 0]);
+          pon3('iPan', PANT3[Math.random() * PANT3.length | 0]); pon3('iPelo', PELOS[Math.random() * PELOS.length | 0]);
+          cols.iVar.set([Math.random() < 0.45 ? 1 : 0, Math.random() < 0.3 ? 1 : 0, 0], 3 * i);   // pantalón largo, manga larga
           p.yaw = (Math.random() - 0.5) * 0.35; p.k3 = i;
         });
-        const hace = pose => { const g = geo[sx + pose].clone(); for (const k in cols) g.setAttribute(k, new THREE.InstancedBufferAttribute(cols[k], 3)); const im = new THREE.InstancedMesh(g, pubMat, N); im.frustumCulled = false; im.castShadow = false; T.G.add(im); return im; };
-        const sent = hace('sentado'), pie = hace('pie');
-        L.forEach(p => { p.im3 = [sent, pie]; });
-        ims.push(sent, pie);
+        // una malla por postura, solo con los que la usan (cada uno está en su postura sentada y en su postura de pie)
+        for (const ps of [...SENTADAS, ...DE_PIE]) {
+          const sent = SENTADAS.includes(ps), quien = L.filter(p => (sent ? p.ps : p.pp) === ps); if (!quien.length) continue;
+          const g = geo[sx + ps].clone();
+          for (const k in cols) { const a = new Float32Array(3 * quien.length); quien.forEach((p, j) => a.set(cols[k].subarray(3 * p.k3, 3 * p.k3 + 3), 3 * j)); g.setAttribute(k, new THREE.InstancedBufferAttribute(a, 3)); }
+          const im = new THREE.InstancedMesh(g, pubMat, quien.length); im.frustumCulled = false; im.castShadow = false;
+          quien.forEach((p, j) => { im.setMatrixAt(j, CERO); if (sent) { p.imS = im; p.kS = j; } else { p.imP = im; p.kP = j; } });
+          T.G.add(im); ims.push(im);
+        }
       }
       res.push(ims);
     }
@@ -1024,13 +1090,13 @@ const GRADA = (() => {
     if (p3d) {
       for (const { gente } of tribunas) for (const p of gente) {
         const tc = reloj - p.t0, cel = tc > 0 && tc < p.dur ? Math.min(1, tc / 0.25, (p.dur - tc) / 0.35) * p.sube : 0;
-        const [sent, pie] = p.im3;
+        const sent = p.imS, pie = p.imP;
         _qy.setFromAxisAngle(EY, p.yaw + Math.sin(reloj * p.vel + p.fase) * 0.04);
         if (cel > 0.5) {   // de pie, delante del asiento, botando un poco
           const bote = Math.max(0, Math.sin(tc * 9 + p.fase)) * 0.08;
-          sent.setMatrixAt(p.k3, CERO); pie.setMatrixAt(p.k3, m4.compose(_p.set(p.x + 0.22, p.y - 0.3 + bote, p.z), _qy, _s));
+          sent.setMatrixAt(p.kS, CERO); pie.setMatrixAt(p.kP, m4.compose(_p.set(p.x + 0.22, p.y - 0.3 + bote, p.z), _qy, _s));
         } else {
-          pie.setMatrixAt(p.k3, CERO); sent.setMatrixAt(p.k3, m4.compose(_p.set(p.x - 0.04, p.y + 0.11, p.z), _qy, _s));
+          pie.setMatrixAt(p.kP, CERO); sent.setMatrixAt(p.kS, m4.compose(_p.set(p.x - 0.04, p.y + 0.11, p.z), _qy, _s));
         }
       }
       for (const ims of p3d) for (const im of ims) im.instanceMatrix.needsUpdate = true;
@@ -1062,7 +1128,7 @@ const GRADA = (() => {
   // al acabar un punto: la mayoría se levanta un momento (cada uno a su tiempo)
   const gente = tribunas.flatMap(t => t.gente);
   function celebra() { if (hay) sfx('aplauso', 10, null); for (const p of gente) { p.t0 = reloj + Math.random() * 0.4; p.dur = 1.2 + Math.random() * 1.0; p.sube = Math.random() < 0.7 ? 1 : 0.15; } }
-  const API = { pinta, actualiza, celebra, gente, forzar: false, hormigon, panTex, tribunas, mat, asientoMat, pubMat, horneaPublico };
+  const API = { pinta, actualiza, celebra, gente, forzar: false, hormigon, panTex, tribunas, mat, asientoMat, pubMat };
   return API;
 })();
 // cielo de anochecer (degradado) y niebla a lo lejos, del mismo color que el horizonte
