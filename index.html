@@ -1485,7 +1485,17 @@ const PALA_LOOK = {
   pProR:  { f: 'r', c: ['#f8fafc', '#2563eb', '#1e293b', '#1e293b'] },
   pProD:  { f: 'd', c: ['#111827', '#ef4444', '#000000', '#ef4444'] },
   pElite: { f: 'l', c: ['#26292e', '#fde047', '#0a0a0a', '#111111'], carbono: 1 },
+  // básicas (sin pala comprada): cada jugador la suya, según su id (palaBasica)
+  pB0: { f: 'r', c: ['#f8fafc', '#ef4444', '#1f2937', '#111827'] },
+  pB1: { f: 'l', c: ['#0f172a', '#22d3ee', '#020617', '#f1f5f9'] },
+  pB2: { f: 'r', c: ['#facc15', '#111827', '#1f2937', '#111827'] },
+  pB3: { f: 'd', c: ['#1d4ed8', '#f8fafc', '#0b1220', '#f8fafc'] },
+  pB4: { f: 'l', c: ['#f1f5f9', '#16a34a', '#14532d', '#14532d'] },
+  pB5: { f: 'r', c: ['#7c3aed', '#fde047', '#1e1b4b', '#f5f3ff'] },
+  pB6: { f: 'l', c: ['#e2e8f0', '#f97316', '#334155', '#334155'] },
+  pB7: { f: 'd', c: ['#171717', '#a3e635', '#000000', '#a3e635'] },
 };
+const palaBasica = p => { let h = 7; for (const ch of String(p.id ?? p.n ?? '')) h = (h * 37 + ch.charCodeAt(0)) | 0; return { id: 'pB' + (Math.abs(h) % 8) }; };
 const PALA_CABEZA = {
   r: 'M30 4C49 4 56 18 56 37C56 57 44 70 30 72C16 70 4 57 4 37C4 18 11 4 30 4Z',
   l: 'M30 4C47 4 56 14 56 31C56 52 43 67 30 72C17 67 4 52 4 31C4 14 13 4 30 4Z',
@@ -1847,7 +1857,8 @@ class Player {
     for (const m of [...this.legs, this.torso, this.head, ...this.arms, ...this.shoulders, this.yoke, ...cuerpo]) m.material = this.simpleMat;
     for (const m of extras) m.visible = false;
     // pala: la que lleva (en modo detallado); sin pala comprada, o en modo sencillo, la de color del equipo
-    const gear = detailed && p ? materialDe(p) : [], pala = gear.find(x => x.tipo === 'pala'), zap = gear.find(x => x.tipo === 'zap');
+    const gear = detailed && p ? materialDe(p) : [], zap = gear.find(x => x.tipo === 'zap');
+    const pala = gear.find(x => x.tipo === 'pala') || (detailed && p ? palaBasica(p) : null);   // (sin comprada, una básica con dibujo)
     const conPala = !!(pala && PALA_LOOK[pala.id]);
     if (conPala) { const m = palaMats(pala); this.pHead.geometry = m.geo; this.pHead.material = m.face; this.pHandle.material = m.grip; }
     else { this.pFace.material = this.pMat; this.pHandle.material = this.pMat; }
@@ -5613,6 +5624,68 @@ function preparaTinte(mesh, nombre = 'chica') {
     }
     return _LP;
   }
+  // luz de la piel a gran escala (media de los píxeles de piel en una ventana de ~1/64 de la textura, en dos pasadas):
+  // las manchas amplias pintadas en la textura (sombra de barba en mejillas y mandíbula, la frente) van en ella y se
+  // suavizan; el detalle fino (cejas, labios, contorno de los ojos) es el cociente con ella y se conserva
+  let _LS = null;
+  function luzPiel() {
+    if (_LS) return _LS;
+    const RB = Math.max(3, Math.round(W / 128)), L = new Float32Array(W * H), M = new Float32Array(W * H);
+    for (let k = 0; k < W * H; k++) if (reg[k] === R.PIEL) { const j = 4 * k; L[k] = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2]; M[k] = 1; }
+    const pasa = (src, dst, horiz) => {   // media móvil en una dirección
+      const n = horiz ? W : H, m = horiz ? H : W;
+      for (let a = 0; a < m; a++) {
+        let s = 0; const idx = b => horiz ? a * W + b : b * W + a;
+        for (let b = 0; b < Math.min(RB, n); b++) s += src[idx(b)];
+        for (let b = 0; b < n; b++) {
+          if (b + RB < n) s += src[idx(b + RB)];
+          if (b - RB - 1 >= 0) s -= src[idx(b - RB - 1)];
+          dst[idx(b)] = s;
+        }
+      }
+    };
+    const t1 = new Float32Array(W * H), t2 = new Float32Array(W * H), s1 = new Float32Array(W * H), s2 = new Float32Array(W * H);
+    pasa(L, t1, true); pasa(t1, t2, false); pasa(M, s1, true); pasa(s1, s2, false);
+    _LS = new Float32Array(W * H);
+    for (let k = 0; k < W * H; k++) _LS[k] = M[k] ? t2[k] / Math.max(s2[k], 1) : 0;
+    return _LS;
+  }
+  // medidas de cada pie (los píxeles de zapatilla, por el lado de x): centro, talón y puntera, suelo y, por tramos del
+  // largo, la altura del empeine; con ellas se dibujan cordones, franja y talón
+  let _PIE = null;
+  function pies() {
+    if (_PIE) return _PIE;
+    const NB = 24, P = [-1, 1].map(() => ({ n: 0, sx: 0, z0: 9, z1: -9, y0: 9, y1: -9, top: new Float32Array(NB).fill(-9), NB }));
+    const lado = x => x < 0 ? 0 : 1;
+    for (let k = 0; k < W * H; k++) {
+      if (reg[k] !== R.ZAP) continue;
+      const x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2], f = P[lado(x)];
+      f.n++; f.sx += x; f.z0 = Math.min(f.z0, z); f.z1 = Math.max(f.z1, z); f.y0 = Math.min(f.y0, y); f.y1 = Math.max(f.y1, y);
+    }
+    for (const f of P) f.xc = f.sx / Math.max(f.n, 1);
+    for (let k = 0; k < W * H; k++) {
+      if (reg[k] !== R.ZAP) continue;
+      const x = pos[3 * k], f = P[lado(x)], b = Math.min(NB - 1, Math.max(0, Math.floor((pos[3 * k + 2] - f.z0) / (f.z1 - f.z0) * NB)));
+      f.top[b] = Math.max(f.top[b], pos[3 * k + 1]);
+    }
+    return _PIE = { P, lado };
+  }
+  // color de un píxel de zapatilla con el dibujo: cordones en el empeine, franja en diagonal por los lados y talón
+  function colorZapa(k, zd) {
+    const { P, lado } = pies(), x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2], f = P[lado(x)];
+    const L = f.z1 - f.z0, t = (z - f.z0) / L, h = (y - f.y0) / (f.y1 - f.y0), dx = Math.abs(x - f.xc);
+    const b = Math.min(f.NB - 1, Math.max(0, Math.floor(t * f.NB))), arriba = y > f.top[b] - .0045;
+    if (arriba && t > .42 && t < .74 && dx < .0085) {   // lengüeta con los cordones cruzados
+      const ph = ((z - f.z0) / .0085) % 1;
+      return ph < .42 ? zd.cordon : zd.lengueta;
+    }
+    if (t < .13 && h > .42) return zd.acento;          // talón
+    if (!arriba && dx > .006) {                         // franja por los lados, subiendo hacia el talón
+      const c = .3 + .42 * (1 - t);
+      if (t > .2 && t < .66 && h < .8 && Math.abs(h - c) < .085) return zd.acento;
+    }
+    return zd.base;
+  }
   // o: { camiseta, acento, calzona, calzonaAcento, piel, pelo, zapatillas, cinta, munequeras, ojos }
   function aplica(o = {}) {
     const im = ox.createImageData(W, H), S = im.data;
@@ -5626,6 +5699,12 @@ function preparaTinte(mesh, nombre = 'chica') {
     for (const r in prop) if (prop[r]) { const n = hex(prop[r]), m = refCol[R.PIEL] || n; Pp[r] = n.map((v, i) => (o.pielK ?? 1) * v / Math.max(m[i], 1)); }
     // (piel: el tono elegido y la luz de referencia, la del color medio de la piel original)
     const PN = o.piel ? hex(o.piel).map(v => v * (o.pielK ?? 1)) : null, rc = refCol[R.PIEL], refL = rc ? .299 * rc[0] + .587 * rc[1] + .114 * rc[2] : 0;
+    const LS = PN ? luzPiel() : null;
+    // dibujo de las zapatillas (o.zapaDibujo: { acento, cordones })
+    const ZD = o.zapaDibujo && T[R.ZAP] ? (() => {
+      const base = T[R.ZAP], osc = base.map(v => v * .8);
+      return { base, acento: hex(o.zapaDibujo.acento), cordon: hex(o.zapaDibujo.cordones), lengueta: osc };
+    })() : null;
     // estampados: la camiseta (y la calzona) se dibujan en 3D con un patrón y dos colores;
     // la sombra sale de la luminancia normalizada de cada zona, así desaparecen las franjas originales
     const dib = o.dibujo, dibC = o.dibujoCalzona;
@@ -5660,7 +5739,7 @@ function preparaTinte(mesh, nombre = 'chica') {
         let f = r == R.PELO ? fPelo(k) : Math.min(L / ref[r], 1.6);
         // zapatillas: la textura trae una sombra fuerte en un costado; en blanco salía gris oscuro
         if (r == R.ZAP || r == R.SUELA) f = Math.max(.72, 1 + (f - 1) * .4);
-        const c = T[r];
+        const c = r == R.ZAP && ZD ? colorZapa(k, ZD) : T[r];
         S[j] = Math.min(255, c[0] * f); S[j + 1] = Math.min(255, c[1] * f); S[j + 2] = Math.min(255, c[2] * f);
       } else if (Pp[r]) {
         let p = Pp[r];
@@ -5671,7 +5750,12 @@ function preparaTinte(mesh, nombre = 'chica') {
         if (PN && refL) {
           const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2], q = L / refL;
           if (q > .05) {
-            const q2 = r == R.PIEL ? (q < 1 ? 1 - (1 - q) * .5 : 1 + (q - 1) * .45) : q, s = q2 / q, w = r == R.PIEL ? .85 : .72;
+            let q2 = q;
+            if (r == R.PIEL) {   // luz amplia muy suavizada (sin manchas) por el detalle fino
+              const Lb = LS[k] || L, qb = Lb / refL, qb2 = qb < 1 ? 1 - (1 - qb) * .3 : 1 + (qb - 1) * .4;
+              q2 = qb2 * Math.min(1.35, Math.max(.45, L / Math.max(Lb, 1)));
+            }
+            const s = q2 / q, w = r == R.PIEL ? .85 : .72;
             for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, D[j + i] * p[i] * s * (1 - w) + PN[i] * q2 * w);
             continue;
           }
@@ -6272,7 +6356,16 @@ function texChico(p, F = MOD.src.c) {
   const ac = lum > 0.6 ? '#1f2937' : '#f5f5f5';
   const mc = marcaDe(p), letra = { fuente: mc.f, estilo: mc.e || '' };
   // (pielK: la textura ya trae su luz; sin rebajarla, con la luz de la pista la piel sale casi blanca)
+  // zapatillas: cordones blancos o negros (lo que contraste), franja y talón del adorno de las compradas o de un color
+  // que contraste (según el jugador), y suela blanca o la de las compradas
+  const zc = new THREE.Color(zl ? zl.c[0] : p.zap), zLum = 0.299 * zc.r + 0.587 * zc.g + 0.114 * zc.b;
+  const lumDe = h => { const c = new THREE.Color(h); return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+  const ACENTOS = ['#111827', '#1d4ed8', '#dc2626', '#f8fafc', '#16a34a', '#f97316', '#7c3aed'];
+  let iA = 0; for (const ch of String(p.id ?? p.n ?? '')) iA = (iA * 31 + ch.charCodeAt(0)) | 0; iA = Math.abs(iA);
+  let zAc = zl ? zl.c[1] : ACENTOS[iA % ACENTOS.length];
+  for (let i = 1; !zl && Math.abs(lumDe(zAc) - zLum) < 0.22 && i < ACENTOS.length; i++) zAc = ACENTOS[(iA + i) % ACENTOS.length];
   const o = { piel: SKIN_TONES[p.piel], pielK: 0.78, pelo: p.pc, zapatillas: zl ? zl.c[0] : p.zap, calcetines: '#f2f2f2',
+    zapaDibujo: { acento: zAc, cordones: zLum > 0.5 ? '#111827' : '#f8fafc' }, suela: zl ? zl.c[2] : '#f4f4f4',
     disenoCamiseta: { base: p.cam, capas: [{ tipo: 'lateral', color: ac, ancho: 0.14 }, { tipo: 'ribetes', color: ac, solo: 'cuello' },
       { tipo: 'texto', texto: mc.t, color: ac, lado: 'delante', cx: 0.045, cy: 0.207, ancho: 0.048, alto: 0.016, ...letra },
       { ...TINTE.ESPALDA(mc.t, ac), ancho: 0.12, alto: 0.03, ...letra }] },
@@ -6352,11 +6445,12 @@ function ajustaPiezas(pl) {
   if (ch) { pl.hairExtra.visible = false; pl.skirt.visible = false; }
   if (ch && pl.rig.gafas) { pl.rig.gafas.visible = !!(pl.prof && pl.prof.acc && pl.prof.acc.gafas); pl.glasses.visible = false; }   // las suyas, no la caja del muñeco
   if (ch && pl.rig.visera) {   // gorra o visera: las suyas; las piezas del muñeco flotaban delante de la frente
-    const a = (pl.prof && pl.prof.acc) || {}, col = a.gorra || a.visera;
-    pl.rig.visera.visible = !!col; pl.rig.copa.visible = !!a.gorra;
+    // (a los hombres, sin gorra: con su pelo la copa sale abultada por delante)
+    const a = (pl.prof && pl.prof.acc) || {}, gorra = a.gorra && !(pl.prof && pl.prof.s === 'h'), col = gorra ? a.gorra : a.visera;
+    pl.rig.visera.visible = !!col; pl.rig.copa.visible = !!gorra;
     if (col) pl.rig.visera.material = pl.rig.copa.material = (pl.rig.cinta && pl.rig.cinta.visible) ? pl.rig.cinta.material : dobleCara(pl.brim.material);   // (del color de su cinta)
     pl.brim.visible = pl.cap.visible = false;
-    if (a.gorra && pl.rig.cinta) pl.rig.cinta.visible = false;   // (con gorra no se ve la cinta)
+    if (gorra && pl.rig.cinta) pl.rig.cinta.visible = false;   // (con gorra no se ve la cinta)
   }
   if (ch && pl.headband.visible) {   // la cinta del muñeco no le encaja: se usa la suya, con el mismo color
     const c = pl.rig.cinta; if (c) { c.visible = true; c.material = dobleCara(pl.headband.material); }
