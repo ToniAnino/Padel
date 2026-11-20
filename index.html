@@ -251,8 +251,12 @@
   #ladder .retar.sel{background:#fff}
   #ladder #escReset{padding:6px 10px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   #ladder .ltit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin:4px 0 6px}
-  #ladder .cruce{margin-bottom:6px}
+  #ladder .cruce{margin-bottom:8px}
   #ladder .cruce .lrow{margin-bottom:2px}
+  #ladder .cruce{padding:5px 6px;border:1px solid rgba(255,255,255,.12);border-radius:10px}
+  #ladder .cruce.vuestro{padding:6px;border:1px solid #fde047;border-radius:10px;background:rgba(253,224,71,.06)}
+  #ladder .cruce .vs{font-size:10px;font-weight:800;letter-spacing:2px;opacity:.55;text-align:center;margin:1px 0 3px}
+  #ladder .torSub{font-size:12px;opacity:.7;margin:-2px 0 8px}
   .tor{padding:8px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,.05);font-size:12px}
   .tor .tn{font-weight:800;font-size:14px}
   .tor .tp{float:right;font-weight:900;color:#fde047}
@@ -5080,7 +5084,7 @@ function torOnMatchEnd(ganado) {
 }
 function paintTorneo(el) {
   const fila = (e, cls) => `<div class="lrow${e === 'US' ? ' us' : ''}${cls || ''}">${e === 'US' ? '' : `<img src="${portrait(byId(e[0]))}" alt=""><img src="${portrait(byId(e[1]))}" alt="">`}<span class="lnm">${e === 'US' ? '<b>VOSOTROS</b> · ' + CFG.us.map(id => byId(id).n.split(' ')[0]).join(' y ') : nombresPar(e)}</span><span class="lmed">${Math.round(medEntrada(e))}</span></div>`;
-  const cab = `<div class="ltit">DINERO: ${euros(BOLSA.dinero)}</div>`;
+  const cab = '';   // (el dinero ya se ve en la pestaña Tienda)
   if (!TOR) {
     el.innerHTML = cab + '<div class="ltit">' + ico('copa') + 'TORNEOS</div>' + TORNEOS.map(t => {
       const no = noApuntar(t);
@@ -5091,10 +5095,15 @@ function paintTorneo(el) {
     }).join('');
     return;
   }
-  const t = torDe(TOR.id);
-  el.innerHTML = cab + `<div class="ltit">${t.n.toUpperCase()} · ${RONDAS[TOR.ronda].toUpperCase()}</div>` +
-    TOR.cuadro.map((r, k) => k > TOR.ronda || !r.length ? '' : `<div class="ltit" style="opacity:.6">${RONDAS[k]}</div>` +
-      r.map((e, i) => (i % 2 ? '' : '<div class="cruce">') + fila(e, k === TOR.ronda && (e === 'US' || r[i ^ 1] === 'US') ? ' reto' : '') + (i % 2 ? '</div>' : '')).join('')).join('') +
+  // en juego: solo la ronda que toca y las parejas que siguen vivas; primero vuestro cruce, luego los demás
+  const t = torDe(TOR.id), r = TOR.cuadro[TOR.ronda] || [], quedan = r.length;
+  const cruces = []; for (let i = 0; i + 1 < r.length; i += 2) cruces.push([r[i], r[i + 1]]);
+  cruces.sort((a, b) => (b.includes('US') ? 1 : 0) - (a.includes('US') ? 1 : 0));
+  const cruce = ([a, b]) => { const v = a === 'US' || b === 'US', [x, y] = b === 'US' ? [b, a] : [a, b];
+    return `<div class="cruce${v ? ' vuestro' : ''}">${v ? '<div class="ltit" style="margin-top:0">VUESTRO PARTIDO</div>' : ''}${fila(x)}<div class="vs">CONTRA</div>${fila(y)}</div>`; };
+  el.innerHTML = `<div class="ltit">${ico('copa')}${t.n.toUpperCase()} · ${RONDAS[TOR.ronda].toUpperCase()}</div>` +
+    `<div class="torSub">${TOR.ronda === 2 ? 'Quedáis las dos últimas parejas: el que gane, campeón.' : 'Siguen ' + quedan + ' parejas; el que pierda queda eliminado.'}</div>` +
+    cruces.map((c, i) => (i === 1 ? '<div class="ltit" style="opacity:.6">' + (cruces.length > 2 ? 'LOS OTROS CRUCES' : 'EL OTRO CRUCE') + '</div>' : '') + cruce(c)).join('') +
     `<div class="ltit" style="margin-top:6px">Premios: 1.º ${euros(t.premios[0])} · 2.º ${euros(t.premios[1])} · 3.º ${euros(t.premios[2])}</div>
      <button class="ed" id="torDejar" style="margin-top:4px">Abandonar el torneo</button>`;
 }
