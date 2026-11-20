@@ -5581,6 +5581,7 @@ function preparaTinte(mesh, nombre = 'chica') {
       const x = pos[3 * k], y = pos[3 * k + 1], z = pos[3 * k + 2];
       if (y < PF.peloSuave.desde || Math.abs(x) > .12) continue;
       if (z > .03 && Math.abs(x) < .04 && y < .452) continue;          // la cara
+      if (y < .418 && z > -.012) continue;                              // mejillas y patillas (la barba pintada no es pelo)
       const v = Math.max(D[4 * k], D[4 * k + 1], D[4 * k + 2]) / 255;
       const w = Math.min(1, Math.max(0, (PF.peloSuave.vPiel - v) / (PF.peloSuave.vPiel - PF.peloSuave.vPelo)));
       wPelo[k] = w; reg[k] = w > .5 ? R.PELO : R.PIEL;
@@ -5842,8 +5843,14 @@ function preparaTinte(mesh, nombre = 'chica') {
           if (q > .05) {
             let q2 = q;
             if (r == R.PIEL) {   // luz amplia muy suavizada (sin manchas) por el detalle fino
-              const Lb = LS[k] || L, qb = Lb / refL, qb2 = qb < 1 ? 1 - (1 - qb) * .3 : 1 + (qb - 1) * .4;
-              q2 = qb2 * Math.min(1.35, Math.max(.45, L / Math.max(Lb, 1)));
+              const Lb = LS[k] || L, qb = Lb / refL, qb2 = qb < 1 ? 1 - (1 - qb) * .3 : 1 + (qb - 1) * .4, det = L / Math.max(Lb, 1);
+              if (pos[3 * k + 1] > PF.Z.cuello - .005) {
+                // cabeza: la textura trae sombras pintadas en triángulos (mejillas, frente, mandíbula) con bordes marcados que
+                // pasaban por detalle; aquí el tono es liso (la sombra la pone la luz del juego) y de la textura solo queda
+                // lo muy oscuro (cejas, orificios de la nariz, línea de los labios)
+                const d = det < .62 ? det : det < .8 ? .62 + (det - .62) / .18 * .38 : 1;
+                q2 = .97 * d;
+              } else q2 = qb2 * Math.min(1.35, Math.max(.45, det));
             }
             const s = q2 / q, w = r == R.PIEL ? .85 : .72;
             for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, D[j + i] * p[i] * s * (1 - w) + PN[i] * q2 * w);
@@ -5869,8 +5876,9 @@ function preparaTinte(mesh, nombre = 'chica') {
         const w = wPelo[k]; if (w < 0) continue;
         const j = 4 * k, L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
         const p = Pp[R.PIEL], c = T[R.PELO], f = LP[k] ? fPelo(k) : Math.min(L / ref[R.PELO], 1.6);
+        const yaPiel = reg[k] === R.PIEL && PN;   // (la piel ya está pintada lisa en S: se usa esa, no la de la textura con manchas)
         for (let i = 0; i < 3; i++) {
-          const piel = p ? D[j + i] * p[i] : D[j + i], pelo = c ? c[i] * f : D[j + i];
+          const piel = yaPiel ? S[j + i] : p ? D[j + i] * p[i] : D[j + i], pelo = c ? c[i] * f : D[j + i];
           S[j + i] = Math.min(255, piel * (1 - w) + pelo * w);
         }
       }
@@ -6061,6 +6069,7 @@ function clasificaChico(r, g, b, x, y, z) {
     if (calido && s > .15 && v > .52) return R.PIEL;
     if (cara && y < .445) return R.OJO;                            // ojos, cejas y sombras de la cara
     if (y < .375) return R.PIEL;                                   // mandíbula y barba
+    if (y < .418 && z > -.012) return R.PIEL;                      // mejillas y patillas (la barba pintada salía como pelo: parches del color del pelo)
     return R.PELO;
   }
   if (ax > Z.manga && y > (Z.brazo ?? -1)) {
