@@ -6219,7 +6219,7 @@ function preparaFuente(sc) {
 // del chico, que es el del muñeco: se ajusta al cargar)
 const MODELO_TRELLIS = {
   chico: { alto: 1.8, kBrazo: 1.25, cab: [new V3(0, 1.665, 0.01), 0.8], mano: { h: 0.065, f: 0.11, n: 0.031 }, cintaY: 1.712 },
-  chica: { alto: 1.7, kBrazo: 1.25, cab: [new V3(0, 1.575, 0.012), 0.76], mano: { h: 0.065, f: 0.097, n: 0.0265 }, cintaY: 1.617, cintaZ: -0.10, muneca: [-0.05, -0.006] },
+  chica: { alto: 1.7, kBrazo: 1.25, cab: [new V3(0, 1.575, 0.012), 0.76], mano: { h: 0.065, f: 0.097, n: 0.0265 }, cintaY: 1.617, cintaZ: -0.10, muneca: [-0.068, -0.006] },
 };
 const largoBrazo = F => (F.rest.lowerarm_r.p.distanceTo(F.rest.upperarm_r.p) + F.rest.hand_r.p.distanceTo(F.rest.lowerarm_r.p));
 function preparaChico(sc, img, nombre = 'chico') {
@@ -6286,7 +6286,7 @@ function aroGrueso(bajo, alto, fuera, grosor) {
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(idx); geo.computeVertexNormals();
   return geo;
 }
-function munequeraAjustada(geo0, R, lado, d0 = -0.065, d1 = -0.01) {
+function munequeraAjustada(geo0, R, lado, d0 = -0.085, d1 = -0.01) {
   const W = R['hand_' + lado].p, E = R['lowerarm_' + lado].p, ax = W.clone().sub(E).normalize();
   const u = new V3(0, 1, 0).addScaledVector(ax, -ax.y).normalize(), v = new V3().crossVectors(ax, u);
   const N = 32, hueco = 0.005;
@@ -6307,7 +6307,7 @@ function munequeraAjustada(geo0, R, lado, d0 = -0.065, d1 = -0.01) {
     const th = (k % N) / N * 2 * Math.PI, dir = u.clone().multiplyScalar(Math.cos(th)).addScaledVector(v, Math.sin(th));
     bajo.push(W.clone().addScaledVector(ax, d0).addScaledVector(dir, r0[k % N] + hueco)); alto.push(W.clone().addScaledVector(ax, d1).addScaledVector(dir, r1[k % N] + hueco)); fuera.push(dir);
   }
-  return aroGrueso(bajo, alto, fuera, 0.007);   // (rizo de toalla: unos 7 mm)
+  return aroGrueso(bajo, alto, fuera, 0.009);   // (rizo de toalla: casi 1 cm, como las de verdad)
 }
 // Gafas deportivas a la medida de la cara del modelo (las del muñeco, una caja, le quedaban en las cejas y más anchas
 // que la cara): dos lentes con montura, puente y patillas hasta las orejas. Se miden en la malla: los ojos (del perfil
@@ -6418,7 +6418,7 @@ function gorraAjustada(geo0, yF, zMin = -Infinity) {
 }
 // (zMin: lo que queda más atrás no cuenta; la coleta de la chica arranca de la nuca y la cinta pasa por debajo)
 function cintaAjustada(geo0, yF = 1.712, zMin = -Infinity) {
-  const N = 64, inc = 0.009, alto = 0.028, hueco = 0.004;
+  const N = 64, inc = 0.009, alto = 0.042, hueco = 0.004;
   const alt = th => yF - inc + inc * Math.cos(th);           // (th = 0: delante)
   // puntos repartidos por la superficie de la cabeza (la malla tiene pocos vértices: con ellos solos quedan huecos)
   const pos = geo0.attributes.position, ix = geo0.index, pts = [], a = new V3(), b = new V3(), c = new V3();
@@ -6454,7 +6454,7 @@ function cintaAjustada(geo0, yF = 1.712, zMin = -Infinity) {
     bajo.push(new V3(cx + s * (rB[k % N] + hueco), y - alto / 2, cz + c * (rB[k % N] + hueco)));
     arriba.push(new V3(cx + s * (rT[k % N] + hueco), y + alto / 2, cz + c * (rT[k % N] + hueco))); fuera.push(new V3(s, 0, c));
   }
-  return aroGrueso(bajo, arriba, fuera, 0.0045);   // (cinta de tela de rizo: unos 4,5 mm)
+  return aroGrueso(bajo, arriba, fuera, 0.006);   // (cinta de rizo: unos 6 mm de grueso y 4 cm de ancho)
 }
 // marcas de ropa (inventadas), cada una con su tipo de letra (Google Fonts, enlazadas en la cabecera)
 const MARCAS = [
