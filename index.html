@@ -5494,6 +5494,8 @@ function preparaTinte(mesh, nombre = 'chica') {
     const T = {}, Pp = {};
     for (const r in tela) if (tela[r]) T[r] = hex(tela[r]);
     for (const r in prop) if (prop[r]) { const n = hex(prop[r]), m = refCol[R.PIEL] || n; Pp[r] = n.map((v, i) => (o.pielK ?? 1) * v / Math.max(m[i], 1)); }
+    // (piel: el tono elegido y la luz de referencia, la del color medio de la piel original)
+    const PN = o.piel ? hex(o.piel).map(v => v * (o.pielK ?? 1)) : null, rc = refCol[R.PIEL], refL = rc ? .299 * rc[0] + .587 * rc[1] + .114 * rc[2] : 0;
     // estampados: la camiseta (y la calzona) se dibujan en 3D con un patrón y dos colores;
     // la sombra sale de la luminancia normalizada de cada zona, así desaparecen las franjas originales
     const dib = o.dibujo, dibC = o.dibujoCalzona;
@@ -5533,10 +5535,16 @@ function preparaTinte(mesh, nombre = 'chica') {
       } else if (Pp[r]) {
         let p = Pp[r];
         // piel: la textura trae luces y sombras pintadas muy marcadas (antebrazos pálidos, manchas oscuras en piernas
-        // y cuello); se suaviza el contraste respecto a la luz media de la piel sin quitar los rasgos
-        if (r == R.PIEL && ref[R.PIEL]) {
-          const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2], q = L / ref[R.PIEL];
-          if (q > .05) { const q2 = q < 1 ? 1 - (1 - q) * .5 : 1 + (q - 1) * .45, s = q2 / q; p = [p[0] * s, p[1] * s, p[2] * s]; }
+        // y cuello) y zonas de matiz gris o verdoso (la cara, sobre todo). De la textura se toma solo la luz, con el
+        // contraste suavizado, y el color es el del tono elegido; una parte del original (más en la cara, por cejas,
+        // labios y nariz) conserva los rasgos
+        if (PN && refL) {
+          const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2], q = L / refL;
+          if (q > .05) {
+            const q2 = r == R.PIEL ? (q < 1 ? 1 - (1 - q) * .5 : 1 + (q - 1) * .45) : q, s = q2 / q, w = r == R.PIEL ? .85 : .72;
+            for (let i = 0; i < 3; i++) S[j + i] = Math.min(255, D[j + i] * p[i] * s * (1 - w) + PN[i] * q2 * w);
+            continue;
+          }
         }
         S[j] = Math.min(255, D[j] * p[0]); S[j + 1] = Math.min(255, D[j + 1] * p[1]); S[j + 2] = Math.min(255, D[j + 2] * p[2]);
       }
@@ -5921,6 +5929,7 @@ function preparaChico(sc, img, nombre = 'chico') {
   F.tinte = TINTE.preparaTinte({ geometry: g, material: { map: { image: img } } }, nombre);
   F.cintaGeo = cintaAjustada(cuerpo.geometry, C.cintaY, C.cintaZ);
   F.gafas = gafasAjustadas(cuerpo.geometry, TINTE.ojos(nombre), A);
+  F.gorra = gorraAjustada(cuerpo.geometry, C.cintaY - 0.008, C.cintaZ ?? -Infinity);   // (copa y visera)
   const mu = C.muneca || [];   // (la chica, de antebrazo fino: más corta, junto a la muñeca, que al doblarla se nota menos)
   F.munecas = { r: munequeraAjustada(cuerpo.geometry, R, 'r', ...mu), l: munequeraAjustada(cuerpo.geometry, R, 'l', ...mu) };
   return F;
@@ -6024,6 +6033,57 @@ function gafasAjustadas(geo0, ojosT, A) {
   puente.position.set(cx, yl + h * 0.4, zl + 0.001); G.add(puente);
   G.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return G;
+}
+// Gorra y visera a la medida de la cabeza del modelo (las del muñeco flotaban delante de la frente): la copa sigue la
+// forma de la cabeza con el pelo, 6 mm por fuera, desde la altura de la cinta hasta arriba; la pieza de delante
+// (la visera) sale del contorno de la frente, abraza la cabeza por los lados y baja un poco en la punta.
+// (zMin: la coleta de la chica no cuenta; sale por detrás, como por el hueco de la gorra)
+function gorraAjustada(geo0, yF, zMin = -Infinity) {
+  const c0 = new V3(0, yF + 0.04, 0), pts0 = puntosSuperficie(geo0, c0, 0.2, 6).filter(p => p.y > yF - 0.03 && p.z >= zMin);
+  // centro de la cabeza a la altura de la cinta
+  let cx = 0, cz = 0, n = 0;
+  for (const p of pts0) if (Math.abs(p.y - yF) < 0.02) { cx += p.x; cz += p.z; n++; }
+  cx /= n || 1; cz /= n || 1;
+  const c = new V3(cx, yF, cz), N = 40, M = 10, hueco = 0.006, coseno = Math.cos(0.14);
+  const dirs = [], r = [];
+  for (let j = 0; j <= M; j++) for (let k = 0; k <= N; k++) {
+    const ph = -0.12 + j / M * (Math.PI / 2 * 0.98 + 0.12), th = (k % N) / N * 2 * Math.PI;
+    dirs.push(new V3(Math.sin(th) * Math.cos(ph), Math.sin(ph), Math.cos(th) * Math.cos(ph))); r.push(0);
+  }
+  const q = new V3();
+  for (const p of pts0) {
+    q.subVectors(p, c); const L = q.length(); if (L < 0.03 || L > 0.2) continue; q.divideScalar(L);
+    for (let i = 0; i < dirs.length; i++) if (L > r[i] && q.dot(dirs[i]) > coseno) r[i] = L;
+  }
+  const at = (j, k) => r[j * (N + 1) + k];
+  // direcciones sin puntos (detrás, donde se quitó la coleta): lo del vecino de arriba o el de al lado
+  for (let j = M; j >= 0; j--) for (let k = 0; k <= N; k++) { const i = j * (N + 1) + k; if (!r[i]) r[i] = (j < M && r[i + N + 1]) || Math.max(at(j, (k + 1) % N), at(j, (k + N - 1) % N)) || 0.09; }
+  // sin bultos (el arranque de la coleta): cada vuelta, como mucho un 8 % más que su mediana
+  for (let j = 0; j <= M; j++) { const fila = r.slice(j * (N + 1), (j + 1) * (N + 1)), med = [...fila].sort((a, b) => a - b)[N >> 1]; for (let k = 0; k <= N; k++) if (dirs[j * (N + 1) + k].z < -0.2) r[j * (N + 1) + k] = Math.min(r[j * (N + 1) + k], med * 1.08); }   // (solo detrás: delante, el tupé es pelo de verdad)
+  const top = Math.max(...r.slice(M * (N + 1)));
+  for (let k = 0; k <= N; k++) r[M * (N + 1) + k] = top;
+  const v = [], idx = [];
+  for (let i = 0; i < dirs.length; i++) { const d = dirs[i], L = r[i] + hueco; v.push(c.x + d.x * L, c.y + d.y * L, c.z + d.z * L); }
+  for (let j = 0; j < M; j++) for (let k = 0; k < N; k++) { const a = j * (N + 1) + k, b = a + N + 1; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  const copa = new THREE.BufferGeometry(); copa.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); copa.setIndex(idx); copa.computeVertexNormals();
+  // visera: de -60º a 60º alrededor de la frente; 7 cm de largo en el centro, menos hacia los lados
+  const K = 24, vb = [], ib = [], larga = 0.06, gro = 0.004;
+  for (let k = 0; k <= K; k++) {
+    const th = (k / K - 0.5) * 2 * 0.82, kk = Math.round(((th / (2 * Math.PI) * N) % N + N) % N), r0 = at(0, kk) + hueco * 0.5;
+    const s = Math.sin(th), co = Math.cos(th), Lp = larga * Math.pow(Math.cos(th * 1.3), 1.3);
+    for (const t of [0, 1]) {
+      const R = r0 + t * Lp, y = yF - 0.004 - t * 0.014 * Math.cos(th);   // (la punta, algo más baja)
+      vb.push(c.x + s * R, y, c.z + co * R, c.x + s * R, y - gro, c.z + co * R);
+    }
+  }
+  for (let k = 0; k < K; k++) {
+    const a = 4 * k, b = a + 4;   // 4 vértices por paso: dentro arriba/abajo, fuera arriba/abajo
+    ib.push(a, b, a + 2, a + 2, b, b + 2);                 // cara de arriba
+    ib.push(a + 1, a + 3, b + 1, a + 3, b + 3, b + 1);     // cara de abajo
+    ib.push(a + 2, b + 2, a + 3, a + 3, b + 2, b + 3);     // borde de fuera
+  }
+  const visera = new THREE.BufferGeometry(); visera.setAttribute('position', new THREE.Float32BufferAttribute(vb, 3)); visera.setIndex(ib); visera.computeVertexNormals();
+  return { copa, visera };
 }
 // (zMin: lo que queda más atrás no cuenta; la coleta de la chica arranca de la nuca y la cinta pasa por debajo)
 function cintaAjustada(geo0, yF = 1.712, zMin = -Infinity) {
@@ -6161,6 +6221,13 @@ function ajustaPiezas(pl) {
   const ch = pl.rig && pl.rig.F.chico;   // (el chico y la chica traen sus zapatillas, su pelo y su calzona)
   if (ch) { pl.hairExtra.visible = false; pl.skirt.visible = false; }
   if (ch && pl.rig.gafas) { pl.rig.gafas.visible = !!(pl.prof && pl.prof.acc && pl.prof.acc.gafas); pl.glasses.visible = false; }   // las suyas, no la caja del muñeco
+  if (ch && pl.rig.visera) {   // gorra o visera: las suyas; las piezas del muñeco flotaban delante de la frente
+    const a = (pl.prof && pl.prof.acc) || {}, col = a.gorra || a.visera;
+    pl.rig.visera.visible = !!col; pl.rig.copa.visible = !!a.gorra;
+    if (col) pl.rig.visera.material = pl.rig.copa.material = (pl.rig.cinta && pl.rig.cinta.visible) ? pl.rig.cinta.material : dobleCara(pl.brim.material);   // (del color de su cinta)
+    pl.brim.visible = pl.cap.visible = false;
+    if (a.gorra && pl.rig.cinta) pl.rig.cinta.visible = false;   // (con gorra no se ve la cinta)
+  }
   if (ch && pl.headband.visible) {   // la cinta del muñeco no le encaja: se usa la suya, con el mismo color
     const c = pl.rig.cinta; if (c) { c.visible = true; c.material = dobleCara(pl.headband.material); }
     pl.headband.visible = false;
@@ -6224,6 +6291,9 @@ function ponModelo(pl) {
   if (F.cintaGeo) { cinta = new THREE.Mesh(F.cintaGeo, pl.headband.material); cinta.visible = false; cinta.castShadow = true; marco.add(cinta); }
   const gafas = F.gafas ? F.gafas.clone() : null;   // (sus gafas, a la medida de la cara; se encienden en ajustaPiezas)
   if (gafas) { const mg = matGafas(p); gafas.traverse(o => { if (o.isMesh) o.material = mg[o.userData.parte] || mg.montura; }); gafas.visible = false; marco.add(gafas); }
+  // gorra y visera a su medida (se encienden en ajustaPiezas, con el color del jugador)
+  let copa = null, visera = null;
+  if (F.gorra) for (const [g, k] of [[F.gorra.copa, 0], [F.gorra.visera, 1]]) { const m = new THREE.Mesh(g, pl.brim.material); m.visible = false; m.castShadow = true; marco.add(m); if (k) visera = m; else copa = m; }
   // muñequeras, pegadas al hueso del antebrazo (en un marco con los ejes del reposo, como la cabeza). Iban en el de la
   // mano y, al doblar mucho la muñeca (saque, remate), giraban con ella y se separaban del brazo. El antebrazo está
   // alargado (kBrazo): se corren hacia la muñeca lo que se alarga
@@ -6241,7 +6311,7 @@ function ponModelo(pl) {
   for (const m of accCabeza(pl)) cab.add(m);
   pl.g.add(obj);
   const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * F.kBrazo, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * F.kBrazo;
-  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, munecas, gafas, auto: pl === visor.pl };
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, munecas, gafas, copa, visera, auto: pl === visor.pl };
   ajustaPiezas(pl);
   poseModelo(pl);
 }
