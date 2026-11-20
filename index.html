@@ -5525,11 +5525,19 @@ function preparaTinte(mesh, nombre = 'chica') {
       }
       if (T[r]) {
         const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2];
-        const f = r == R.PELO ? fPelo(k) : Math.min(L / ref[r], 1.6);
+        let f = r == R.PELO ? fPelo(k) : Math.min(L / ref[r], 1.6);
+        // zapatillas: la textura trae una sombra fuerte en un costado; en blanco salía gris oscuro
+        if (r == R.ZAP || r == R.SUELA) f = Math.max(.72, 1 + (f - 1) * .4);
         const c = T[r];
         S[j] = Math.min(255, c[0] * f); S[j + 1] = Math.min(255, c[1] * f); S[j + 2] = Math.min(255, c[2] * f);
       } else if (Pp[r]) {
-        const p = Pp[r];
+        let p = Pp[r];
+        // piel: la textura trae luces y sombras pintadas muy marcadas (antebrazos pálidos, manchas oscuras en piernas
+        // y cuello); se suaviza el contraste respecto a la luz media de la piel sin quitar los rasgos
+        if (r == R.PIEL && ref[R.PIEL]) {
+          const L = .299 * D[j] + .587 * D[j + 1] + .114 * D[j + 2], q = L / ref[R.PIEL];
+          if (q > .05) { const q2 = q < 1 ? 1 - (1 - q) * .5 : 1 + (q - 1) * .45, s = q2 / q; p = [p[0] * s, p[1] * s, p[2] * s]; }
+        }
         S[j] = Math.min(255, D[j] * p[0]); S[j + 1] = Math.min(255, D[j + 1] * p[1]); S[j + 2] = Math.min(255, D[j + 2] * p[2]);
       }
     }
@@ -5561,7 +5569,8 @@ function preparaTinte(mesh, nombre = 'chica') {
 
   // ojos: se pintan en 3D (distancia a cada centro, vista de frente), sea cual sea el sitio del atlas
   function pintaOjos(S, o) {
-    const ojos = o.ojosPos || PF.ojos;
+    const ojos = PF.ojos;                                   // donde están los del modelo (se tapan)
+    const dib = o.ojosPos || PF.ojosDibujo || ojos;         // donde se pintan (la chica los trae muy separados)
     const rad = o.ojoR || PF.ojoR;
     const iris = hex(o.iris || '#8a5a2b');
     // los ojos originales (más grandes y borrosos) se tapan con la piel de la mejilla de al lado, ya teñida
@@ -5590,6 +5599,9 @@ function preparaTinte(mesh, nombre = 'chica') {
           const j = 4 * k, t = Math.min(1, Math.max(0, (td - .85) / .4));
           for (let i = 0; i < 3; i++) S[j + i] = piel[i] * (1 - t) + S[j + i] * t;
         }
+      }
+      for (let n = 0; n < dib.length; n++) {
+        const e = dib[n];
         const dx = (x - e.x) / (rad * 1.35), dy = (y - e.y) / rad;
         const d = Math.hypot(dx, dy); if (d > 1.15) continue;
         const j = 4 * k; let c;
@@ -5753,14 +5765,14 @@ function clasificaChico(r, g, b, x, y, z) {
 const PERFILES = {
   chica: { Z: { cuello: .325, bajo: .025, calzona: -.088, calcetin: -.36, zapatilla: -.425, manga: .11, brazo: .15, muneca: .30, suela: .014, lateral: .022,
     coleta: .265, coletaZ: -.04, coletaNuca: -.055, coletaFondo: -.065, frente: .452, sienes: .428, cejas: .422, boca: .348, menton: .36 },
-    clasifica: clasificaChica, ojos: [{ x: -.0285, y: .402 }, { x: .0275, y: .402 }], ojoR: .0052, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true }, islas: 400 },
+    clasifica: clasificaChica, ojos: [{ x: -.0285, y: .402 }, { x: .0275, y: .402 }], ojosDibujo: [{ x: -.0235, y: .4015 }, { x: .0225, y: .4015 }], ojoR: .006, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true }, islas: 400 },
   chico: { Z: { cuello: .33, bajo: .012, calzona: -.15, calcetin: -.345, zapatilla: -.41, manga: .165, hombro: .125, muneca: .40, suela: .014 },
     clasifica: clasificaChico, ojos: [{ x: -.0205, y: .4245 }, { x: .0185, y: .4245 }], ojoR: .0052, tapa: [.0135, .0068, .0052, .0105], igualaPiernas: true,
     peloSuave: { desde: .36, vPiel: .6, vPelo: .4 } },
 };
 const LOGO = (forma, color) => ({ tipo: 'simbolo', forma, color, lado: 'delante', cx: .052, cy: .205, ancho: .032, alto: .032 });
 const ESPALDA = (texto, color) => ({ tipo: 'texto', texto, color, lado: 'detras', cx: 0, cy: .235, ancho: .13, alto: .026 });
-return { R, preparaTinte, LOGO, ESPALDA };
+return { R, preparaTinte, LOGO, ESPALDA, ojos: n => PERFILES[n] && (PERFILES[n].ojosDibujo || PERFILES[n].ojos) };
 })();
 const PELO_MOD = { corto: 'Hair_SimpleParted', rizado: 'Hair_SimpleParted', rapado: 'Hair_Buzzed', coleta: 'Hair_BuzzedFemale', mono: 'Hair_Buns', melena: 'Hair_Long' };
 const M_BRAZO = 1.15;   // los brazos del modelo, algo más largos (los trae cortos: 0,49 m del hombro a la muñeca)
@@ -5908,6 +5920,7 @@ function preparaChico(sc, img, nombre = 'chico') {
   for (let i = 0; i < U.count; i++) U.setY(i, 1 - U.getY(i));
   F.tinte = TINTE.preparaTinte({ geometry: g, material: { map: { image: img } } }, nombre);
   F.cintaGeo = cintaAjustada(cuerpo.geometry, C.cintaY, C.cintaZ);
+  F.gafas = gafasAjustadas(cuerpo.geometry, TINTE.ojos(nombre), A);
   const mu = C.muneca || [];   // (la chica, de antebrazo fino: más corta, junto a la muñeca, que al doblarla se nota menos)
   F.munecas = { r: munequeraAjustada(cuerpo.geometry, R, 'r', ...mu), l: munequeraAjustada(cuerpo.geometry, R, 'l', ...mu) };
   return F;
@@ -5955,6 +5968,62 @@ function munequeraAjustada(geo0, R, lado, d0 = -0.065, d1 = -0.01) {
   for (let k = 0; k < N; k++) { const a = 2 * k; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(vs, 3)); geo.setIndex(idx); geo.computeVertexNormals();
   return geo;
+}
+// Gafas deportivas a la medida de la cara del modelo (las del muñeco, una caja, le quedaban en las cejas y más anchas
+// que la cara): dos lentes con montura, puente y patillas hasta las orejas. Se miden en la malla: los ojos (del perfil
+// del tinte, en medidas de 1 de alto), lo que sobresale la cara delante de ellos y el ancho de la cabeza a esa altura.
+// colores de las lentes (espejadas de pádel): cada jugador la suya, siempre la misma
+const LENTES = [0x2f86ff, 0xff5a1f, 0x22c55e, 0xb06bff, 0xff2d6f, 0xffc21a];
+const MAT_GAFAS = {};
+function matGafas(p) {
+  let hsh = 0; for (const ch of String(p.id || p.n)) hsh = (hsh * 31 + ch.charCodeAt(0)) | 0;
+  const lente = LENTES[Math.abs(hsh) % LENTES.length], c = new THREE.Color(p.cam), mont = (c.r * .3 + c.g * .59 + c.b * .11) > .12 ? p.cam : 0xf2f2f2;
+  const k = lente + ":" + mont;
+  return MAT_GAFAS[k] ||= {
+    lente: new THREE.MeshStandardMaterial({ color: lente, emissive: lente, emissiveIntensity: 0.12, roughness: 0.08, metalness: 0.7, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+    montura: new THREE.MeshStandardMaterial({ color: mont, roughness: 0.35, metalness: 0.1 }) };
+}
+function gafasAjustadas(geo0, ojosT, A) {
+  if (!ojosT || ojosT.length < 2) return null;
+  const P = geo0.attributes.position, ex = ojosT.map(e => e.x * A), ey = (ojosT[0].y + ojosT[1].y) / 2 * A + 0.5 * A;
+  const cx = (ex[0] + ex[1]) / 2, d = Math.abs(ex[1] - ex[0]);
+  let zf = -Infinity, half = 0;
+  for (let i = 0; i < P.count; i++) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    if (Math.abs(y - ey) < 0.014 && Math.min(Math.abs(x - ex[0]), Math.abs(x - ex[1])) < 0.02) zf = Math.max(zf, z);
+    if (Math.abs(y - ey) < 0.01 && z > -0.2) half = Math.max(half, Math.abs(x - cx));
+  }
+  let zo = 0, n = 0;   // las orejas: lo más ancho de la cabeza a esa altura
+  for (let i = 0; i < P.count; i++) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    if (Math.abs(y - ey) < 0.012 && Math.abs(x - cx) > half * 0.9) { zo += z; n++; }
+  }
+  zo = n ? zo / n : zf - 0.09;
+  // gafas de pádel: dos lentes grandes y envolventes, de color y translúcidas (con reflejo), media montura arriba,
+  // puente y patillas gruesas; los materiales los pone cada jugador (parte: 'montura' o 'lente')
+  const w = Math.min(d * 0.95, (half * 0.95 - d / 2) * 2 - 0.004, 0.064), h = w * 0.62, zl = zf + 0.011, yl = ey + 0.003, giro = 0.32;
+  const forma = new THREE.Shape();   // lente derecha (x hacia la sien): arriba recta, el lado de fuera redondeado, hueco para la nariz
+  forma.moveTo(-w / 2, h * .42); forma.lineTo(w * .45, h * .5);
+  forma.quadraticCurveTo(w * .6, h * .45, w * .58, 0); forma.quadraticCurveTo(w * .5, -h * .55, 0, -h * .5);
+  forma.quadraticCurveTo(-w * .42, -h * .45, -w / 2, -h * .05); forma.lineTo(-w / 2, h * .42);
+  const gLente = new THREE.ShapeGeometry(forma, 12), gBarra = new THREE.BoxGeometry(w * 1.12, 0.0065, 0.006);
+  const pieza = (geo, parte) => { const m = new THREE.Mesh(geo, glassesMat); m.userData.parte = parte; return m; };
+  const G = new THREE.Group();
+  for (const s of [-1, 1]) {
+    const xs = cx + s * d / 2, lado = new THREE.Group();
+    lado.position.set(xs, yl, zl); lado.rotation.y = s * giro; lado.scale.x = s;   // envuelven la cara
+    lado.add(pieza(gLente, 'lente'));
+    const barra = pieza(gBarra, 'montura'); barra.position.set(w * .04, h * .47, 0.001); barra.rotation.z = Math.atan2(h * .08, w * .95); lado.add(barra);
+    G.add(lado);
+    // patilla: del borde de fuera de la montura hasta encima de la oreja
+    const xo = w * .6, p0 = new V3(xs + s * xo * Math.cos(giro), yl + h * 0.42, zl - xo * Math.sin(giro)), p1 = new V3(cx + s * (half + 0.005), yl - 0.01, zo);
+    const L = p0.distanceTo(p1), pat = pieza(new THREE.BoxGeometry(0.005, 0.011, L), 'montura');
+    pat.position.copy(p0).lerp(p1, 0.5); pat.lookAt(p1); G.add(pat);
+  }
+  const puente = pieza(new THREE.BoxGeometry(Math.max(0.008, d - w + 0.006), 0.0065, 0.006), 'montura');
+  puente.position.set(cx, yl + h * 0.4, zl + 0.001); G.add(puente);
+  G.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return G;
 }
 // (zMin: lo que queda más atrás no cuenta; la coleta de la chica arranca de la nuca y la cinta pasa por debajo)
 function cintaAjustada(geo0, yF = 1.712, zMin = -Infinity) {
@@ -6091,6 +6160,7 @@ function ajustaPiezas(pl) {
   if (pl.hairExtra.geometry !== HAIR_EXTRA.coleta) pl.hairExtra.visible = false;   // (la coleta del muñeco sí: el modelo no trae)
   const ch = pl.rig && pl.rig.F.chico;   // (el chico y la chica traen sus zapatillas, su pelo y su calzona)
   if (ch) { pl.hairExtra.visible = false; pl.skirt.visible = false; }
+  if (ch && pl.rig.gafas) { pl.rig.gafas.visible = !!(pl.prof && pl.prof.acc && pl.prof.acc.gafas); pl.glasses.visible = false; }   // las suyas, no la caja del muñeco
   if (ch && pl.headband.visible) {   // la cinta del muñeco no le encaja: se usa la suya, con el mismo color
     const c = pl.rig.cinta; if (c) { c.visible = true; c.material = dobleCara(pl.headband.material); }
     pl.headband.visible = false;
@@ -6152,21 +6222,26 @@ function ponModelo(pl) {
   // el chico lleva su propia cinta, a la medida de su cabeza (se enciende en ajustaPiezas si el jugador la lleva)
   let cinta = null;
   if (F.cintaGeo) { cinta = new THREE.Mesh(F.cintaGeo, pl.headband.material); cinta.visible = false; cinta.castShadow = true; marco.add(cinta); }
-  // muñequeras, pegadas al hueso de cada mano (en un marco con los ejes del reposo, como la cabeza)
+  const gafas = F.gafas ? F.gafas.clone() : null;   // (sus gafas, a la medida de la cara; se encienden en ajustaPiezas)
+  if (gafas) { const mg = matGafas(p); gafas.traverse(o => { if (o.isMesh) o.material = mg[o.userData.parte] || mg.montura; }); gafas.visible = false; marco.add(gafas); }
+  // muñequeras, pegadas al hueso del antebrazo (en un marco con los ejes del reposo, como la cabeza). Iban en el de la
+  // mano y, al doblar mucho la muñeca (saque, remate), giraban con ella y se separaban del brazo. El antebrazo está
+  // alargado (kBrazo): se corren hacia la muñeca lo que se alarga
   const munecas = [];
   for (const l of ['r', 'l']) {
     if (!F.munecas || !F.munecas[l]) continue;
-    const rq = rest['hand_' + l].q.clone().invert(), mg = new THREE.Group();
-    mg.quaternion.copy(rq); mg.position.copy(rest['hand_' + l].p).negate().applyQuaternion(rq);
+    const ra = rest['lowerarm_' + l], rq = ra.q.clone().invert(), mg = new THREE.Group();
+    mg.quaternion.copy(rq); mg.position.copy(ra.p).negate().applyQuaternion(rq);
     const m = new THREE.Mesh(F.munecas[l], pl.wrists[0].material); m.visible = false; m.castShadow = true;
-    mg.add(m); H['hand_' + l].add(mg); munecas.push(m);
+    m.position.copy(rest['hand_' + l].p).sub(ra.p).multiplyScalar(F.kBrazo - 1);
+    mg.add(m); H['lowerarm_' + l].add(mg); munecas.push(m);
   }
   const [cc, ce] = F.cab || M_CABEZA[fem ? 'm' : 'h'], cab = new THREE.Group();
   cab.position.copy(cc); cab.scale.setScalar(ce); marco.add(cab);
   for (const m of accCabeza(pl)) cab.add(m);
   pl.g.add(obj);
   const L1 = rest.lowerarm_r.p.distanceTo(rest.upperarm_r.p) * F.kBrazo, L2 = rest.hand_r.p.distanceTo(rest.lowerarm_r.p) * F.kBrazo;
-  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, munecas, auto: pl === visor.pl };
+  pl.rig = { obj, H, F, cur: {}, L1, L2, fem, mc, clave, cinta, munecas, gafas, auto: pl === visor.pl };
   ajustaPiezas(pl);
   poseModelo(pl);
 }
@@ -6912,7 +6987,7 @@ window.PADEL = {
   paso(dt) { update(dt); return S.phase; },
   endPoint, resetMatch, updateCam,
   sfx, set audioCtx(v) { AC = v; SND = null; }, get audioCtx() { return AC; },
-  GRADA, MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
+  abrirVisor, GRADA, MOD, cargaModelos, ponModelo, quitaModelo, demoGolpes, cargaClip, poseClip, CLIPS, POSES_GOLPE, DEMO_GOLPES, ajustesActuales,
   AUTO, fis: { stepBall, cloneBall, shotVelocity, spinVec, killSmash, killOutcome, aimSpread, tecnica, lobFactor, whoServes, setServeAim, serveTap },
   avanza(seg) { for (let t = 0; t < seg; t += 1 / 60) { update(1 / 60); updateCam(1 / 60); } renderer.render(scene, camera); drawPanel(); return S.phase; },
 };
