@@ -5523,7 +5523,7 @@ function preparaTinte(mesh, nombre = 'chica') {
       // que baja casi plano, medido solo en altura salía ancho y con picos)
       const rs = Array.from({ length: N }, () => []);
       for (let k = 0; k < W * H; k++) { if (!enZona(k) || !esTela(reg[k])) continue; const d = enLinea(yb, k) - pos[3 * k + 1]; if (d >= 0 && d < .006) rs[bin(k)].push(rho(k)); }
-      let rb = rs.map(a => { if (!a.length) return NaN; a.sort((p, q) => p - q); return a[a.length >> 1]; });
+      let rb = rs.map(a => { if (!a.length) return NaN; a.sort((p, q) => p - q); return a[Math.floor(a.length * .08)]; });   // (el borde de dentro: con la mediana, en el hombro casi plano, el ribete salía ancho)
       for (let i = 0; i < N; i++) if (isNaN(rb[i])) { let d = 1; while (d < N / 2 && isNaN(rb[(i + d) % N]) && isNaN(rb[(i - d + N) % N])) d++; const a = rb[(i + d) % N], b = rb[(i - d + N) % N]; rb[i] = isNaN(a) ? b : isNaN(b) ? a : (a + b) / 2; }
       for (let pase = 0; pase < 2; pase++) rb = rb.map((_, i) => [-2, -1, 0, 1, 2].reduce((s, d) => s + rb[(i + d + N) % N], 0) / 5);
       for (let k = 0; k < W * H; k++) {
@@ -6447,7 +6447,7 @@ function texChico(p, F = MOD.src.c) {
   for (let i = 1; !zl && Math.abs(lumDe(zAc) - zLum) < 0.22 && i < ACENTOS.length; i++) zAc = ACENTOS[(iA + i) % ACENTOS.length];
   const o = { piel: SKIN_TONES[p.piel], pielK: 0.78, pelo: p.pc, zapatillas: zl ? zl.c[0] : p.zap, calcetines: '#f2f2f2',
     zapaDibujo: { acento: zAc, cordones: zLum > 0.5 ? '#111827' : '#f8fafc' }, suela: zl ? zl.c[2] : '#f4f4f4',
-    disenoCamiseta: { base: p.cam, capas: [{ tipo: 'lateral', color: ac, ancho: 0.14 }, { tipo: 'ribetes', color: ac, solo: 'cuello' },
+    disenoCamiseta: { base: p.cam, capas: [{ tipo: 'lateral', color: ac, ancho: 0.14 }, { tipo: 'ribetes', color: ac, solo: 'cuello', grosor: 0.6 },
       { tipo: 'texto', texto: mc.t, color: ac, lado: 'delante', cx: 0.045, cy: 0.207, ancho: 0.048, alto: 0.016, ...letra },
       { ...TINTE.ESPALDA(mc.t, ac), ancho: 0.12, alto: 0.03, ...letra }] },
     disenoCalzona: { base: p.pan, capas: [{ tipo: 'lateral', color: ac, ancho: 0.06 }] } };
