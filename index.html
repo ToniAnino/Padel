@@ -338,7 +338,7 @@
       </div>
       <div class="mtab" data-tab="tienda" id="tdTab">
       <div class="tdhead"><i data-ico="dinero"></i>DINERO: <span id="tdDinero"></span></div>
-      <div style="font-size:12px;opacity:.65">Lo que compréis es de ese jugador y lo lleva puesto en todos los partidos. El dinero se gana en los torneos.</div><div id="tdList"></div>
+      <div style="font-size:12px;opacity:.65">Lo que compréis es de ese jugador y lo lleva puesto en todos los partidos; las bebidas y barritas, solo en el próximo. El dinero se gana en los torneos.</div><div id="tdList"></div>
       </div>
       <div class="mtab" data-tab="config">
       <h2 data-ico="mando">Modo de juego</h2>
@@ -1426,7 +1426,7 @@ const xpNeed = lvl => 100 + 25 * (lvl - 1);          // cada nivel cuesta un poc
 function refreshStats(p) {
   const add = progOf(p.id).add;
   // (el material suma por encima del tope de mejora y puede pasar de 100)
-  for (const k of STAT_KEYS) p.st[k] = Math.min(STAT_MAX, Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0)) + bonoMaterial(p, k));
+  for (const k of STAT_KEYS) p.st[k] = Math.min(STAT_MAX, Math.min(statCap(p, k), p.st0[k] + Math.max(0, add[k] | 0)) + bonoMaterial(p, k) + bonoConsumo(p, k));
   const tr = progOf(p.id).train;   // el entrenamiento puede pasar del tope de mejora (es temporal)
   if (tr) p.st[tr.k] = Math.min(STAT_MAX, p.st[tr.k] + TRAIN_BONUS);
 }
@@ -1543,6 +1543,30 @@ const CINTAS = [
   { id: 'cPro', n: 'Cinta Pro',    pr: 30, col: '#fde047', b: { aer: 2, vis: 2, res: 2 } },
 ];
 const TIPOS_MAT = ['pala', 'zap', 'grip', 'mun', 'cin'];
+// Bebidas y barritas: se toman antes del partido y solo valen para el siguiente que juegue ese jugador (una cada vez)
+const CONSUMIBLES = [
+  { id: 'cEnergia', n: 'Bebida energética',    pr: 15, forma: 'lata',    col: '#e11d48', b: { vel: 4, ref: 3 } },
+  { id: 'cIso',     n: 'Bebida isotónica',     pr: 12, forma: 'botella', col: '#38bdf8', b: { res: 7 } },
+  { id: 'cCafe',    n: 'Café',                 pr: 8,  forma: 'taza',    col: '#92400e', b: { ref: 3, vis: 2 } },
+  { id: 'cCereal',  n: 'Barrita de cereales',  pr: 10, forma: 'barrita', col: '#f59e0b', b: { res: 3, equ: 3 } },
+  { id: 'cProte',   n: 'Barrita de proteínas', pr: 14, forma: 'barrita', col: '#7c3aed', b: { pot: 4, rem: 3 } },
+  { id: 'cGel',     n: 'Gel de glucosa',       pr: 18, forma: 'gel',     col: '#22c55e', b: { vel: 3, res: 3, aer: 2 } },
+];
+function consumoSVG(it) {
+  const c = it.col, os = '#06080d';
+  const dib = {
+    lata: `<rect x="19" y="10" width="22" height="42" rx="4" fill="${c}"/><rect x="21" y="6" width="18" height="5" rx="2" fill="#cbd5e1"/>
+      <path d="M19 22H41V30H19Z" fill="#fff" opacity=".85"/><path d="M31 23L27 27H32L28 31" stroke="${c}" stroke-width="1.6" fill="none"/>`,
+    botella: `<rect x="24" y="4" width="12" height="7" rx="1.5" fill="#f8fafc"/><path d="M22 14Q22 11 26 11H34Q38 11 38 14V54Q38 56 36 56H24Q22 56 22 54Z" fill="${c}" opacity=".9"/>
+      <rect x="22" y="28" width="16" height="12" fill="#fff" opacity=".8"/>`,
+    taza: `<path d="M14 22H40V44Q40 52 32 52H22Q14 52 14 44Z" fill="#f8fafc"/><path d="M40 27Q48 27 48 34Q48 41 40 41" stroke="#f8fafc" stroke-width="3.5" fill="none"/>
+      <ellipse cx="27" cy="22" rx="13" ry="3" fill="${c}"/><path d="M22 16Q20 12 23 9M29 16Q27 12 30 9" stroke="#cbd5e1" stroke-width="1.6" fill="none" stroke-linecap="round"/>`,
+    barrita: `<path d="M6 24L12 20L48 20L54 24L54 38L48 42L12 42L6 38Z" fill="${c}"/><rect x="18" y="24" width="24" height="14" rx="2" fill="#fff" opacity=".85"/>
+      <path d="M22 31H38" stroke="${os}" stroke-width="2" opacity=".5"/>`,
+    gel: `<path d="M18 8H42L38 46Q37 52 30 52Q23 52 22 46Z" fill="${c}"/><path d="M26 52H34V58H26Z" fill="#cbd5e1"/><rect x="22" y="18" width="16" height="12" fill="#fff" opacity=".85"/>`,
+  }[it.forma];
+  return `<svg class="timg" viewBox="0 0 60 60" width="46" height="46" aria-hidden="true">${dib}</svg>`;
+}
 // dibujo de los complementos en la tienda
 function compSVG(it) {
   const c = it.col, os = '#06080d';
@@ -1643,7 +1667,8 @@ function zapaMats(it) {
   return GEAR_MATS[it.id] = [lado, m(emp)];   // (lados, resto: empeine, puntera y talón)
 }
 const ITEMS = [...PALAS.map(x => ({ ...x, tipo: 'pala' })), ...ZAPAS.map(x => ({ ...x, tipo: 'zap' })),
-  ...GRIPS.map(x => ({ ...x, tipo: 'grip' })), ...MUNES.map(x => ({ ...x, tipo: 'mun' })), ...CINTAS.map(x => ({ ...x, tipo: 'cin' }))];
+  ...GRIPS.map(x => ({ ...x, tipo: 'grip' })), ...MUNES.map(x => ({ ...x, tipo: 'mun' })), ...CINTAS.map(x => ({ ...x, tipo: 'cin' })),
+  ...CONSUMIBLES.map(x => ({ ...x, tipo: 'cons' }))];
 const itemDe = id => ITEMS.find(x => x.id === id);
 const BOLSA_KEY = 'padel.bolsa';
 let BOLSA;
@@ -1652,6 +1677,7 @@ if (!BOLSA || typeof BOLSA !== 'object') BOLSA = { dinero: 50 };
 BOLSA.dinero = Math.max(0, Math.round(+BOLSA.dinero || 0));
 if (!BOLSA.tiene || typeof BOLSA.tiene !== 'object') BOLSA.tiene = {};
 if (!BOLSA.lleva || typeof BOLSA.lleva !== 'object') BOLSA.lleva = {};
+if (!BOLSA.toma || typeof BOLSA.toma !== 'object') BOLSA.toma = {};   // bebida o barrita para el próximo partido, por jugador
 const saveBolsa = () => { try { localStorage.setItem(BOLSA_KEY, JSON.stringify(BOLSA)); } catch (_) {} };
 // Para pruebas: abrir el juego con ?dinero=9000 en la dirección pone ese dinero (y se quita de la dirección)
 try {
@@ -1675,6 +1701,19 @@ function materialDe(p) {
   return m;
 }
 const bonoMaterial = (p, k) => materialDe(p).reduce((a, it) => a + (it.b[k] || 0), 0);
+const consumoDe = p => { const it = p.propio && itemDe(BOLSA.toma[p.id]); return it && it.tipo === 'cons' ? it : null; };
+const bonoConsumo = (p, k) => { const it = consumoDe(p); return it ? it.b[k] || 0 : 0; };
+// al acabar un partido, los de vuestra pareja que habían tomado algo ya lo han gastado
+function consumoTick() {
+  const txt = [];
+  for (const id of CFG.us) {
+    const p = byId(id), it = consumoDe(p); if (!it) continue;
+    delete BOLSA.toma[id]; refreshStats(p);
+    txt.push(p.n.split(' ')[0] + ' ya ha gastado su ' + it.n.toLowerCase());
+  }
+  if (txt.length) saveBolsa();
+  return txt.join(' · ');
+}
 const efectoTxt = it => Object.entries(it.b).map(([k, v]) => '+' + v + ' ' + STAT_NAMES[k]).join(' · ');
 const materialTxt = p => {
   const m = materialDe(p), pala = m.find(x => x.tipo === 'pala'), zap = m.find(x => x.tipo === 'zap');
@@ -2780,6 +2819,7 @@ const TIPS = {
     'Las palas redondas son de control (precisión, juego aéreo, colocación); las de diamante, de potencia (potencia y remate).',
     'Lo que compráis en la tienda es de ese jugador: dáselo al que más lo necesite.',
     'En un torneo también cobra el tercero: la pareja que cae en semifinales.',
+    'Las bebidas y barritas de la tienda son baratas pero solo valen para el próximo partido: guárdalas para una semifinal o una final.',
     'Los torneos se juegan en pabellón, con las gradas llenas: el público se levanta y aplaude en cada punto.',
   ],
 };
@@ -3440,7 +3480,7 @@ function endPoint(winner, reason) {
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     torOnMatchEnd(winner === US);
-    S.trainTxt = trainTick();   // los entrenamientos cuentan un partido más
+    S.trainTxt = [trainTick(), consumoTick()].filter(Boolean).join(' · ');   // los entrenamientos cuentan un partido más; las bebidas y barritas se gastan
     // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
     const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
     S.bannerPend = { at: S.timer - RETRASO_CARTEL, args: [winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + xpTxt, winner === US ? 'gana' : 'riv', 1.4] };
@@ -5081,7 +5121,16 @@ function paintTienda() {
   document.getElementById('tdList').innerHTML = bloque(ico('pala') + 'PALAS (mejoran los golpes)', PALAS, 'pala') + bloque(ico('zapa') + 'ZAPATILLAS (mejoran el movimiento)', ZAPAS, 'zap') +
     bloque(ico('grip') + 'GRIPS (un poco en un golpe)', ITEMS.filter(x => x.tipo === 'grip'), 'grip') +
     bloque(ico('muneca') + 'MUÑEQUERAS (como el grip, con menos peso)', ITEMS.filter(x => x.tipo === 'mun'), 'mun') +
-    bloque(ico('cinta') + 'CINTAS DEL PELO (aéreo, visión o resistencia)', ITEMS.filter(x => x.tipo === 'cin'), 'cin');
+    bloque(ico('cinta') + 'CINTAS DEL PELO (aéreo, visión o resistencia)', ITEMS.filter(x => x.tipo === 'cin'), 'cin') +
+    `<div class="ltit">${ico('rayo')}BEBIDAS Y BARRITAS (solo para el próximo partido)</div>` + CONSUMIBLES.map(it => {
+      const btns = props.map(p => {
+        const nom = p.n.split(' ')[0], ya = consumoDe(p);
+        if (ya && ya.id === it.id) return `<button class="tb on" disabled>${nom} la tiene para el próximo ✓</button>`;
+        if (ya) return `<button class="tb" disabled>${nom} ya tiene ${ya.n.toLowerCase()}</button>`;
+        return `<button class="tb compra" data-a="tomar" data-p="${p.id}" data-i="${it.id}"${BOLSA.dinero < it.pr ? ' disabled' : ''}>Para ${nom}</button>`;
+      }).join('');
+      return `<div class="tor conimg">${consumoSVG(it)}<div class="tinfo"><div class="tn">${it.n} <span class="tp">${euros(it.pr)}</span></div><div class="td">${efectoTxt(it)}</div><div class="tbs">${btns}</div></div></div>`;
+    }).join('');
 }
 function ponMaterial(pid, id) {
   const it = itemDe(id); if (!it) return;
@@ -5091,6 +5140,13 @@ function ponMaterial(pid, id) {
 document.getElementById('tdList').addEventListener('click', e => {
   const b = e.target.closest('.tb'); if (!b || b.disabled) return;
   const pid = b.dataset.p, it = itemDe(b.dataset.i), p = byId(pid);
+  if (b.dataset.a === 'tomar') {   // bebida o barrita: vale solo para el próximo partido de ese jugador
+    askConfirm('¿Comprar ' + it.n.toLowerCase() + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '? Solo le vale para el próximo partido.', 'Sí, comprar', () => {
+      if (BOLSA.dinero < it.pr || consumoDe(p)) return;
+      BOLSA.dinero -= it.pr; BOLSA.toma[pid] = it.id; saveBolsa(); refreshStats(p); paintTienda();
+    });
+    return;
+  }
   if (b.dataset.a === 'comprar') {
     askConfirm('¿Comprar ' + it.n + ' para ' + p.n.split(' ')[0] + ' por ' + euros(it.pr) + '?', 'Sí, comprar', () => {
       if (BOLSA.dinero < it.pr) return;
