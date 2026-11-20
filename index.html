@@ -3134,6 +3134,7 @@ function whoServes() {
   return { team: (S.saqueIni + turn) % 2, idx: Math.floor(turn / 2) % 2, right: n % 2 === 0 };
 }
 // bola en la mano del que saca, delante de él (sigue al vuestro mientras se coloca)
+const _vBola = new V3(), _vBola2 = new V3(), _vArriba = new V3();   // (bola en la mano del modelo al sacar)
 function placeServeBall() {
   // delante del cuerpo y hacia la red (según hacia dónde está girado el que saca), a la altura de la cadera
   const s = S.server, th = s.g.rotation.y, sc = s.g.scale.y || 1;
@@ -4888,6 +4889,13 @@ function update(dt) {
     p.updateLegs(S.phase === 'pause' ? 0 : dt);
     p.lookAtBall(S.phase === 'pause' ? 0 : dt);
     if (p.rig) poseModelo(p);   // modelo con esqueleto: una vez por fotograma, con todo ya colocado
+    // saque con el modelo: la bola, en la palma de su mano izquierda (sus brazos no llegan justo adonde el muñeco
+    // la ponía, y se veía flotando delante)
+    if (p.rig && p.serveHold && p.rig.H.hand_l && p.rig.H.lowerarm_l) {
+      const muneca = p.rig.H.hand_l.getWorldPosition(_vBola), codo = p.rig.H.lowerarm_l.getWorldPosition(_vBola2);
+      const dir = codo.sub(muneca).negate().normalize();   // del codo a la mano
+      ball.p.copy(muneca).addScaledVector(dir, 0.075).add(_vArriba.set(0, R * 0.9, 0)); ball.v.set(0, 0, 0);
+    }
   }
   // anillo azul bajo el jugador nuestro que va a golpear (el que antes llega a la bola)
   let mine = null;
