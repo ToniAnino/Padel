@@ -8073,6 +8073,21 @@ function visorQuieto(pl) {
   pl.transfer = 0; pl.twist = 0; pl.footW = null; pl.off = 0; pl.enDemo = false; pl.mangoS = null;
   pl.updateLegs(0); pl.updateArms(0);
 }
+// En el Idle de Mixamo los brazos cuelgan rectos y las manos se meten en el cuerpo: se doblan los codos hacia delante
+// (antebrazo y mano giran juntos alrededor del eje de los hombros), el de la pala 45° y el otro 20°
+const CODOS_REPOSO = { r: 45, l: 20 };
+function doblaCodos(c) {
+  if (c.codos) return c; c.codos = true;
+  const q = new THREE.Quaternion(), d = new THREE.Quaternion();
+  for (const [l, gr] of Object.entries(CODOS_REPOSO)) {
+    q.setFromAxisAngle(new V3(1, 0, 0), -gr * Math.PI / 180);   // (el jugador mira a +z: hacia delante y arriba)
+    for (const nm of ['lowerarm_' + l, 'hand_' + l]) {
+      const b = c.huesos.indexOf(nm); if (b < 0) continue;
+      for (const f of c.q) { d.fromArray(f, b * 4).premultiply(q); d.toArray(f, b * 4); }
+    }
+  }
+  return c;
+}
 // muñeco de piezas o modelo con esqueleto (se recuerda la elección)
 visor.modelo = true;   // (siempre el modelo nuevo)
 const vsHint = document.getElementById('vsHint'), HINT_VS = 'Arrastra a los lados para girarlo';
@@ -8084,7 +8099,7 @@ function visorModelo() {
   vsHint.textContent = 'Cargando el modelo…';
   pl.g.visible = false;   // (mientras carga no se enseña el muñeco de piezas: se veía un momento antes del bueno)
   Promise.all([cargaModelos(), cargaClip('reposo').catch(() => null)]).then(([, rep]) => {
-    if (rep) V.reposo = rep;
+    if (rep) V.reposo = doblaCodos(rep);
     if (!V.modelo || V.pl !== pl || pl.rig) { pl.g.visible = true; return; }
     ponModelo(pl); if (!V.demo) visorQuieto(pl);
     pl.g.visible = true; vsHint.textContent = HINT_VS;
