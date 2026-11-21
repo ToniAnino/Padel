@@ -1602,8 +1602,8 @@ const GRADA = (() => {
   const ROPA = [0xd8343e, 0x1e3a8a, 0xf4f4f4, 0x16a34a, 0xfacc15, 0x111827, 0xf97316, 0x7c3aed, 0x0ea5e9, 0xec4899, 0x6b7280];
   const PIEL = [0xf1c7a5, 0xe8b896, 0xc68c64, 0x9c6644, 0x6b4430], PANT = [0x1f2a44, 0x2b2b2b, 0x3b4a6b, 0xd6cfc2, 0x4b5563];
   const col = new THREE.Color(), tribunas = [];
-  function tribuna(LZ, giro, dz, soloTorneo) {
-    const G = new THREE.Group(); G.rotation.y = giro; G.position.z = dz; entorno.add(G);
+  function tribuna(LZ, giro, dz, soloTorneo, dx = 0) {
+    const G = new THREE.Group(); G.rotation.y = giro; G.position.set(dx, 0, dz); entorno.add(G);
     for (let k = 0; k < FILAS; k++) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(FONDO, top(k), LZ), hormigon);
       b.position.set(xFila(k), top(k) / 2, 0); b.receiveShadow = true; G.add(b);
@@ -1642,8 +1642,8 @@ const GRADA = (() => {
     tribunas.push({ G, grupo, gente, ims, soloTorneo });
   }
   tribuna(21, 0, 0, false);                       // izquierda (la del club)
-  tribuna(21, Math.PI, 0, true);                  // derecha (en el club ahí está la pista vecina)
-  tribuna(31, -Math.PI / 2, -(HL - HW), true);    // fondo de enfrente
+  tribuna(21, Math.PI, 0, true, 4);               // derecha (en el club ahí está la pista vecina), 4 m más allá: deja sitio a los bancos y al árbitro
+  tribuna(35, -Math.PI / 2, -(HL - HW), true, 2); // fondo de enfrente (más larga por la derecha, hasta la grada de ese lado)
   const _p = new V3(), _d = new V3(), _s = new V3(1, 1, 1), ARRIBA = new V3(0, 1, 0), _qz = new THREE.Quaternion(), EZ = new V3(0, 0, 1);
   let reloj = 0, hay = false;
   const pon = (im, i, x, y, z, qq = q) => im.setMatrixAt(i, m4.compose(_p.set(x, y, z), qq, _s));
@@ -1867,7 +1867,7 @@ const PABELLON = (() => {
   const sueloMat = new THREE.MeshBasicMaterial({ map: suelo.t, transparent: true, depthWrite: false, opacity: 0.9 });
   for (const sx of [-1, 1]) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 0.95), sueloMat);
-    m.rotation.set(-Math.PI / 2, 0, Math.PI / 2); m.position.set(sx * (HW + 1.6), 0.004, sx * -5.6); G.add(m);
+    m.rotation.set(-Math.PI / 2, 0, Math.PI / 2); m.position.set(sx * (HW + (sx > 0 ? 4.4 : 1.6)), 0.004, sx * -5.6); G.add(m);   // (a la derecha, por fuera de los bancos)
   }
   // pantallas sobre la grada del fondo
   const pant = lienzoV(640, 360);
@@ -1876,6 +1876,35 @@ const PABELLON = (() => {
     const marco = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 0.3), new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.6 }));
     marco.position.set(sx * 10, 9.2, -(HL + 11)); G.add(marco);
     const p = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 3.7), pantMat); p.position.set(sx * 10, 9.2, -(HL + 11) + 0.16); G.add(p);
+  }
+  // silla del árbitro junto a la red, a la derecha (entre los dos bancos), con el árbitro sentado mirando a la pista
+  {
+    const A = new THREE.Group(); A.position.set(HW + 2.1, 0, 0); A.rotation.y = -Math.PI / 2; G.add(A);   // (+z del grupo, hacia la pista)
+    const negro = new THREE.MeshStandardMaterial({ color: 0x1b1e24, roughness: 0.5, metalness: 0.5 });
+    const caja = (w, h, d, x, y, z, m = negro) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; A.add(o); return o; };
+    const H = 1.55;   // altura del asiento
+    for (const px of [-0.3, 0.3]) for (const pz of [-0.3, 0.3]) { const p = caja(0.05, H, 0.05, px * (pz < 0 ? 1.25 : 1), H / 2, pz * (pz < 0 ? 1.5 : 1)); p.rotation.z = px * (pz < 0 ? -0.08 : -0.04); }
+    for (const y of [0.35, 0.75, 1.15]) caja(0.66, 0.04, 0.04, 0, y, -0.45);                    // escalera por detrás
+    for (const y of [0.4, 1.0]) caja(0.62, 0.04, 0.04, 0, y, 0.3);
+    caja(0.7, 0.06, 0.7, 0, H, 0);                                                                // asiento
+    caja(0.7, 0.55, 0.05, 0, H + 0.3, -0.33);                                                     // respaldo
+    for (const px of [-0.35, 0.35]) caja(0.05, 0.05, 0.6, px, H + 0.25, 0);                       // brazos
+    caja(0.6, 0.04, 0.3, 0, H - 0.75, 0.45);                                                      // reposapiés
+    caja(0.55, 0.03, 0.32, 0, H + 0.62, 0.42).rotation.x = 0.35;                                  // atril con la tablilla
+    // el árbitro: polo claro, pantalón oscuro, sentado
+    const polo = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.8 }), pan = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
+    const piel = new THREE.MeshStandardMaterial({ color: 0xd9a782, roughness: 0.7 }), pelo = new THREE.MeshStandardMaterial({ color: 0x2b1d14, roughness: 0.9 });
+    const pieza = (geo, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.x = rx; o.castShadow = true; A.add(o); return o; };
+    pieza(new THREE.CapsuleGeometry(0.17, 0.36, 4, 10), polo, 0, H + 0.42, -0.08, -0.08);         // tronco
+    pieza(new THREE.SphereGeometry(0.11, 14, 10), piel, 0, H + 0.86, -0.05);                      // cabeza
+    pieza(new THREE.SphereGeometry(0.115, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), pelo, 0, H + 0.885, -0.065);
+    for (const sx of [-1, 1]) {
+      pieza(new THREE.CapsuleGeometry(0.075, 0.36, 4, 8), pan, sx * 0.1, H + 0.1, 0.15, Math.PI / 2);   // muslo
+      pieza(new THREE.CapsuleGeometry(0.06, 0.4, 4, 8), pan, sx * 0.1, H - 0.2, 0.36, 0.25);              // pierna, hasta el reposapiés
+      pieza(new THREE.BoxGeometry(0.1, 0.07, 0.24), negro, sx * 0.1, H - 0.7, 0.47);                      // zapato
+      pieza(new THREE.CapsuleGeometry(0.05, 0.26, 4, 8), polo, sx * 0.22, H + 0.48, 0.0, 0.5);           // brazo
+      pieza(new THREE.CapsuleGeometry(0.042, 0.22, 4, 8), piel, sx * 0.17, H + 0.42, 0.22, 1.35);        // antebrazo, hacia la tablilla
+    }
   }
   // estructura de focos colgada (por encima de lo que ve la cámara de la tele)
   const hierro = new THREE.MeshStandardMaterial({ color: 0x23262d, roughness: 0.5, metalness: 0.6 });
@@ -1914,6 +1943,11 @@ const PABELLON = (() => {
   function aplica() {
     const t = estado;
     G.visible = t; clubG.visible = !t; foco.visible = t;
+    BANCOS.forEach((b, i) => {   // en el torneo, los dos bancos a la derecha, uno a cada lado de la silla del árbitro
+      b.userData.club ??= { x: b.position.x, z: b.position.z, ry: b.rotation.y };
+      const c = b.userData.club;
+      if (t) { b.position.set(HW + 1.6, 0, i ? -2.6 : 2.6); b.rotation.y = -Math.PI / 2; } else { b.position.set(c.x, 0, c.z); b.rotation.y = c.ry; }
+    });
     sun.intensity = t ? 0 : 1.5; sun.castShadow = !t; hemi.intensity = t ? 0.32 : 0.9; rimLight.intensity = t ? 0.45 : 0.75;
     GRADA.hormigon.color.set(t ? 0x2a2e36 : 0x8b9099);   // en penumbra: grada, asientos y público más apagados
     GRADA.asientoMat.color.set(t ? 0x14307a : 0x1d4ed8); GRADA.mat.color.set(t ? 0x6a6a6a : 0xffffff); GRADA.pubMat.color.set(t ? 0x7a7a7a : 0xffffff);
