@@ -4512,6 +4512,9 @@ function planRivals(ourType) {
   let c = scanRivalHit(false);
   if (!c && S.glassPlay) c = scanRivalHit(true);
   if (!c && (S.glassPlay || S.letBounce)) { S.glassPlay = S.letBounce = false; c = scanRivalHit(false); }
+  // si no hay por dónde jugarla (sale rasa de la pared), el que está más cerca corre igual y se estira: al menos lo intenta
+  S.estirada = null;
+  if (!c && S.despCand) { c = S.despCand; S.estirada = c.r; S.estiraHecha = false; }
   // (con poca colocación tardan más en volver a su sitio)
   for (const r of rivals) { r.target = homeOf(r); r.delay = aiReaction(r) + 0.25 * below(r, 'col'); }
   // la bola a su derecha; con poca colocación calculan mal dónde ponerse
@@ -4529,6 +4532,7 @@ function scanRivalHit(pegadoAlCristal) {
   if (S.mala) return null;   // mala: no van a por ella
   const b = cloneBall();   // (con el efecto, para prever bien el bote)
   const h = 1 / 120;
+  let desp = null;
   let t = 0, bounces = 0, firstSide = -1, pick = null, fallback = null, wallBack = !S.waitWall && !S.glassPlay, peak = S.peak || 0;
   for (let i = 0; i < 840 && !pick; i++) {   // hasta 7 s: el globo alto tarda en caer y en volver a bajar
     const ev = stepBall(b, h); t += h;
@@ -4539,6 +4543,14 @@ function scanRivalHit(pegadoAlCristal) {
     if (!wallBack) continue;              // mate: se la deja pasar y se espera a que vuelva de la pared
     if (t < 0.25 || b.p.z >= 0) continue;
     if (bounces === 1 && firstSide !== RIVAL) break;
+    // bota y sale muy baja (saque ajustado a la esquina, bola que muere en la pared): no se puede jugar, pero se va a por ella
+    if (bounces === 1 && b.p.y < 0.45 && !S.serveLeave && !S.letBounce && !S.glassPlay) for (const r of rivals) {
+      if (S.receiver && r !== S.receiver) continue;
+      const d = Math.max(0, Math.hypot(b.p.x - r.pos.x, b.p.z - r.pos.z) - 0.5);
+      const slack = t - (aiReaction(r) + d / aiSpeed(r));
+      const ok = slack >= -0.15, okD = desp && desp.slack >= -0.15;   // el primer sitio al que llega (estirándose); si a ninguno, el que menos le falta
+      if (!desp || (ok && !okD) || (!okD && slack > desp.slack)) desp = { r, slack, x: b.p.x, z: b.p.z };
+    }
     if (b.p.y < 0.45 || b.p.y > 2.4) continue;   // por encima de 2 m llega con un saltito
     if (bounces === 0 && b.p.y > DEEP_VOLLEY_Y && b.p.z < -DEEP_Z && peak > LOB_PEAK) continue;   // en el fondo no se volea el globo
     if (S.glassPlay && (b.p.z < (pegadoAlCristal ? -9.7 : -9.0) || b.p.y > (pegadoAlCristal ? 1.9 : 1.5))) continue;   // de pared: que salga del cristal y baje
@@ -4554,6 +4566,7 @@ function scanRivalHit(pegadoAlCristal) {
       if (!fallback || slack > fallback.slack) fallback = c;
     }
   }
+  S.despCand = desp;
   return pick || fallback;
 }
 // ----- Dificultad (1-100; 50 = como era al principio) -----
@@ -5496,11 +5509,16 @@ function physics(dt) {
     if (S.phase !== 'play') continue;
     const r = rivals.find(canHit);
     if (r) { aiHit(r); continue; }
+    // se estira a por la bola que no puede coger: gesto de golpe al pasarle cerca (sin darle)
+    const est = S.estirada;
+    if (est && !S.estiraHecha && S.bounces >= 1 && sideOf(ball.p.z) === RIVAL && ball.p.y < 1.2 && Math.hypot(ball.p.x - est.pos.x, ball.p.z - est.pos.z) < 1.3) {
+      S.estiraHecha = true; est.pickStroke(ball.p, 0.3); est.swingStroke = est.stroke; est.swingT = 0.4; est.ready = 0; est.hitY = 0.7;
+    }
     // la bola le da en el cuerpo a un jugador que no la golpea: pierde el punto su pareja
     if (S.sinceHit > 0.15 && ball.p.y > 0.2 && ball.p.y < 1.9) {
       const hitBody = players.find(p => p.team !== S.lastHitter && sideOf(ball.p.z) === p.team &&
         Math.hypot(ball.p.x - p.pos.x, ball.p.z - p.pos.z) < 0.26 && !canHit(p) && !(p === S.receiver && S.bounces === 0) &&
-        !(p.team === RIVAL && (S.letBounce || S.glassPlay || S.glassLow)) && !(S.serveLeave && p === S.receiver) && !S.mala);   // si la dejan pasar a propósito, se apartan
+        !(p.team === RIVAL && (S.letBounce || S.glassPlay || S.glassLow)) && !(S.serveLeave && p === S.receiver) && p !== S.estirada && !S.mala);   // si la dejan pasar a propósito, se apartan
       if (hitBody) { ball.v.multiplyScalar(-0.2); endPoint(1 - hitBody.team, 'le da en el cuerpo'); continue; }
     }
     // el saque le da al compañero del que resta antes de botar: punto para el que saca
