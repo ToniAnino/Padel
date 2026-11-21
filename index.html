@@ -4580,11 +4580,22 @@ const aiError = (r, k = 'pre') => Math.max(0.005, 0.08 + 0.05 * below(r, k) - 0.
 // o de remate, según el juego aéreo. Multiplica los fallos y la dispersión (1 = normal).
 function calidadGolpe(pl) {
   if (S.phase === 'serve') return 1;
+  return calidadBase(pl) * facilidad();
+}
+function calidadBase(pl) {
   if (S.bounces === 0) return 1.35 - 0.7 * STAT(pl, 'aer') / 100;   // volea o remate: 1,2 (20) .. 1 (50) .. 0,7 (93)
   const tb = S.sinceHit - (S.tBote ?? 0), y = ball.p.y;
   if (tb < 0.18 || y < 0.45) return 1.3;                 // bote pronto
   if (tb >= 0.3 && y >= 0.5 && y <= 1.4) return 0.7;     // con tiempo
   return 1;
+}
+// bola fácil: llega despacio y se coge a buena altura (de la cintura al hombro, sin llegar a remate), haya botado o no:
+// cuesta mucho menos fallarla. 1 con la bola rápida (14 m/s o más) o baja; 0,45 con la bola muy lenta (6 m/s o menos)
+function facilidad() {
+  const y = ball.p.y, sp = ball.v.length();
+  if (y < 0.7 || y > SMASH_Y || sp >= 14) return 1;
+  const lenta = clamp((14 - sp) / 8, 0, 1), alto = clamp((y - 0.7) / 0.3, 0, 1);   // (entre 0,7 y 1 m, poco a poco)
+  return 1 - 0.55 * lenta * alto;
 }
 // cuánto juega a la defensiva (más globos y bolas seguras): 1,5 muy defensivo .. 0,5 muy agresivo
 const defensivo = pl => 1.5 - STAT(pl, 'agr') / 100;
