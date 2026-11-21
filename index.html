@@ -1859,17 +1859,67 @@ const PABELLON = (() => {
   {
     const A = new THREE.Group(); A.position.set(HW + 2.1, 0, 0); A.rotation.y = -Math.PI / 2; G.add(A);   // (+z del grupo, hacia la pista)
     ARB.A = A;
-    const negro = new THREE.MeshStandardMaterial({ color: 0x1b1e24, roughness: 0.5, metalness: 0.5 });
-    const caja = (w, h, d, x, y, z, m = negro) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; A.add(o); return o; };
-    const H = 1.55;   // altura del asiento
-    for (const px of [-0.3, 0.3]) for (const pz of [-0.3, 0.3]) { const p = caja(0.05, H, 0.05, px * (pz < 0 ? 1.25 : 1), H / 2, pz * (pz < 0 ? 1.5 : 1)); p.rotation.z = px * (pz < 0 ? -0.08 : -0.04); }
-    for (const y of [0.35, 0.75, 1.15]) caja(0.66, 0.04, 0.04, 0, y, -0.45);                    // escalera por detrás
-    for (const y of [0.4, 1.0]) caja(0.62, 0.04, 0.04, 0, y, 0.3);
-    caja(0.7, 0.06, 0.7, 0, H, 0);                                                                // asiento
-    caja(0.7, 0.55, 0.05, 0, H + 0.3, -0.33);                                                     // respaldo
-    for (const px of [-0.35, 0.35]) caja(0.05, 0.05, 0.6, px, H + 0.25, 0);                       // brazos
-    caja(0.6, 0.04, 0.3, 0, H - 0.52, 0.42);                                                      // reposapiés
-    caja(0.55, 0.03, 0.32, 0, H + 0.62, 0.42).rotation.x = 0.35;                                  // atril con la tablilla
+    // silla alta como las de los torneos: cabina con paneles laterales y delantero con publicidad, plataforma con el
+    // asiento, respaldo y brazos, reposapiés sobre el panel delantero y escalera por detrás que llega a la plataforma
+    // (en ejes del grupo: +z hacia la pista, y hacia arriba; el árbitro se sienta en z = 0)
+    const verde = new THREE.MeshStandardMaterial({ color: 0x157a3c, roughness: 0.45, metalness: 0.55 });
+    const negro = new THREE.MeshStandardMaterial({ color: 0x1b1e24, roughness: 0.6, metalness: 0.3 });
+    const caja = (w, h, d, x, y, z, m = verde) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; A.add(o); return o; };
+    const barra = (a, b, r, m = verde) => {   // tubo de a a b
+      const va = new V3(...a), vb = new V3(...b), d = vb.clone().sub(va), o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 10), m);
+      o.position.copy(va).add(vb).multiplyScalar(0.5); o.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize()); o.castShadow = true; A.add(o); return o;
+    };
+    const H = 1.5, XP = 0.42, PB = [-0.45, 0.85], PT = [-0.27, 0.5], YP = 1.44;   // asiento; paneles: media anchura, base y tope en z
+    // publicidad de los paneles (se pinta con la marca cuando están las letras: ver repinta)
+    const pub = lienzoV(256, 288);
+    ARB.pintaPub = () => {
+      const g = pub.g, w = 256, h = 288, m = MARCAS[0];
+      g.fillStyle = '#f7f7f5'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#157a3c'; g.lineWidth = 10; g.strokeRect(5, 5, w - 10, h - 10);
+      g.save(); g.translate(w * 0.42, h * 0.42); g.rotate(-0.6);   // pala
+      g.fillStyle = '#1f2937'; g.beginPath(); g.ellipse(0, -18, 34, 44, 0, 0, 7); g.fill(); g.fillRect(-7, 20, 14, 46);
+      g.fillStyle = '#f7f7f5'; for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) if (i * i + j * j < 7) { g.beginPath(); g.arc(i * 11, -18 + j * 13, 3, 0, 7); g.fill(); }
+      g.restore();
+      g.fillStyle = '#facc15'; g.beginPath(); g.arc(w * 0.66, h * 0.5, 28, 0, 7); g.fill();   // bola
+      g.strokeStyle = '#f7f7f5'; g.lineWidth = 4; g.beginPath(); g.arc(w * 0.66 - 30, h * 0.5, 26, -0.9, 0.9); g.stroke(); g.beginPath(); g.arc(w * 0.66 + 30, h * 0.5, 26, Math.PI - 0.9, Math.PI + 0.9); g.stroke();
+      g.fillStyle = '#157a3c'; g.font = `${m.e || ''} 58px "${m.f}", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(m.t, w / 2, h * 0.8, w - 40);
+      pub.t.needsUpdate = true;
+    };
+    // (la primera vez se pinta al entrar en el torneo: las marcas aún no existen aquí)
+    // laterales: trapecio (más ancho abajo), con la publicidad bien orientada vista desde fuera
+    const perfil = new THREE.Shape([new THREE.Vector2(PB[0], 0), new THREE.Vector2(PB[1], 0), new THREE.Vector2(PT[1], YP), new THREE.Vector2(PT[0], YP)]);
+    const latGeo = new THREE.ShapeGeometry(perfil), uvL = latGeo.attributes.uv, pL = latGeo.attributes.position;
+    for (let i = 0; i < pL.count; i++) uvL.setXY(i, (pL.getX(i) - PB[0]) / (PB[1] - PB[0]), pL.getY(i) / YP);
+    for (const s of [-1, 1]) {
+      const g = latGeo.clone(), uv = g.attributes.uv;
+      if (s > 0) for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));   // (para que la marca se lea desde fuera, no en espejo)
+      const p = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: pub.t, roughness: 0.6, side: THREE.DoubleSide }));
+      p.rotation.y = s > 0 ? -Math.PI / 2 : -Math.PI / 2; p.position.x = s * XP; p.castShadow = true; A.add(p);
+      if (s < 0) { p.rotation.y = Math.PI / 2; p.scale.x = -1; }   // (a la izquierda, el mismo panel en espejo para que se lea)
+      barra([s * XP, 0, PB[0]], [s * XP, YP, PT[0]], 0.03); barra([s * XP, 0, PB[1]], [s * XP, YP, PT[1]], 0.03);   // marco
+      barra([s * XP, YP, PT[0]], [s * XP, YP, PT[1]], 0.025); barra([s * XP, 0.02, PB[0]], [s * XP, 0.02, PB[1]], 0.025);
+    }
+    // panel delantero, hasta el reposapiés (inclinado como los laterales)
+    const yF = 1.0, zF = PB[1] + (PT[1] - PB[1]) * yF / YP;
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.Float32BufferAttribute([-XP, 0, PB[1], XP, 0, PB[1], XP, yF, zF, -XP, yF, zF], 3));
+    fg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); fg.setIndex([0, 1, 2, 0, 2, 3]); fg.computeVertexNormals();
+    const fr = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: pub.t, roughness: 0.6, side: THREE.DoubleSide })); fr.castShadow = true; A.add(fr);
+    barra([-XP, yF, zF], [XP, yF, zF], 0.025);
+    // plataforma, asiento, respaldo y brazos
+    caja(2 * XP + 0.06, 0.05, PT[1] - PT[0] + 0.06, 0, YP, (PT[0] + PT[1]) / 2);
+    caja(0.6, 0.05, 0.5, 0, H - 0.025, 0.07, negro);                                   // cojín del asiento
+    for (const s of [-1, 1]) barra([s * 0.3, YP, -0.25], [s * 0.3, H + 0.62, -0.25], 0.025);   // postes del respaldo
+    caja(0.64, 0.42, 0.04, 0, H + 0.36, -0.22, negro);                                  // respaldo
+    barra([-0.3, H + 0.62, -0.25], [0.3, H + 0.62, -0.25], 0.025);
+    for (const s of [-1, 1]) {                                                           // brazos, por fuera del cuerpo
+      barra([s * 0.37, YP, 0.28], [s * 0.37, H + 0.22, 0.28], 0.022);
+      barra([s * 0.37, H + 0.22, -0.25], [s * 0.37, H + 0.22, 0.3], 0.022);
+    }
+    caja(0.5, 0.04, 0.42, 0, yF + 0.02, 0.54);                                           // reposapiés
+    // escalera por detrás, desde el suelo hasta la plataforma (sus largueros siguen hacia arriba en el respaldo)
+    for (const s of [-1, 1]) barra([s * 0.3, 0, -0.85], [s * 0.3, YP, -0.25], 0.028);
+    for (const y of [0.3, 0.6, 0.9, 1.2]) { const z = -0.85 + 0.6 * y / YP; barra([-0.3, y, z], [0.3, y, z], 0.02); }
     // el árbitro: polo claro, pantalón oscuro, sentado
     const simple = new THREE.Group(); A.add(simple); ARB.simple = simple; ARB.H = H;
     const polo = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.8 }), pan = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
@@ -1940,11 +1990,11 @@ const PABELLON = (() => {
     const t = entorno.visible && (enTorneo() || GRADA.forzar);
     if (t) {
       const tor = TOR && torDe(TOR.id), n = tor ? tor.n : 'Torneo', r = TOR ? RONDAS[TOR.ronda] || '' : '';
-      if (n + r !== rotulo) { rotulo = n + r; repinta(n, r); }
+      if (n + r !== rotulo) { rotulo = n + r; repinta(n, r); ARB.pintaPub(); }
       for (const L of LAMPS) L.p.visible = L.h.visible = false;   // las torres de focos del club, no
       if (!ARB.fig && GRADA.figura) {   // el árbitro, con la misma figura que el público: sentado, polo claro y pantalón largo oscuro
         const m = ARB.fig = GRADA.figura('h', 'regazo', { iPiel: 0xd9a782, iCam: 0xdfe3e8, iPan: 0x1f2937, iPelo: 0x2b1d14, iVar: [1, 0, 0] });
-        m.position.set(0, ARB.H + 0.13, -0.06); m.rotation.y = -Math.PI / 2; m.castShadow = true; ARB.A.add(m); ARB.simple.visible = false;
+        m.position.set(0, ARB.H + 0.16, 0); m.rotation.y = -Math.PI / 2; m.castShadow = true; ARB.A.add(m); ARB.simple.visible = false;
       }
     }
     if (t !== estado) { estado = t; aplica(); }
@@ -8349,6 +8399,7 @@ function paintPlay() {
       + (S.trainTxt ? '<small class="mej">' + S.trainTxt + '</small>' : '');
   }
   document.querySelector('#restart .lbl').textContent =aMedias ? 'Partida nueva' : 'Reiniciar partido';
+  document.getElementById('restart').style.display = compite() ? 'none' : '';   // en el torneo y en la escalera no se puede reiniciar: el partido se acaba
 }
 // fin del partido: menú con el resultado; «Partido nuevo» empieza otro
 function endMatch() { S.timer = 0; openMenu(); }
@@ -8496,6 +8547,7 @@ document.getElementById('play').addEventListener('click', () => {
 });
 document.getElementById('panel').addEventListener('pointerdown', audioOn);
 document.getElementById('restart').addEventListener('click', () => {
+  if (compite()) return;
   const go = () => { resetMatch(); modeAtOpen = CFG.mode; closeMenu(); };
   if (partidoAMedias()) askConfirm('¿Empezar un partido nuevo? ' + aMediasTxt(), 'Sí, partido nuevo', go); else go();
 });
