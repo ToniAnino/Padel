@@ -4372,7 +4372,7 @@ const xpFactor = () => clamp(1 + (pairMed(CFG.riv) - pairMed(CFG.us)) / 20, 0.25
 // lo mismo visto desde los rivales (ganarle a una pareja mejor da más)
 const xpFactorRiv = () => clamp(1 + (pairMed(CFG.us) - pairMed(CFG.riv)) / 20, 0.25, 2);
 // solo se gana experiencia en competición (la escalera y las que vengan); Rápido y Entreno son de entrenamiento
-const compite = () => CFG.tipo === 'escalera' || CFG.tipo === 'torneo';
+const compite = () => CFG.tipo === 'escalera' || enTorneo();   // (en la pestaña de torneos sin estar apuntados, no: es un partido suelto)
 // los rivales gastan solos sus puntos de mejora: sobre todo en lo fuerte de su estilo, algo al azar
 function autoMejora(p) {
   const q = progOf(p.id), pf = PERFILES[p.perf].m;
@@ -4455,15 +4455,16 @@ function endPoint(winner, reason) {
   if (!fin && (S.score[0] + S.score[1]) % 3 === 0) enseñaTip(() => eligeTip([...TIPS.juego, ...TIPS.manejo]));
   if (fin) {            // fin del partido: se enseña el resultado y luego el menú
     S.over = true; S.timer = 3.5 + RETRASO_CARTEL; clearSave();
+    const comp = compite();   // (antes de cerrar el torneo: la final también cuenta)
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     torOnMatchEnd(winner === US);
     // los entrenamientos cuentan un partido más y las bebidas y barritas se gastan, pero solo en los partidos que dan
     // experiencia (escalera y torneos); un partido rápido no los gasta
-    S.trainTxt = compite() ? [trainTick(), consumoTick()].filter(Boolean).join(' · ') : '';
+    S.trainTxt = comp ? [trainTick(), consumoTick()].filter(Boolean).join(' · ') : '';
     // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
-    S.compitio = compite();   // (el cartel del final lo mira luego, aunque en el menú se cambie el tipo de partido)
-    const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
+    S.compitio = comp;   // (el cartel del final lo mira luego, aunque en el menú se cambie el tipo de partido)
+    const xpTxt = comp ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
     S.bannerPend = { at: S.timer - RETRASO_CARTEL, args: [winner === US ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', (CFG.match === '6p' ? S.score.join('-') : setsText()) + xpTxt, winner === US ? 'gana' : 'riv', 1.4] };
     fillBigScore(winner, juego); S.bigAt = S.timer - RETRASO_CARTEL - 1.4;
     if (xpTxt) document.getElementById('bsSub').textContent += xpTxt;
