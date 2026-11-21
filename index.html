@@ -1649,7 +1649,7 @@ const GRADA = (() => {
   // vértice lleva su zona (piel, camiseta, pantalón, pelo, zapatilla, calcetín, ojos) y cada espectador sus colores.
   // Mientras se preparan (hacen falta los modelos) se ven los muñecos sencillos.
   let p3d = null, p3dPedido = false;
-  const pubMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
+  const pubMat = new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide });   // (por los huecos que deja el simplificador se ve la figura por dentro, no el fondo)
   pubMat.onBeforeCompile = sh => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float zona;\nattribute vec3 iPiel, iCam, iPan, iPelo, iVar;\nvarying vec3 vPub;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPub = zona < .5 ? iPiel : zona < 1.5 ? iCam : zona < 2.5 ? iPan : zona < 3.5 ? iPelo : zona < 4.5 ? vec3(.86) : zona < 5.5 ? vec3(.8) : zona < 6.5 ? iPiel * .5 : zona < 7.5 ? mix(iPiel, iPan, iVar.x) : mix(iPiel, iCam, iVar.y);');
@@ -1684,7 +1684,7 @@ const GRADA = (() => {
     }
     let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(out, 3)); g.setAttribute('uv', new THREE.BufferAttribute(zuv, 2)); g.setIndex(g0.index.clone());
     const nv = mergeVertices(g).attributes.position.count;
-    g = new Simplifica().modify(g, Math.floor(nv * (ORDENADOR ? 0.62 : 0.82))).toNonIndexed();
+    g = new Simplifica().modify(g, Math.floor(nv * (ORDENADOR ? 0.55 : 0.8))).toNonIndexed();
     // una zona por triángulo; la piel de piernas (7) y brazos (8) aparte, para el pantalón largo y la manga larga; en el
     // escote, lo que tenga algo de camiseta por debajo del cuello es camiseta (si no, salía en picos, como una estrella)
     const zu = g.attributes.uv, nT = zu.count / 3, zona = new Float32Array(zu.count), orig = new Uint32Array(zu.count);
@@ -4122,14 +4122,15 @@ function sndModo(dst, t, f, dur, g, { caida = 0.97, tipo = 'sine' } = {}) {
 function sfx(kind, speed = 10, pos = ball && ball.p) {
   if (!AC || CFG.sound === 'no' || !kind || (AC.state !== 'running' && !(window.OfflineAudioContext && AC instanceof OfflineAudioContext))) return;
   const t = AC.currentTime + 0.005, f = clamp(speed / 25, 0.1, 1.3), vr = 1 + (Math.random() - 0.5) * 0.08;   // fuerza 0..1,3 y algo de variación
-  if (kind === 'golpe') {        // «poc» seco: núcleo de goma EVA + bola; cuanto más fuerte, más brillante
-    const d = sndSalida(t, pos, 0.55 + 0.5 * f, 0.9);
-    sndRuido(d, t, { tipo: 'highpass', f: 2500 + 2500 * f, q: 0.7, dur: 0.006 + 0.004 * f, g: 0.9 });
-    sndRuido(d, t, { f: 1300 * vr, q: 2.2, dur: 0.028, g: 0.55 + 0.3 * f });
-    sndModo(d, t, 1080 * vr, 0.032 + 0.018 * f, 0.5);          // pala
-    sndModo(d, t, 1720 * vr, 0.022, 0.28);                     // bola
-    sndModo(d, t, 2650 * vr, 0.012, 0.14 * f);
-    sndModo(d, t, 240 * vr, 0.03, 0.22 * f, { caida: 0.8 });    // cuerpo del golpe
+  if (kind === 'golpe') {        // «poc» con cuerpo: la bola (grande y blanda) se aplasta contra la goma EVA de la pala; nada
+    // de chasquido agudo (eso es lo que sonaba a ping-pong): lo que manda es un medio-grave corto y redondo
+    const d = sndSalida(t, pos, 0.6 + 0.45 * f, 0.9);
+    sndRuido(d, t, { tipo: 'lowpass', f: 1600 + 900 * f, q: 0.7, dur: 0.018 + 0.006 * f, g: 0.7, ataque: 0.0015 });
+    sndRuido(d, t, { f: 780 * vr, q: 1.4, dur: 0.04, g: 0.45 + 0.25 * f, ataque: 0.002 });
+    sndModo(d, t, 560 * vr, 0.05 + 0.02 * f, 0.55, { caida: 0.9 });     // la pala
+    sndModo(d, t, 880 * vr, 0.035, 0.26, { caida: 0.93 });              // la bola, presurizada
+    sndModo(d, t, 190 * vr, 0.045, 0.3 + 0.15 * f, { caida: 0.75 });    // el cuerpo del golpe
+    sndRuido(d, t, { tipo: 'highpass', f: 3200, q: 0.5, dur: 0.006, g: 0.12 + 0.1 * f });   // una pizca de contacto
   } else if (kind === 'bote') {   // «tup» sordo sobre césped con arena
     const d = sndSalida(t, pos, 0.7 + 0.7 * f, 0.7);
     sndRuido(d, t, { tipo: 'lowpass', f: 1400 + 1200 * f, q: 0.8, dur: 0.035, g: 0.7 });
@@ -4144,17 +4145,24 @@ function sfx(kind, speed = 10, pos = ball && ball.p) {
     sndModo(d, t, 205 * vr, 0.11, 0.35, { caida: 0.95 });
     sndModo(d, t, 390 * vr, 0.07, 0.22);
     sndModo(d, t, 3100 * vr, 0.09, 0.03 + 0.03 * f);           // un leve tintineo del vidrio
-  } else if (kind === 'malla') {    // la rejilla vibra: resonancias metálicas que traquetean
-    const d = sndSalida(t, pos, 0.8 + 0.9 * f, 1.1);
-    sndRuido(d, t, { tipo: 'bandpass', f: 1500, q: 1, dur: 0.02, g: 0.5 });
-    sndModo(d, t, 160 * vr, 0.06, 0.3, { caida: 0.9 });
-    for (const [fr, du, gg] of [[1870, 0.22, 0.12], [2930, 0.18, 0.1], [4410, 0.14, 0.07], [3570, 0.2, 0.06]]) sndModo(d, t, fr * vr, du, gg, { caida: 0.995 });
-    for (let i = 0; i < 6; i++) sndRuido(d, t + 0.012 + i * (0.018 + Math.random() * 0.02), { f: 2400 + Math.random() * 2600, q: 6, dur: 0.02, g: 0.18 * Math.exp(-i * 0.45) });
+  } else if (kind === 'malla') {    // la rejilla cede: un golpe sordo y blando (no es una chapa) y el traqueteo de los
+    // alambres sueltos contra el marco, ruido corto y seco que se apaga enseguida; sin tonos que se queden sonando (eso
+    // era lo que sonaba a moneda)
+    const d = sndSalida(t, pos, 0.7 + 0.8 * f, 1.0);
+    sndRuido(d, t, { tipo: 'lowpass', f: 900, q: 0.7, dur: 0.05, g: 0.55, ataque: 0.003 });   // la bola en la malla, que cede
+    sndModo(d, t, 130 * vr, 0.07, 0.28, { caida: 0.8 });
+    const n = 10 + Math.round(8 * f);
+    for (let i = 0; i < n; i++) {   // los alambres: chasquidos secos, cada vez más flojos y separados al azar
+      const tt = t + 0.008 + 0.16 * Math.pow(i / n, 1.3) + Math.random() * 0.01;
+      sndRuido(d, tt, { f: 1800 + Math.random() * 3000, q: 2.5, dur: 0.006 + Math.random() * 0.008, g: (0.16 + 0.1 * f) * Math.exp(-i * 3 / n) });
+    }
+    sndRuido(d, t + 0.01, { tipo: 'bandpass', f: 2600, q: 0.8, dur: 0.12, g: 0.05 + 0.04 * f, ataque: 0.01 });   // el zumbido de la malla
   } else if (kind === 'red') {      // la bola se mete en la red: roce blando y la cinta que se mueve
-    const d = sndSalida(t, pos, 1.1, 0.6);
-    sndRuido(d, t, { tipo: 'bandpass', f: 900, q: 0.7, dur: 0.12, g: 0.45, ataque: 0.008, f2: 400 });
-    sndModo(d, t, 95, 0.12, 0.2, { caida: 0.8 });
-    sndRuido(d, t + 0.02, { tipo: 'highpass', f: 3500, q: 0.5, dur: 0.06, g: 0.06 });
+    // (sin tono grave, que la hacía sonar a algo sólido: solo el roce de la tela que se hunde y vuelve)
+    const d = sndSalida(t, pos, 0.75, 0.5);
+    sndRuido(d, t, { tipo: 'bandpass', f: 1700, q: 0.6, dur: 0.16, g: 0.3, ataque: 0.02, f2: 650 });
+    sndRuido(d, t + 0.03, { tipo: 'bandpass', f: 1100, q: 0.5, dur: 0.12, g: 0.12, ataque: 0.02, f2: 500 });   // la red que vuelve
+    sndRuido(d, t + 0.01, { tipo: 'highpass', f: 4000, q: 0.5, dur: 0.08, g: 0.04, ataque: 0.01 });
   } else if (kind === 'aplauso') {  // aplausos del público de la grada: muchas palmadas sueltas que se van apagando
     const d = sndSalida(t, { x: -(HW + 6), y: 2.5, z: 0 }, 2, 1.2), N = 140;
     for (let i = 0; i < N; i++) {
@@ -6374,6 +6382,35 @@ function clasificaChica(r, g, b, x, y, z) {
   return clasificaChico(r, g, b, x, y, z);
 }
 
+// la chica 2 (melena suelta con moño, camiseta de tirantes y falda, todo blanco): el pelo por el color (castaño, más
+// oscuro que la piel) también por debajo del cuello, donde cae sobre los hombros; brazos y hombros de piel (sin mangas)
+// y la falda entera, con la cinturilla, del color de la calzona
+function clasificaChica2(r, g, b, x, y, z) {
+  const [h, s, v] = hsv(r / 255, g / 255, b / 255);
+  const ax = Math.abs(x);
+  const calido = h < 50 || h > 340;
+  const blanco = s < .16 && v > .55;
+  const pielClara = calido && s > .15 && v > .5;
+  const piel = calido && s > .12 && v > .2 && !blanco;
+  if (y > Z.cuello && ax < .12) {
+    if (blanco && y < Z.cuello + .03) return R.CAM;                // cuello de la camiseta por detrás
+    const cara = z > .03 && ax < .05;
+    if (cara && y > Z.frente) return R.PELO;                       // nacimiento del pelo
+    if (y > Z.frente + .02 || (z < Z.nuca && y > Z.menton) || ax > .052) return R.PELO;   // (a los lados de la cara, la melena)
+    if (pielClara) return R.PIEL;
+    if (cara && y < Z.cejas && y > Z.boca) return R.OJO;           // ojos, cejas, nariz y boca
+    if (y < Z.menton && z > Z.nuca) return R.PIEL;                 // mandíbula y cuello
+    return R.PELO;
+  }
+  if (y > Z.melena && ax < .12 && !blanco && ((!pielClara && s > .18 && v < .5) || (ax > .045 && y > Z.melena + .025))) return R.PELO;   // la melena, sobre los hombros
+  if (ax > Z.manga && y > Z.bajo) return blanco && ax < Z.manga + .025 ? R.CAM : R.PIEL;     // tirantes: el brazo, piel
+  if (y > Z.bajo) return piel ? R.PIEL : R.CAM;
+  if (y > Z.calzona) return piel && s > .2 ? R.PIEL : R.CAL;       // la falda (y lo que asoma por debajo)
+  if (y > Z.calcetin) return R.PIEL;
+  if (y > Z.zapatilla) return piel ? R.PIEL : R.CALCETIN;
+  return y < -.5 + Z.suela ? R.SUELA : R.ZAP;
+}
+
 function preparaTinte(mesh, nombre = 'chica') {
   const PF = PERFILES[nombre]; Z = PF.Z;
   const img = mesh.material.map.image;
@@ -7025,6 +7062,9 @@ const PERFILES = {
   chica: { Z: { cuello: .325, bajo: .025, calzona: -.088, calcetin: -.36, zapatilla: -.425, manga: .11, brazo: .15, muneca: .30, suela: .014, lateral: .022,
     coleta: .265, coletaZ: -.04, coletaNuca: -.055, coletaFondo: -.065, frente: .452, sienes: .428, cejas: .422, boca: .348, menton: .36 },
     clasifica: clasificaChica, ojos: [{ x: -.0285, y: .402 }, { x: .0275, y: .402 }], ojosDibujo: [{ x: -.0235, y: .4015 }, { x: .0225, y: .4015 }], ojoR: .006, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true }, islas: 400 },
+  chica2: { Z: { cuello: .312, bajo: .09, calzona: -.115, calcetin: -.355, zapatilla: -.415, manga: .09, suela: .014, lateral: .022, melena: .28,
+    nuca: -.035, frente: .44, sienes: .417, cejas: .411, boca: .337, menton: .349 },
+    clasifica: clasificaChica2, ojos: [{ x: -.026, y: .391 }, { x: .026, y: .391 }], ojoR: .006, tapa: [.016, .008, .0065, .009], igualaPiernas: { obj: .92, resto: .15, tono: true }, islas: 400 },
   chico: { Z: { cuello: .33, bajo: .012, calzona: -.15, calcetin: -.345, zapatilla: -.41, manga: .165, hombro: .125, muneca: .40, suela: .014 },
     clasifica: clasificaChico, ojos: [{ x: -.0205, y: .4245 }, { x: .0185, y: .4245 }], ojoR: .0052, tapa: [.0135, .0068, .0052, .0105], igualaPiernas: true,
     peloSuave: { desde: .36, vPiel: .6, vPelo: .4 } },
@@ -7061,11 +7101,13 @@ function cargaModelos() {
       return new Promise((ok, ko) => ld.parse(out, '', ok, ko));
     };
     const imagen = n => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error(n)); i.src = MOD.base + n; });
-    const imgChico = imagen('chico.png'), imgChica = imagen('chica.png');
-    const [h, m, c, f, ...resto] = await Promise.all(['hombre', 'mujer', 'chico', 'chica', ...pelos].map(glb));
+    const imgChico = imagen('chico.png'), imgChica = imagen('chica.png'), imgChica2 = imagen('chica2.png');
+    const [h, m, c, f, f2, ...resto] = await Promise.all(['hombre', 'mujer', 'chico', 'chica', 'chica2', ...pelos].map(glb));
     MOD.src.c = preparaChico(c.scene, await imgChico, 'chico');
     MOD.src.f = preparaChico(f.scene, await imgChica, 'chica');
     MOD.src.f.kBrazo = MOD.src.c.kBrazo * largoBrazo(MOD.src.c) / largoBrazo(MOD.src.f);   // (brazos del largo de los del chico)
+    MOD.src.f2 = preparaChico(f2.scene, await imgChica2, 'chica2');   // (la de melena suelta y falda: solo las de CHICA2)
+    MOD.src.f2.kBrazo = MOD.src.c.kBrazo * largoBrazo(MOD.src.c) / largoBrazo(MOD.src.f2);
     await cargaMarcas();   // (las letras de las camisetas, antes de pintar ninguna)
     const nt = ['piel_h', 'piel_m', 'pelo1', 'pelo2', 'ojo', 'piel_h_n', 'piel_m_n', 'pelo1_n', 'pelo2_n'];
     const ts = await Promise.all(nt.map((n, i) => tx(n + (n === 'ojo' ? '.png' : '.jpg'), i < 5)));
@@ -7152,9 +7194,12 @@ function preparaFuente(sc) {
 // llevan su propio pelo y zapatillas, y la textura se tiñe por jugador
 // (alto: el del modelo en metros; el tinte trabaja con el modelo a 1 de alto. La chica lleva los brazos del largo de los
 // del chico, que es el del muñeco: se ajusta al cargar)
+// jugadoras que llevan la chica 2 (melena suelta, camiseta de tirantes y falda); las demás, la chica de la coleta
+const CHICA2 = new Set(['marta', 'nuria']);
 const MODELO_TRELLIS = {
   chico: { alto: 1.8, kBrazo: 1.25, cab: [new V3(0, 1.665, 0.01), 0.8], mano: { h: 0.065, f: 0.11, n: 0.031 }, cintaY: 1.712 },
   chica: { alto: 1.7, kBrazo: 1.25, cab: [new V3(0, 1.575, 0.012), 0.76], mano: { h: 0.065, f: 0.097, n: 0.0265 }, cintaY: 1.617, cintaZ: -0.10, muneca: [-0.068, -0.006] },
+  chica2: { alto: 1.7, kBrazo: 1.25, cab: [new V3(0, 1.557, 0.012), 0.78], mano: { h: 0.065, f: 0.097, n: 0.0265 }, cintaY: 1.60, cintaZ: -0.12, muneca: [-0.068, -0.006] },
 };
 const largoBrazo = F => (F.rest.lowerarm_r.p.distanceTo(F.rest.upperarm_r.p) + F.rest.hand_r.p.distanceTo(F.rest.lowerarm_r.p));
 function preparaChico(sc, img, nombre = 'chico') {
@@ -7553,7 +7598,7 @@ function ponModelo(pl) {
   if (pl.rig && pl.rig.clave === clave) { ajustaPiezas(pl); poseModelo(pl); return; }
   if (pl.rig) quitaModelo(pl);
   // los hombres llevan el chico y las mujeres la chica (si están cargados; si no, los modelos de prueba)
-  const fem = p.s === 'm', F = (fem ? MOD.src.f : MOD.src.c) || MOD.src[fem ? 'm' : 'h'], rest = F.rest;
+  const fem = p.s === 'm', F = (fem ? (CHICA2.has(p.id) && MOD.src.f2) || MOD.src.f : MOD.src.c) || MOD.src[fem ? 'm' : 'h'], rest = F.rest;
   const obj = MOD.SU.clone(F.sc), H = {};
   obj.traverse(o => { if (o.isBone) H[o.name] = o; });
   const hc = p.pc;

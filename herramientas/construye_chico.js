@@ -16,6 +16,13 @@ export async function construye(url, cierraMano, opMano, nombre = 'chico') {
   const o = new FBXLoader().parse(await (await fetch(url, { cache: 'no-store' })).arrayBuffer(), '');
   o.updateMatrixWorld(true);
   let m; o.traverse(x => { if (x.isSkinnedMesh) m = x; });
+  // 0. si se riggeó con dedos (la malla no los tiene separados), su peso pasa a la mano: así la mano se cierra igual y los
+  // huesos de los dedos, que el juego no mueve, no deforman nada
+  {
+    const nb = m.skeleton.bones.map(b => b.name.replace('mixamorig', '')), si = m.geometry.attributes.skinIndex;
+    const mano = nb.map(n => { const r = /^(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)/.exec(n); return r ? nb.indexOf(r[1] + 'Hand') : -1; });
+    for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) { const j = mano[si.getComponent(i, k)]; if (j >= 0) si.setComponent(i, k, j); }
+  }
   // 1. la mano derecha, cerrada (en cm, con el esqueleto de Mixamo aún)
   const mano = cierraMano(m, opMano);
   // 2. vértices compartidos y normales suaves

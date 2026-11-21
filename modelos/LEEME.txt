@@ -29,3 +29,7 @@ Chica (modelos/chica.json + chica.png): figura de las jugadoras con «Modelo nue
 - Se convierte con construye(url, cierraMano, { nudillo: 9.7, radio: 1.5, palma: 1.15 }, 'chica'): mano más pequeña.
 - En el juego: perfil 'chica' del tinte (coleta, ojos, banda lateral por posición), brazos alargados al largo de los del
   chico, cinta que pasa por debajo de la coleta y muñequeras algo más cortas.
+
+Chica 2 (modelos/chica2.json + chica2.png): melena suelta, camiseta de tirantes y falda. Solo la llevan Marta Vidal y
+Nuria Prieto (CHICA2 en index.html). Hecha igual (TRELLIS + Mixamo, esta vez riggeada con dedos: construye pasa su peso
+a la mano). Perfil 'chica2' del tinte.
