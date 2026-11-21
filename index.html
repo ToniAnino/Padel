@@ -6173,6 +6173,10 @@ function sanitizeLineup() {
   if (CFG.tipo === 'torneo') { CFG.us = idsPropios(); torPrepara(); }
 }
 function applyLineup() {
+  // con el partido acabado, en la pista siguen los de ese partido (se ve el final con los rivales de verdad): los
+  // siguientes salen al empezar el próximo (resetMatch); el menú ya enseña los nuevos
+  if (S.over) { S.lineupPend = true; paintLineup(); return; }
+  S.lineupPend = false;
   [...CFG.us, ...CFG.riv].forEach((id, i) => players[i].setProfile(byId(id)));
   applyLook(); paintLineup();
 }
@@ -8279,6 +8283,7 @@ function paintPlay() {
 function endMatch() { S.timer = 0; openMenu(); }
 function resetMatch() {
   S.score = [0, 0]; S.pts = [0, 0]; S.games = [0, 0]; S.sets = []; S.tb = false; S.over = false; S.xpMatch = 0; S.xpRivMatch = 0; S.xpRaw = [0, 0]; S.subeTxt = ''; clearSave();
+  if (S.lineupPend) applyLineup();   // (los rivales del siguiente partido, que esperaban a que empezara)
   S.saqueIni = Math.random() < 0.5 ? 0 : 1;   // a suertes quién empieza sacando
   S.escTxt = ''; S.torTxt = '';
   updateHud();
