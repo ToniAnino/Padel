@@ -252,6 +252,12 @@
   #ladder .retar.sel{background:#fff}
   #ladder #escReset{padding:6px 10px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font:inherit;font-size:12px;cursor:pointer}
   #ladder .ltit{font-size:11px;letter-spacing:2px;font-weight:800;opacity:.85;margin:4px 0 6px}
+  #ladder .torRonda{margin:2px 0 8px;padding:10px 12px 9px;border-radius:12px;text-align:center;background:linear-gradient(135deg,#1d4ed8,#22d3ee);color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.18) inset,0 6px 18px rgba(34,211,238,.35)}
+  #ladder .torRonda small{display:block;font-size:10px;letter-spacing:3px;font-weight:800;opacity:.85}
+  #ladder .torRonda b{display:block;font-size:26px;line-height:1.1;letter-spacing:2px;font-weight:900;text-shadow:0 2px 6px rgba(0,0,0,.35)}
+  #ladder .torRonda.r1{background:linear-gradient(135deg,#7c3aed,#ec4899);box-shadow:0 0 0 2px rgba(255,255,255,.18) inset,0 6px 18px rgba(236,72,153,.35)}
+  #ladder .torRonda.r2{background:linear-gradient(135deg,#b45309,#facc15 55%,#fde68a);color:#1c1300;box-shadow:0 0 0 2px rgba(255,255,255,.35) inset,0 6px 22px rgba(250,204,21,.5)}
+  #ladder .torRonda.r2 b{text-shadow:0 1px 0 rgba(255,255,255,.5)}
   #ladder .cruce{margin-bottom:8px}
   #ladder .cruce .lrow{margin-bottom:2px}
   #ladder .cruce{padding:5px 6px;border:1px solid rgba(255,255,255,.12);border-radius:10px}
@@ -879,6 +885,7 @@ const EN = {
   "Recorrido": "Swing",
   "Rematador": "Smasher",
   "SEMIFINAL": "SEMI-FINAL",
+  "OS TOCA": "UP NEXT",
   "SET RIVAL": "OPPONENTS' SET",
   "Semifinal": "Semi-final",
   "Sin final": "Endless",
@@ -1754,6 +1761,11 @@ const GRADA = (() => {
       res.push(ims);
     }
     p3d = res;
+    API.figura = (sx, ps, cols) => {   // una figura suelta (el árbitro), en su postura y con sus colores
+      const g = geo[sx + ps].clone();
+      for (const k in cols) { const c = Array.isArray(cols[k]) ? cols[k] : (col.set(cols[k]), [col.r, col.g, col.b]); g.setAttribute(k, new THREE.InstancedBufferAttribute(new Float32Array(c), 3)); }
+      const im = new THREE.InstancedMesh(g, pubMat, 1); im.setMatrixAt(0, new THREE.Matrix4()); im.frustumCulled = false; return im;
+    };
     for (const T of tribunas) T.grupo.visible = false;   // (los muñecos sencillos ya no)
   }
   const CERO = new THREE.Matrix4().makeScale(0, 0, 0), _qy = new THREE.Quaternion(), EY = new V3(0, 1, 0);
@@ -1843,8 +1855,10 @@ const PABELLON = (() => {
     const p = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 3.7), pantMat); p.position.set(sx * 10, 9.2, -(HL + 11) + 0.16); G.add(p);
   }
   // silla del árbitro junto a la red, a la derecha (entre los dos bancos), con el árbitro sentado mirando a la pista
+  const ARB = {};   // (la figura buena del árbitro se pone cuando está la del público; mientras, la sencilla)
   {
     const A = new THREE.Group(); A.position.set(HW + 2.1, 0, 0); A.rotation.y = -Math.PI / 2; G.add(A);   // (+z del grupo, hacia la pista)
+    ARB.A = A;
     const negro = new THREE.MeshStandardMaterial({ color: 0x1b1e24, roughness: 0.5, metalness: 0.5 });
     const caja = (w, h, d, x, y, z, m = negro) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; A.add(o); return o; };
     const H = 1.55;   // altura del asiento
@@ -1854,12 +1868,13 @@ const PABELLON = (() => {
     caja(0.7, 0.06, 0.7, 0, H, 0);                                                                // asiento
     caja(0.7, 0.55, 0.05, 0, H + 0.3, -0.33);                                                     // respaldo
     for (const px of [-0.35, 0.35]) caja(0.05, 0.05, 0.6, px, H + 0.25, 0);                       // brazos
-    caja(0.6, 0.04, 0.3, 0, H - 0.75, 0.45);                                                      // reposapiés
+    caja(0.6, 0.04, 0.3, 0, H - 0.52, 0.42);                                                      // reposapiés
     caja(0.55, 0.03, 0.32, 0, H + 0.62, 0.42).rotation.x = 0.35;                                  // atril con la tablilla
     // el árbitro: polo claro, pantalón oscuro, sentado
+    const simple = new THREE.Group(); A.add(simple); ARB.simple = simple; ARB.H = H;
     const polo = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.8 }), pan = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
     const piel = new THREE.MeshStandardMaterial({ color: 0xd9a782, roughness: 0.7 }), pelo = new THREE.MeshStandardMaterial({ color: 0x2b1d14, roughness: 0.9 });
-    const pieza = (geo, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.x = rx; o.castShadow = true; A.add(o); return o; };
+    const pieza = (geo, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.x = rx; o.castShadow = true; simple.add(o); return o; };
     pieza(new THREE.CapsuleGeometry(0.17, 0.36, 4, 10), polo, 0, H + 0.42, -0.08, -0.08);         // tronco
     pieza(new THREE.SphereGeometry(0.11, 14, 10), piel, 0, H + 0.86, -0.05);                      // cabeza
     pieza(new THREE.SphereGeometry(0.115, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), pelo, 0, H + 0.885, -0.065);
@@ -1927,6 +1942,10 @@ const PABELLON = (() => {
       const tor = TOR && torDe(TOR.id), n = tor ? tor.n : 'Torneo', r = TOR ? RONDAS[TOR.ronda] || '' : '';
       if (n + r !== rotulo) { rotulo = n + r; repinta(n, r); }
       for (const L of LAMPS) L.p.visible = L.h.visible = false;   // las torres de focos del club, no
+      if (!ARB.fig && GRADA.figura) {   // el árbitro, con la misma figura que el público: sentado, polo claro y pantalón largo oscuro
+        const m = ARB.fig = GRADA.figura('h', 'regazo', { iPiel: 0xd9a782, iCam: 0xdfe3e8, iPan: 0x1f2937, iPelo: 0x2b1d14, iVar: [1, 0, 0] });
+        m.position.set(0, ARB.H + 0.13, -0.06); m.rotation.y = -Math.PI / 2; m.castShadow = true; ARB.A.add(m); ARB.simple.visible = false;
+      }
     }
     if (t !== estado) { estado = t; aplica(); }
   }
@@ -4391,7 +4410,8 @@ const RETRASO_CARTEL = 1.5;   // s tras el punto antes de que salgan el cartel y
 function endPoint(winner, reason) {
   S.phase = 'point'; S.timer = 1.8;
   S.score[winner]++;
-  GRADA.celebra();   // (el público del torneo, si lo hay)
+  const largo = (S.rallyHits || 0) >= 8;   // el público (del torneo, si lo hay) aplaude los puntos largos; los demás, no
+  if (largo) GRADA.celebra();
   // marcador de pádel: 0-15-30-40, iguales y ventaja; quien gana el juego suma un juego
   const P = S.pts, L = 1 - winner, conSets = CFG.scoring === 'padel' && CFG.match !== 'libre';
   let juego = false, set = false, fin = false;
@@ -4415,6 +4435,7 @@ function endPoint(winner, reason) {
     }
   }
   if (CFG.match === '6p' && S.score[winner] >= 6 && S.score[winner] - S.score[L] >= 2) fin = true;   // partido a 6 puntos con 2 de diferencia
+  if (!largo && (set || fin)) GRADA.celebra();   // (y el que cierra un set o el partido)
   updateHud();
   bounceRing.visible = targetRing.visible = false;
   // experiencia (para las dos parejas): punto 3, juego 5, set 15 y 15 por jugar el partido;
@@ -6133,7 +6154,8 @@ function paintTorneo(el) {
   cruces.sort((a, b) => (b.includes('US') ? 1 : 0) - (a.includes('US') ? 1 : 0));
   const cruce = ([a, b]) => { const v = a === 'US' || b === 'US', [x, y] = b === 'US' ? [b, a] : [a, b];
     return `<div class="cruce${v ? ' vuestro' : ''}">${v ? '<div class="ltit" style="margin-top:0">VUESTRO PARTIDO</div>' : ''}${fila(x)}<div class="vs">CONTRA</div>${fila(y)}</div>`; };
-  el.innerHTML = `<div class="ltit">${ico('copa')}${t.n.toUpperCase()} · ${RONDAS[TOR.ronda].toUpperCase()}</div>` +
+  // la ronda que toca, bien grande (la final, en dorado)
+  el.innerHTML = `<div class="ltit">${ico('copa')}${t.n.toUpperCase()}</div><div class="torRonda r${TOR.ronda}"><small>OS TOCA</small><b>${RONDAS[TOR.ronda].toUpperCase()}</b></div>` +
     `<div class="torSub">${TOR.ronda === 2 ? 'Quedáis las dos últimas parejas: el que gane, campeón.' : 'Siguen ' + quedan + ' parejas; el que pierda queda eliminado.'}</div>` +
     cruces.map((c, i) => (i === 1 ? '<div class="ltit" style="opacity:.6">' + (cruces.length > 2 ? 'LOS OTROS CRUCES' : 'EL OTRO CRUCE') + '</div>' : '') + cruce(c)).join('') +
     `<div class="ltit" style="margin-top:6px">Premios: 1.º ${euros(t.premios[0])} · 2.º ${euros(t.premios[1])} · 3.º ${euros(t.premios[2])}</div>
