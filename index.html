@@ -129,6 +129,7 @@
   #menu #restart{display:none;width:100%;margin-top:10px;padding:12px;border:1px solid rgba(255,255,255,.55);border-radius:12px;
     background:transparent;color:#fff;font:inherit;font-size:15px;cursor:pointer}
   #menu.started #restart{display:block}
+  #menu.enTienda #play,#menu.enTienda #restart{display:none!important}
   #menu h2 output{float:right;color:#fff;font-size:14px;letter-spacing:0}
   #level{width:100%;accent-color:#2f7bff;margin:4px 0 0}
   #menu .lvlEnds{display:flex;justify-content:space-between;font-size:11px;opacity:.6}
@@ -8437,6 +8438,7 @@ function ponPestana(t, repinta = true) {
   document.getElementById('menu').scrollTop = 0;
   for (const b of document.querySelectorAll('#mtabs button')) b.classList.toggle('on', b.dataset.t === t);
   for (const d of document.querySelectorAll('#menu .mtab')) d.classList.toggle('on', d.dataset.tab === t);
+  document.getElementById('menu').classList.toggle('enTienda', t === 'tienda');   // en la tienda no se juega: ni botón de jugar ni de reiniciar
   try { localStorage.setItem('padel.pestana', t); } catch (_) {}
 }
 document.getElementById('mtabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) ponPestana(b.dataset.t); });
