@@ -7395,7 +7395,36 @@ function preparaChico(sc, img, nombre = 'chico') {
   F.gorra = gorraAjustada(cuerpo.geometry, C.cintaY - 0.008, C.cintaZ ?? -Infinity);   // (copa y visera)
   const mu = C.muneca || [];   // (la chica, de antebrazo fino: más corta, junto a la muñeca, que al doblarla se nota menos)
   F.munecas = { r: munequeraAjustada(cuerpo.geometry, R, 'r', ...mu), l: munequeraAjustada(cuerpo.geometry, R, 'l', ...mu) };
+  relajaMano(cuerpo, R, 'l');   // (después del tinte, que clasifica por la posición de cada punto)
   return F;
+}
+// La mano izquierda venía abierta y con los dedos estirados (postura en T): se doblan un poco hacia la palma, relajados.
+// Como el puño de la derecha (herramientas/mano.js) pero con una curva amplia y poco ángulo: lo que pesa en la mano más
+// allá de la mitad de su largo se enrolla alrededor de un eje bajo la palma, hasta unos 55° en la punta de los dedos.
+function relajaMano(m, R, lado = 'l', max = 0.95) {
+  const sk = m.skeleton, iH = sk.bones.findIndex(b => b.name === 'hand_' + lado); if (iH < 0) return 0;
+  m.updateMatrixWorld(true);
+  const W = R['hand_' + lado].p, a = W.clone().sub(R['lowerarm_' + lado].p).normalize();
+  const abajo = new V3(0, -1, 0).addScaledVector(a, a.y).normalize(), ej = new V3().crossVectors(a, abajo).normalize();
+  const P = m.geometry.attributes.position, SI = m.geometry.attributes.skinIndex, SW = m.geometry.attributes.skinWeight;
+  const inv = m.matrixWorld.clone().invert(), v = new V3(), d = new V3(), sel = [];
+  let umax = 0;
+  for (let i = 0; i < P.count; i++) {
+    let w = 0; for (let j = 0; j < 4; j++) if (SI.getComponent(i, j) === iH) w += SW.getComponent(i, j);
+    if (w < 0.5) continue;
+    v.fromBufferAttribute(P, i).applyMatrix4(m.matrixWorld); d.copy(v).sub(W);
+    const u = d.dot(a); if (u <= 0) continue;
+    sel.push([i, u, d.dot(abajo), d.dot(ej)]); umax = Math.max(umax, u);
+  }
+  const u0 = umax * 0.48, rc = umax * 0.42, hc = umax * 0.06 + rc;   // nudillo, radio de la curva y su eje bajo la palma
+  for (const [i, u, hh, s] of sel) {
+    if (u <= u0) continue;
+    const rad = hc - hh, th = Math.min((u - u0) / Math.max(rad, rc * 0.8), max);
+    v.copy(W).addScaledVector(a, u0 + rad * Math.sin(th)).addScaledVector(abajo, hc - rad * Math.cos(th)).addScaledVector(ej, s).applyMatrix4(inv);
+    P.setXYZ(i, v.x, v.y, v.z);
+  }
+  P.needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere();
+  return sel.length;
 }
 // cinta del pelo del chico, ajustada al contorno de su cabeza (con el pelo): para cada dirección alrededor de la cabeza, lo
 // más saliente a esa altura, algo más alta delante (frente) que detrás; banda plana de 2,8 cm, 4 mm por fuera del pelo
