@@ -7755,9 +7755,15 @@ function ajustaPiezas(pl) {
 const claveModelo = p => JSON.stringify([p.id, p.n, p.s, p.pv || 0, p.piel, p.pelo, p.pc, p.cam, p.pan, p.zap, p.man, p.acc, materialDe(p).map(x => x.id)]);
 // en el partido, con gráficos detallados y «Modelo nuevo» elegido en Configuración
 function modelosPartido(det) {
-  if (!(det && CFG.modelo === 'nuevo')) { for (const p of players) if (p.rig) quitaModelo(p, det); return; }
-  if (!MOD.src.h) { cargaModelos().then(() => { if (CFG.modelo === 'nuevo') applyLook(); }).catch(e => console.error(e)); return; }
-  for (const p of players) ponModelo(p);
+  if (!(det && CFG.modelo === 'nuevo')) { for (const p of players) { p.g.visible = true; if (p.rig) quitaModelo(p, det); } return; }
+  // mientras se cargan los modelos no se ven los muñecos de piezas (al abrir la página salían un momento antes que los buenos)
+  if (!MOD.src.h) {
+    for (const p of players) p.g.visible = false;
+    cargaModelos().then(() => { if (CFG.modelo === 'nuevo') applyLook(); })
+      .catch(e => { for (const p of players) p.g.visible = true; console.error(e); });
+    return;
+  }
+  for (const p of players) { ponModelo(p); p.g.visible = true; }
 }
 function ponModelo(pl) {
   const p = pl.prof; if (!p || !MOD.src.h) return;
