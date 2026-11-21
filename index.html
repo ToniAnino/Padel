@@ -4417,7 +4417,9 @@ function endPoint(winner, reason) {
     S.subeTxt = repartirXP(winner);
     escOnMatchEnd(winner === US);
     torOnMatchEnd(winner === US);
-    S.trainTxt = [trainTick(), consumoTick()].filter(Boolean).join(' · ');   // los entrenamientos cuentan un partido más; las bebidas y barritas se gastan
+    // los entrenamientos cuentan un partido más y las bebidas y barritas se gastan, pero solo en los partidos que dan
+    // experiencia (escalera y torneos); un partido rápido no los gasta
+    S.trainTxt = compite() ? [trainTick(), consumoTick()].filter(Boolean).join(' · ') : '';
     // la experiencia ganada se ve ya en el cartel del final y en el marcador grande (y luego en el menú)
     S.compitio = compite();   // (el cartel del final lo mira luego, aunque en el menú se cambie el tipo de partido)
     const xpTxt = compite() ? ' · +' + S.xpMatch + ' DE EXPERIENCIA' : '';
