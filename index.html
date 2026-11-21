@@ -782,6 +782,7 @@ const EN = {
   "OPEN COMARCAL": "COUNTY OPEN",
   "Open Comarcal": "County Open",
   "PARTIDO NUEVO": "NEW MATCH",
+  "SIGUIENTE PARTIDO": "NEXT MATCH",
   "Partida nueva": "New match",
   "Que las lleve": "Give them to",
   "Sí, abandonar": "Yes, leave",
@@ -893,6 +894,7 @@ const EN = {
   "4 juegos": "4 games",
   "6 puntos": "6 points",
   "AL HUECO": "INTO THE GAP",
+  "¡A POR ELLA!": "GO FOR IT!",
   "BOMBEADO": "LOBBED",
   "Camiseta": "Shirt",
   "Cancelar": "Cancel",
@@ -4208,6 +4210,15 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
     netH = Math.max(netH || 0, DRIVE_NET + 1.0);
   // golpe normal: más tenso (y rápido) cuanto más potencia
   if (type === 'drive' && netH === undefined && !libre) netH = DRIVE_NET + 0.3 * below(pl, 'pot') - 0.15 * above(pl, 'pot');
+  // los de poco nivel no controlan la fuerza: a veces la bola se les queda corta, a media pista y altita (un regalo para
+  // el contrario, que le pega fuerte) y, si no, la mandan más floja y bombeada, que se puede cazar de volea antes de
+  // que bote (no en los ataques: ahí pegan fuerte aunque no sepan)
+  const ataque = S.ataque; S.ataque = false;
+  if (type === 'drive' && !smash && !libre && !ataque && Math.abs(tz) > 1 && netH !== undefined && netH > SMASH_NET + 0.1 && netH < DRIVE_NET + 0.9) {
+    const flojo = below(pl, 'pre');
+    if (Math.random() < 0.3 * flojo * calidadGolpe(pl)) { tz = Math.sign(tz) * rand(3.8, 6.2); netH = rand(2.3, 3.0); }
+    else netH += 0.4 * Math.max(flojo, below(pl, 'pot'));
+  }
   // efecto del golpe: el que pida quien golpea (S.nextSpin) o el natural de cada tipo de golpe
   const kind = S.nextSpin || (smash ? 'mate' : libre && S.phase === 'serve' ? 'saque' : type === 'lob' ? (netH >= 8 ? 'plano' : 'liftadoSuave')
     : type === 'soft' ? 'cortadoSuave' : type === 'timed' ? 'cortadoSuave' : S.bounces === 0 ? 'volea' : 'liftado');
@@ -4218,7 +4229,8 @@ function doHit(pl, tx, tz, type, netH, libre = false) {
     saque: [-rand(40, 80), rand(20, 50)] }[kind] || [0, 0];
   // los que saben jugar más (precisión y visión) cortan más la bola: tras la pared del fondo cae y muere antes;
   // los que saben menos le dan más plana o liftada y sale más del cristal
-  if (autoSpin && !sv && /^(liftado|volea|cortadoSuave|liftadoSuave)$/.test(kind)) SP[0] -= 170 * (tecnica(pl) - 0.45);
+  // (por debajo de lo normal, el doble: sin cortado la bola bota alta en el cristal del fondo y sale «a huevo»)
+  if (autoSpin && !sv && /^(liftado|volea|cortadoSuave|liftadoSuave)$/.test(kind)) { const tc = tecnica(pl) - 0.45; SP[0] -= (tc < 0 ? 340 : 170) * tc; }
   ball.w.copy(sv || spinVec(tx - ball.p.x, tz - ball.p.z, SP[0], SP[1]));
   ball.roll = false; ball.rollPending = false; ball.sideHit = false; ball.backHit = false;
   ball.seed = Math.random() * 1000; ball.meshN = 0; S.serveMesh = false;
@@ -4633,9 +4645,33 @@ function netError(r) {
   const T = Math.max(0.35, Math.hypot(r.pos.x, r.pos.z - z) / 18);
   doHit(r, clamp(ball.p.x + rand(-2, 2), -4.5, 4.5), z, 'timed', T);
 }
+// Bola regalo: altita (de la cintura para arriba, sin llegar a remate) y sin mucha velocidad, a media pista o saliendo
+// mucho del cristal del fondo: se le puede pegar fuerte. Tras el bote o de volea (la bola corta y bombeada casi siempre
+// se caza en el aire antes de que bote)
+function bolaRegalo(pl) {
+  if (ball.p.y >= SMASH_Y || Math.hypot(ball.v.x, ball.v.z) >= 10) return false;
+  if (S.bounces === 0) return ball.p.y > 0.9 && Math.abs(pl.pos.z) < 6.6 && S.phase !== 'serve';
+  // (la altura a la que va a subir tras el bote, no la de ahora: muchas veces se le pega antes de que suba del todo)
+  const cima = ball.p.y + Math.max(0, ball.v.y) ** 2 / (2 * G);
+  return S.bounces === 1 && cima > 1.0 && ball.p.y > 0.6 && Math.abs(ball.p.z) < (S.fromGlass ? 7.4 : 6.6);
+}
+// el ataque a la bola regalo: los buenos, fuerte, baja y cortada, al hueco o a la esquina, para que muera tras el
+// cristal; los de menos nivel le pegan aún más fuerte, pero plana o liftada: sale del cristal y se puede devolver.
+// Devuelve el destino; el efecto se pone con ponAtaque justo antes del golpe (si no se falla)
+function ataqueRegalo(pl, contra) {
+  const sz = contra[0].team === US ? 1 : -1, g = findGap(contra), arriba = contra.filter(o => Math.abs(o.pos.z) < 4.5);
+  let tx, tz;
+  if (g.d > GAP_MIN) { tx = g.x; tz = g.z; }
+  else if (arriba.length) { const o = arriba[Math.random() < 0.5 ? 0 : arriba.length - 1]; tx = clamp(o.pos.x + rand(-0.5, 0.5), -4.2, 4.2); tz = sz * rand(4.5, 6); }   // a los pies del de la red
+  else { tx = (Math.sign(openX(contra)) || 1) * rand(2.6, 4.2); tz = sz * rand(7.8, 9.2); }   // a la esquina, que muera
+  return { tx, tz, netH: tecnica(pl) > 0.5 ? 1.12 : 1.0 };
+}
+const ponAtaque = pl => { S.ataque = true; S.nextSpin = Math.random() < 0.15 + 0.85 * tecnica(pl) ? 'cortado' : 'liftado'; };
+// a más nivel, más veces se ve y se aprovecha la bola regalo
+const aprovechaRegalo = pl => bolaRegalo(pl) && Math.random() < 0.45 + 0.5 * lvl(pl, 'vis') / 100;
 function aiHit(r) {
   const diff = shotDifficulty(r);           // bolas difíciles: más fallos, también a nivel alto
-  let type, tx, tz, netH, bt0;
+  let type, tx, tz, netH, bt0, ataca = false;
   const near = Math.abs(r.pos.z);   // distancia del rival a la red
   // remates, bandejas y víboras también se fallan (más cuanto más difícil y menos nivel)
   if (ball.p.y > SMASH_Y && near <= DEEP_Z && Math.random() < aiError(r, 'rem') * 0.7 * (1 + diff) * lobFactor() * calidadGolpe(r)) {
@@ -4645,9 +4681,10 @@ function aiHit(r) {
   }
   // bola alta con el rival en el fondo: no se remata, se juega globo o al hueco
   let decided = false;
+  if (aprovechaRegalo(r)) { ({ tx, tz, netH } = ataqueRegalo(r, ours)); type = 'drive'; decided = ataca = true; S.lastAiBranch = 'regalo'; }
   // jugada de pared tras un globo: si la bola sale poco del cristal, otro globo; si sale más, golpe raso y más fuerte
   // (también si la dejaron botar a propósito sin llegar al cristal)
-  if (S.fromGlass || (S.letBounce && S.bounces >= 1)) {
+  if (!decided && (S.fromGlass || (S.letBounce && S.bounces >= 1))) {
     decided = true;
     // si sale poco del cristal no queda otra que el globo; y si vosotros subís a la red, también globo
     // (cuanto más nivel, más lo aprovechan)
@@ -4662,7 +4699,7 @@ function aiHit(r) {
       if (bt) { tx = bt.tx; tz = bt.tz; } else { tx = hueco ? g.x : openX(ours); tz = hueco ? g.z : rand(5.5, 8.5); }
     }
     S.lastAiBranch = 'pared';
-  } else S.lastAiBranch = 'normal';
+  } else if (!decided) S.lastAiBranch = 'normal';
   if (!decided && ball.p.y > SMASH_Y && near > DEEP_Z) { ({ type, tx, tz, netH } = deepHighBall(r)); decided = true; }
   // a poco nivel, muchas bolas altas no las rematan: las devuelven blandas o en globo
   // (con buen juego aéreo se atreven más a rematar)
@@ -4718,6 +4755,7 @@ function aiHit(r) {
   const ventaja = Math.abs(r.pos.z) < 4.5 || ours.every(o => o.pos.z > 6);
   const corta = (type === 'drive' || type === 'soft') && tz > 6 && ventaja && Math.random() < 0.1 + 0.6 * above(r, 'vis');
   if (corta) S.nextSpin = 'cortado';
+  if (ataca && tz < 10) ponAtaque(r);   // (si no se ha fallado)
   doHit(r, tx, tz, type, netH);
 }
 // Bola alta cogida en el fondo: si subís, otro globo; si hay hueco, por ahí; si no, globo.
@@ -4801,8 +4839,10 @@ function autoHit(pl) {
   const [r0, r1] = rivals;
   const atNet = r => r.pos.z > -4.5;
   const back = r0.pos.z < r1.pos.z ? r0 : r1, front = back === r0 ? r1 : r0;
-  let type = 'drive', tx, tz, txt, bt;
-  if (ball.p.y > SMASH_Y && pl.pos.z > DEEP_Z) {         // bola alta desde el fondo: no se remata
+  let type = 'drive', tx, tz, txt, bt, netA;
+  if (aprovechaRegalo(pl)) {                             // bola corta y altita (o que sale mucho del cristal): a por ella
+    ({ tx, tz, netH: netA } = ataqueRegalo(pl, rivals)); txt = '¡A POR ELLA!'; S.lastAiBranch = 'regalo';
+  } else if (ball.p.y > SMASH_Y && pl.pos.z > DEEP_Z) {         // bola alta desde el fondo: no se remata
     if (atNet(r0) || atNet(r1)) { type = 'lob'; tx = clamp(openX() * 0.7, -3.5, 3.5); tz = rand(-9.3, -8.4); txt = 'GLOBO'; }
     else { tx = openX(); tz = rand(-8.5, -6); txt = 'AL HUECO'; }
   } else if (ball.p.y > SMASH_Y && pl.pos.z < 4 && ball.p.y > 2.5) {   // bola franca cerca de la red: mate al hueco
@@ -4835,7 +4875,8 @@ function autoHit(pl) {
   if (ourMiss(pl)) return;
   ({ tx, tz } = ourAim(pl, tx, tz));
   if (txt === 'BANDEJA') { type = 'timed'; if (Math.random() < 0.7) S.nextSpin = 'cortado'; }   // bandeja cortada
-  doHit(pl, tx, tz, type, txt === 'BANDEJA' ? 1.05 : txt !== '¡MATE!' && ball.p.y > SMASH_Y && type === 'drive' ? DRIVE_NET + 1.0 : undefined);
+  if (netA) ponAtaque(pl);
+  doHit(pl, tx, tz, type, netA || (txt === 'BANDEJA' ? 1.05 : txt !== '¡MATE!' && ball.p.y > SMASH_Y && type === 'drive' ? DRIVE_NET + 1.0 : undefined));
   showMsg(txt, 0.8);
 }
 
@@ -8211,7 +8252,7 @@ function scoreText() {
 // textos de los botones: con una partida a medias, «Continuar partida (marcador)» y «Partida nueva»
 function paintPlay() {
   const started = menuEl.classList.contains('started'), aMedias = S.score[0] + S.score[1] > 0 && !S.over;
-  document.getElementById('play').textContent = S.over ? 'PARTIDO NUEVO' : started ? 'CONTINUAR' : aMedias ? 'CONTINUAR PARTIDA (' + scoreText() + ')' : 'JUGAR';
+  document.getElementById('play').textContent = S.over ? (compite() ? 'SIGUIENTE PARTIDO' : 'PARTIDO NUEVO') : started ? 'CONTINUAR' : aMedias ? 'CONTINUAR PARTIDA (' + scoreText() + ')' : 'JUGAR';
   // en Torneos solo se juega estando apuntados a uno
   const sinTorneo = CFG.tipo === 'torneo' && !TOR && !started && !aMedias;
   document.getElementById('play').disabled = sinTorneo;
