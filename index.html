@@ -8110,13 +8110,18 @@ function visorQuieto(pl) {
 }
 // En el Idle de Mixamo los brazos cuelgan rectos y las manos se meten en el cuerpo: se doblan los codos hacia delante
 // (antebrazo y mano giran juntos alrededor del eje de los hombros), el de la pala 45° y el otro 20°
-const CODOS_REPOSO = { r: 45, l: 20 };
+const CODOS_REPOSO = { r: 45, l: 20 }, ABRE_REPOSO = 8;   // (y los brazos, algo separados del cuerpo)
 function doblaCodos(c) {
   if (c.codos) return c; c.codos = true;
   const q = new THREE.Quaternion(), d = new THREE.Quaternion();
   for (const [l, gr] of Object.entries(CODOS_REPOSO)) {
     q.setFromAxisAngle(new V3(1, 0, 0), -gr * Math.PI / 180);   // (el jugador mira a +z: hacia delante y arriba)
     for (const nm of ['lowerarm_' + l, 'hand_' + l]) {
+      const b = c.huesos.indexOf(nm); if (b < 0) continue;
+      for (const f of c.q) { d.fromArray(f, b * 4).premultiply(q); d.toArray(f, b * 4); }
+    }
+    q.setFromAxisAngle(new V3(0, 0, 1), (l === 'l' ? 1 : -1) * ABRE_REPOSO * Math.PI / 180);   // hacia fuera (la izquierda del jugador es +x)
+    for (const nm of ['upperarm_' + l, 'lowerarm_' + l, 'hand_' + l]) {
       const b = c.huesos.indexOf(nm); if (b < 0) continue;
       for (const f of c.q) { d.fromArray(f, b * 4).premultiply(q); d.toArray(f, b * 4); }
     }
