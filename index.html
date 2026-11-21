@@ -8040,7 +8040,7 @@ function abrirVisor(p) {
   visorModelo();
   document.getElementById('vsNom').textContent = p.n + ' · ' + media(p);
   document.getElementById('vsSub').textContent = materialTxt(p);
-  V.rot = 0.35; V.vel = 0; V.t = performance.now();
+  V.rot = 0.35; V.vel = 0; V.t = performance.now(); V.tRep = 0;
   visorTam();
   cancelAnimationFrame(V.raf);
   const paso = () => {
@@ -8049,6 +8049,7 @@ function abrirVisor(p) {
     if (!V.drag) { V.rot += V.vel + (V.demo ? 0 : 0.35 * dt); V.vel *= 0.93; }   // sigue girando solo, despacio (y con la inercia del dedo)
     if (!V.demo) pl.g.rotation.y = V.rot; else camEstudio();
     if (V.demo) demoGolpes(pl, dt);
+    else if (pl.rig && V.reposo) { V.tRep = (V.tRep + dt) % V.reposo.dur; poseClip(pl, V.reposo, V.tRep); }   // de pie, esperando (Idle de Mixamo, en bucle)
     else if (pl.gesto && pl.gesto.k === 'reposo') { pl.updateLegs(dt); pl.updateArms(dt); if (pl.rig) poseModelo(pl); }   // (respira)
     V.r.render(V.sc, V.cam);
     V.raf = requestAnimationFrame(paso);
@@ -8078,14 +8079,16 @@ const vsHint = document.getElementById('vsHint'), HINT_VS = 'Arrastra a los lado
 function visorModelo() {
   const V = visor, pl = V.pl;
   document.querySelectorAll('#vsModelo button').forEach(b => b.classList.toggle('on', +b.dataset.m === +V.modelo));
-  if (!V.modelo) { if (pl.rig) { quitaModelo(pl); if (!V.demo) visorQuieto(pl); } vsHint.textContent = HINT_VS; return; }
-  if (pl.rig) return;
+  if (!V.modelo) { pl.g.visible = true; if (pl.rig) { quitaModelo(pl); if (!V.demo) visorQuieto(pl); } vsHint.textContent = HINT_VS; return; }
+  if (pl.rig) { pl.g.visible = true; return; }
   vsHint.textContent = 'Cargando el modelo…';
-  cargaModelos().then(() => {
-    if (!V.modelo || V.pl !== pl || pl.rig) return;
+  pl.g.visible = false;   // (mientras carga no se enseña el muñeco de piezas: se veía un momento antes del bueno)
+  Promise.all([cargaModelos(), cargaClip('reposo').catch(() => null)]).then(([, rep]) => {
+    if (rep) V.reposo = rep;
+    if (!V.modelo || V.pl !== pl || pl.rig) { pl.g.visible = true; return; }
     ponModelo(pl); if (!V.demo) visorQuieto(pl);
-    vsHint.textContent = HINT_VS;
-  }).catch(e => { vsHint.textContent = 'No se ha podido cargar el modelo nuevo (' + ((e && e.message) || e) + ')'; console.error(e); });
+    pl.g.visible = true; vsHint.textContent = HINT_VS;
+  }).catch(e => { pl.g.visible = true; vsHint.textContent = 'No se ha podido cargar el modelo nuevo (' + ((e && e.message) || e) + ')'; console.error(e); });
 }
 document.querySelector('#vsModelo').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;

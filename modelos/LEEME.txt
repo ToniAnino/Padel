@@ -10,6 +10,8 @@ Cambios hechos aquí:
   se guardan como .json (hombre.json, mujer.json y un .json por peinado).
 
 Golpes grabados (modelos/golpes/*.json): movimiento sacado con Rokoko Vision de vídeos gratuitos de Pexels
+Reposo (modelos/golpes/reposo.json): la animación «Idle» de Mixamo (Adobe), convertida con herramientas/convierte_fbx.js
+(convierte(url, { impacto: 0 })); es la postura del visor 3D del jugador, en bucle. Idle.fbx se queda fuera del repositorio.
 (licencia Pexels: https://www.pexels.com/license/). remate_a: vídeo 34445198 (recorte del segundo 1,5 al 4, sin la carrerilla). derecha_c: vídeo 34449214, del segundo 3,6 al 5,6.
 Se convierten con un script (fbx de Rokoko con esqueleto Mixamo -> giro de cada hueso respecto a la postura en T).
 
